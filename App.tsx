@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, ClipboardEvent } from 'react';
-import { Wand2, LayoutGrid, History, Trash2, FileText, Image as ImageIcon, Link as LinkIcon, X, Upload, Clipboard, Plus, Settings2, Layers, Heart, ArrowRight, Eye, RefreshCcw, Calendar, Search, Filter, Save, CheckCircle2, AlertTriangle, Edit3, MoreHorizontal, Check, ListChecks, Sparkles, FileInput, Loader2, Flag, BookOpen, Home, LayoutList, FileDigit, ZoomIn, Clock, ChevronLeft, ChevronRight, CornerDownRight, Settings } from 'lucide-react';
+import { Wand2, LayoutGrid, History, Trash2, FileText, Image as ImageIcon, Link as LinkIcon, X, Upload, Clipboard, Plus, Settings2, Layers, Heart, ArrowRight, Eye, RefreshCcw, Calendar, Search, Filter, Save, CheckCircle2, AlertTriangle, Edit3, MoreHorizontal, Check, ListChecks, Sparkles, FileInput, Loader2, Flag, BookOpen, Home, LayoutList, FileDigit, ZoomIn, Clock, ChevronLeft, ChevronRight, CornerDownRight, Settings, BookTemplate } from 'lucide-react';
 import { ImageUploader } from './components/ImageUploader';
 import { StyleControls, STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from './components/StyleControls';
 import { ResultCard } from './components/ResultCard';
@@ -9,6 +9,10 @@ import { generateSlideVariant, extractTextFromFile } from './services/geminiServ
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { OutlineGenerator } from './components/OutlineGenerator';
 import { GlobalSettingsModal, DEFAULT_SETTINGS } from './components/GlobalSettingsModal';
+import { Toast, ToastMessage } from './components/Toast';
+
+// --- Constants ---
+const SETTINGS_STORAGE_KEY = 'bananaslides_global_settings_v1';
 
 // --- Modal Component ---
 interface ModalProps {
@@ -68,10 +72,43 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer,
 const App: React.FC = () => {
   // --- State ---
   const [viewMode, setViewMode] = useState<'workbench' | 'history' | 'history-detail'>('workbench');
-  
-  // Settings
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  // Settings with Persistence
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
+    try {
+      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Merge with DEFAULT_SETTINGS to ensure all fields exist (deep merge simulation)
+        return {
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            ai: {
+                ...DEFAULT_SETTINGS.ai,
+                ...(parsed.ai || {}),
+                models: {
+                    ...DEFAULT_SETTINGS.ai.models,
+                    ...(parsed.ai?.models || {})
+                },
+                customCombo: parsed.ai?.customCombo || DEFAULT_SETTINGS.ai.customCombo
+            },
+            performance: {
+                ...DEFAULT_SETTINGS.performance,
+                ...(parsed.performance || {})
+            },
+            imageGeneration: {
+                ...DEFAULT_SETTINGS.imageGeneration,
+                ...(parsed.imageGeneration || {})
+            }
+        };
+      }
+    } catch (e) {
+      console.warn("Failed to load settings from storage", e);
+    }
+    return DEFAULT_SETTINGS;
+  });
 
   // Data - Work Bench
   // Changed from File[] to Map
@@ -112,7 +149,8 @@ const App: React.FC = () => {
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [historyFilterStyle, setHistoryFilterStyle] = useState('');
   const [historyFilterRatio, setHistoryFilterRatio] = useState('');
-  const [historyFilterPageCount, setHistoryFilterPageCount] = useState(''); // New filter
+  const [historyFilterPalette, setHistoryFilterPalette] = useState(''); // New Palette Filter
+  const [historyFilterPageCount, setHistoryFilterPageCount] = useState(''); 
   const [historyFilterStatus, setHistoryFilterStatus] = useState('');
   const [historyFilterTime, setHistoryFilterTime] = useState('');
   const [isHistorySelectionMode, setIsHistorySelectionMode] = useState(false);
@@ -140,8 +178,9 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStyle, setFilterStyle] = useState('');
   const [filterRatio, setFilterRatio] = useState('');
+  const [filterPalette, setFilterPalette] = useState(''); // New Palette Filter
   const [filterPageCount, setFilterPageCount] = useState('');
-  const [filterTime, setFilterTime] = useState(''); // Added
+  const [filterTime, setFilterTime] = useState('');
   
   const [selectedPresetForDetail, setSelectedPresetForDetail] = useState<StylePreset | null>(null);
 
@@ -161,6 +200,18 @@ const App: React.FC = () => {
 
   const outlineFileInputRef = useRef<HTMLInputElement>(null);
   const styleInputRef = useRef<HTMLInputElement>(null); // For replacing style image
+
+  // --- Helpers ---
+  const showToast = (message: string, type: ToastMessage['type'] = 'info') => {
+      setToast({ id: Date.now().toString(), message, type });
+  };
+
+  const getProviderName = (task: 'text' | 'image' | 'vision') => {
+      if (appSettings.ai.provider === 'CustomCombo' && appSettings.ai.customCombo) {
+            return 'Custom Combo';
+      }
+      return appSettings.ai.provider;
+  };
 
   // --- Logic for Page Types Limits & Assignment ---
   
@@ -192,7 +243,6 @@ const App: React.FC = () => {
       return true;
   };
 
-  // --- Helpers ---
   const showConfirm = (title: string, message: string, onConfirm: () => void, type: 'danger' | 'info' = 'info') => {
       setConfirmation({ isOpen: true, title, message, onConfirm, type });
   };
@@ -204,6 +254,11 @@ const App: React.FC = () => {
   const handleConfigChange = (key: keyof StyleConfig, value: any) => {
     setConfig(prev => ({ ...prev, [key]: value }));
     setIsPresetSaved(false); 
+  };
+
+  const handleSaveSettings = (newSettings: AppSettings) => {
+      setAppSettings(newSettings);
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
   };
 
   // --- Outline / Topic Logic ---
@@ -229,11 +284,16 @@ const App: React.FC = () => {
       }
 
       setIsReadingFile(true);
+      const providerName = getProviderName('vision');
+      showToast(`调用 ${providerName} API 识别文件中...`, 'loading');
+
       try {
-          const text = await extractTextFromFile(file);
+          const text = await extractTextFromFile(file, appSettings);
           openOutlineGenerator(text);
+          showToast(`调用 ${providerName} API 识别成功`, 'success');
       } catch (err) {
           console.error("File read error", err);
+          showToast(`调用 ${providerName} API 失败`, 'error');
           alert("读取文件失败，请重试或直接复制内容。");
       } finally {
           setIsReadingFile(false);
@@ -249,7 +309,7 @@ const App: React.FC = () => {
           setItems(prev => [...prev, ...slides.slice(0, allowed)]);
       } else {
           setItems(prev => [...prev, ...slides]);
-          setTimeout(() => alert(`✅ 已成功添加 ${slides.length} 个页面到工作台`), 100);
+          setTimeout(() => showToast(`已成功添加 ${slides.length} 个页面`, 'success'), 100);
       }
   };
 
@@ -264,7 +324,7 @@ const App: React.FC = () => {
               setOutlineInitialTopic(''); // Clear cache
               setOutlineResetKey(prev => prev + 1); // Increment key to force re-mount
               closeConfirm();
-              setTimeout(() => alert("✅ 工作台已清空"), 100);
+              showToast("工作台已清空", 'success');
           },
           'danger'
       );
@@ -307,6 +367,7 @@ const App: React.FC = () => {
       const matchSearch = fav.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchStyle = !filterStyle || fav.config.styleName === filterStyle;
       const matchRatio = !filterRatio || fav.config.aspectRatio === filterRatio;
+      const matchPalette = !filterPalette || fav.config.colorPalette === filterPalette;
       const matchPageCount = !filterPageCount || fav.config.targetPageCount.toString() === filterPageCount;
       
       let matchTime = true;
@@ -319,7 +380,7 @@ const App: React.FC = () => {
           else if (filterTime === '30d') matchTime = diff <= 30 * ONE_DAY;
       }
 
-      return matchSearch && matchStyle && matchRatio && matchPageCount && matchTime;
+      return matchSearch && matchStyle && matchRatio && matchPalette && matchPageCount && matchTime;
   });
 
   // --- History Logic ---
@@ -327,6 +388,7 @@ const App: React.FC = () => {
       const matchSearch = session.title.toLowerCase().includes(historySearchTerm.toLowerCase());
       const matchStyle = !historyFilterStyle || session.globalConfig.styleName === historyFilterStyle;
       const matchRatio = !historyFilterRatio || session.globalConfig.aspectRatio === historyFilterRatio;
+      const matchPalette = !historyFilterPalette || session.globalConfig.colorPalette === historyFilterPalette;
       const matchPageCount = !historyFilterPageCount || session.globalConfig.targetPageCount.toString() === historyFilterPageCount;
       const matchStatus = !historyFilterStatus || session.status === historyFilterStatus;
       
@@ -340,7 +402,7 @@ const App: React.FC = () => {
           else if (historyFilterTime === '30d') matchTime = diff <= 30 * ONE_DAY;
       }
 
-      return matchSearch && matchStyle && matchRatio && matchStatus && matchTime && matchPageCount;
+      return matchSearch && matchStyle && matchRatio && matchPalette && matchStatus && matchTime && matchPageCount;
   });
 
   // --- Add Text Page Logic (Direct) ---
@@ -516,8 +578,6 @@ const App: React.FC = () => {
         setItems(prev => prev.map(res => res.id === item.id ? { ...res, status: 'generating', errorMessage: undefined, variants: [] } : res));
         const count = item.variantCount || 2;
         
-        // --- NEW: Select specific style file based on pageType ---
-        // Fallback Logic: Specific Type -> Content (Main) -> Cover -> First Available -> Null
         let selectedStyleFile = styleMap[item.pageType];
         if (!selectedStyleFile) selectedStyleFile = styleMap['content'];
         if (!selectedStyleFile) selectedStyleFile = styleMap['cover'];
@@ -529,46 +589,78 @@ const App: React.FC = () => {
         const promises = [];
         for (let i = 0; i < count; i++) {
             const label = `Option ${i + 1}`;
-            promises.push(generateSlideVariant(contentSource, selectedStyleFile, config, label, item.title));
+            promises.push(generateSlideVariant(contentSource, selectedStyleFile, config, label, item.title, appSettings));
         }
         const generatedVariants = await Promise.all(promises);
         setItems(prev => prev.map(res => res.id === item.id ? { ...res, variants: generatedVariants, status: 'success' } : res));
     } catch (error: any) {
         setItems(prev => prev.map(res => res.id === item.id ? { ...res, status: 'error', errorMessage: error.message } : res));
+        throw error; // Re-throw to be caught by batch handler
     }
   };
 
   const handleGenerateBatch = async () => {
     const itemsToProcess = items.filter(item => item.status === 'idle' || item.status === 'error');
     if (itemsToProcess.length === 0) return;
+    
     setIsProcessing(true);
+    const providerName = getProviderName('image');
+    showToast(`正在调用 ${providerName} API 批量生成图片，请耐心等待⌛️`, 'loading');
+
     setItems(prev => prev.map(item => (item.status === 'idle' || item.status === 'error') ? { ...item, status: 'generating' } : item));
     
-    // Use Concurrency from Settings
-    const CONCURRENCY_LIMIT = appSettings.performance.imageConcurrency || 2;
+    // Use Concurrency from Settings, default high if undefined (unlimited)
+    const CONCURRENCY_LIMIT = appSettings.performance.imageConcurrency || 99;
     
     const activePromises = new Set<Promise<void>>();
+    let failureCount = 0;
+
     for (const item of itemsToProcess) {
         while (activePromises.size >= CONCURRENCY_LIMIT) await Promise.race(activePromises);
-        const operation = processItem(item);
-        const effectivePromise: Promise<void> = operation.then(() => { activePromises.delete(effectivePromise); }, () => { activePromises.delete(effectivePromise); });
+        
+        const operation = processItem(item).catch(() => { failureCount++ });
+        const effectivePromise: Promise<void> = operation.then(() => { activePromises.delete(effectivePromise); });
         activePromises.add(effectivePromise);
     }
     await Promise.all(activePromises);
+    
     setIsProcessing(false);
     setItems(currentItems => { saveProjectSession(currentItems); return currentItems; });
+
+    if (failureCount > 0) {
+        showToast(`调用 ${providerName} API 完成，但有 ${failureCount} 张生成失败`, 'error');
+    } else {
+        showToast(`调用 ${providerName} API 服务成功`, 'success');
+    }
   };
 
   const handleSingleGenerate = async (id: string) => {
       const item = items.find(i => i.id === id);
-      if (item) await processItem(item);
+      if (item) {
+          const providerName = getProviderName('image');
+          showToast(`调用 ${providerName} API 生成单页中...`, 'loading');
+          try {
+            await processItem(item);
+            showToast(`调用 ${providerName} API 服务成功`, 'success');
+          } catch (e) {
+            showToast(`调用 ${providerName} API 失败`, 'error');
+          }
+      }
   };
 
   const handleRegenerate = async (id: string) => {
       const item = items.find(i => i.id === id);
       if (!item) return;
       setItems(prev => prev.map(i => i.id === id ? { ...i, status: 'generating', variants: [] } : i));
-      await processItem(item);
+      
+      const providerName = getProviderName('image');
+      showToast(`重新调用 ${providerName} API 生成中...`, 'loading');
+      try {
+        await processItem(item);
+        showToast(`调用 ${providerName} API 服务成功`, 'success');
+      } catch (e) {
+        showToast(`调用 ${providerName} API 失败`, 'error');
+      }
   };
 
   // Drag Drop
@@ -727,12 +819,15 @@ const App: React.FC = () => {
       {/* Global Confirmation Dialog */}
       <ConfirmDialog isOpen={confirmation.isOpen} title={confirmation.title} message={confirmation.message} onConfirm={confirmation.onConfirm} onCancel={closeConfirm} type={confirmation.type} />
       
+      {/* Toast Notification */}
+      <Toast toast={toast} onClose={() => setToast(null)} />
+
       {/* Global Settings Modal */}
       <GlobalSettingsModal 
           isOpen={isGlobalSettingsOpen} 
           onClose={() => setIsGlobalSettingsOpen(false)} 
           currentSettings={appSettings} 
-          onSave={setAppSettings} 
+          onSave={handleSaveSettings} 
       />
 
       {/* Outline Generator Modal - Pass Config and KEY for reset */}
@@ -743,12 +838,63 @@ const App: React.FC = () => {
           onFinish={handleOutlineImport}
           initialTopic={outlineInitialTopic}
           config={config} 
+          appSettings={appSettings}
+          onShowToast={showToast}
       />
 
       {/* Lightbox */}
       <Modal isOpen={!!lightboxImage} onClose={() => setLightboxImage(null)} variant="lightbox">
           {lightboxImage && <img src={lightboxImage} alt="Full size view" className="max-w-full max-h-[90vh] object-contain rounded shadow-2xl" />}
       </Modal>
+      
+      {/* Favorite Detail Modal */}
+      {selectedPresetForDetail && (
+          <Modal isOpen={!!selectedPresetForDetail} onClose={() => setSelectedPresetForDetail(null)} title="风格详情" maxWidth="max-w-4xl" footer={<div className="flex gap-2 w-full justify-end"><button onClick={() => setSelectedPresetForDetail(null)} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100">关闭</button><button onClick={() => handleApplyPresetRequest(selectedPresetForDetail)} className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg">应用此风格</button></div>}>
+              <div className="space-y-6">
+                  <div className="flex flex-col lg:flex-row gap-6 lg:h-[340px]">
+                        {/* Left: Images */}
+                        <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group">
+                            {selectedPresetForDetail.styleMap?.cover || selectedPresetForDetail.styleFile ? (
+                                <>
+                                    <img 
+                                        src={URL.createObjectURL(selectedPresetForDetail.styleMap?.cover || selectedPresetForDetail.styleFile!)} 
+                                        className="w-full h-full object-contain bg-slate-50" 
+                                    />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100">
+                                        <button 
+                                            onClick={() => setLightboxImage(URL.createObjectURL(selectedPresetForDetail.styleMap?.cover || selectedPresetForDetail.styleFile!))}
+                                            className="flex flex-col items-center justify-center gap-1 bg-white/90 hover:bg-white text-slate-800 w-16 h-16 rounded-lg backdrop-blur shadow-sm transition-all"
+                                        >
+                                            <ZoomIn size={24} />
+                                            <span className="text-[10px] font-medium">查看大图</span>
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs p-8 text-center flex-col gap-2">
+                                    <ImageIcon size={32} />
+                                    <span>无参考图</span>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Right: Controls (Read Only) */}
+                        <div className="w-full lg:w-2/3 bg-white border border-slate-200 rounded-xl p-5 h-full overflow-hidden pointer-events-none opacity-90">
+                            <StyleControls config={selectedPresetForDetail.config} onChange={() => {}} readOnly={true} />
+                        </div>
+                  </div>
+                   {/* Requirements */}
+                    <div className="flex flex-col pointer-events-none opacity-90">
+                        <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><LinkIcon size={14} className="text-slate-500"/> 全局设计要求</h3>
+                        <textarea 
+                            value={selectedPresetForDetail.config.requirements} 
+                            readOnly 
+                            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none resize-none h-[100px]" 
+                        />
+                    </div>
+              </div>
+          </Modal>
+      )}
 
       {/* Save Preset Modal */}
       <Modal isOpen={isSavePresetModalOpen} onClose={() => setIsSavePresetModalOpen(false)} title="保存风格预设" footer={<div className="flex gap-2 w-full justify-end"><button onClick={() => setIsSavePresetModalOpen(false)} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100">取消</button><button onClick={confirmSavePreset} className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg">下一步</button></div>}>
@@ -766,7 +912,27 @@ const App: React.FC = () => {
                       <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
                       <input type="text" placeholder="搜索预设..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-100" />
                   </div>
-                  {/* ... filters ... */}
+                  <div className="flex flex-wrap gap-2">
+                       <select value={filterStyle} onChange={e => setFilterStyle(e.target.value)} className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none">
+                            <option value="">所有风格</option>
+                            {STYLE_PRESETS.map(s => <option key={s} value={s}>{s}</option>)}
+                       </select>
+                       <select value={filterRatio} onChange={e => setFilterRatio(e.target.value)} className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none">
+                            <option value="">所有比例</option>
+                            {RATIO_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+                       </select>
+                       <select value={filterPalette} onChange={e => setFilterPalette(e.target.value)} className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none max-w-[100px]">
+                            <option value="">所有配色</option>
+                            {COLOR_PRESETS.map(c => <option key={c} value={c}>{c}</option>)}
+                       </select>
+                       <input type="text" placeholder="页数" value={filterPageCount} onChange={e => setFilterPageCount(e.target.value)} className="w-16 text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none text-center" />
+                       <select value={filterTime} onChange={e => setFilterTime(e.target.value)} className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none">
+                            <option value="">所有时间</option>
+                            <option value="24h">24小时内</option>
+                            <option value="7d">7天内</option>
+                            <option value="30d">30天内</option>
+                       </select>
+                  </div>
               </div>
               {filteredFavorites.length === 0 ? (<div className="text-center py-20 text-slate-400"><Heart size={48} className="mx-auto mb-3 text-slate-200" /><p>没有找到匹配的风格预设</p></div>) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -880,6 +1046,28 @@ const App: React.FC = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden">
                     <div className="absolute top-0 left-0 bg-rose-500 text-white text-[10px] px-3 py-1 rounded-br-lg font-bold tracking-wide z-10 flex items-center gap-1"><Settings2 size={10} /> 全局设置 (Global Settings)</div>
                     
+                    {/* --- Moved Save Preset & Favorites Buttons Here --- */}
+                    <div className="absolute top-4 right-6 flex items-center gap-3 z-10">
+                        <button 
+                          onClick={openSavePresetModal}
+                          disabled={isPresetSaved}
+                          className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm transition-all font-medium ${
+                              isPresetSaved 
+                                ? 'bg-green-50 text-green-600 border-green-200 cursor-default' 
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200'
+                          }`}
+                        >
+                            {isPresetSaved ? <Check size={14} /> : <Heart size={14} />} 
+                            {isPresetSaved ? "已保存" : "保存预设"}
+                        </button>
+                        <button 
+                          onClick={() => setIsFavoritesModalOpen(true)}
+                          className="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all font-medium shadow-sm"
+                        >
+                            <BookTemplate size={14} /> 收藏夹
+                        </button>
+                    </div>
+
                     {/* Updated Layout: Top Row (Left 1/3, Right 2/3) + Bottom Row */}
                     <div className="flex flex-col gap-6 mt-6">
                         <div className="flex flex-col lg:flex-row gap-6 lg:h-[340px]">
@@ -965,7 +1153,7 @@ const App: React.FC = () => {
 
                             {/* Right 2/3: Controls */}
                             <div className="w-full lg:w-2/3 bg-white border border-slate-200 rounded-xl p-5 h-full overflow-hidden">
-                                <StyleControls config={config} onChange={handleConfigChange} onSaveFavorite={openSavePresetModal} onOpenFavorites={() => setIsFavoritesModalOpen(true)} isSaved={isPresetSaved} />
+                                <StyleControls config={config} onChange={handleConfigChange} readOnly={false} />
                             </div>
                         </div>
 
@@ -990,11 +1178,14 @@ const App: React.FC = () => {
                             <p className="text-sm text-slate-500 mt-1 ml-1">在此添加具体的幻灯片内容素材，每个任务将对应生成一页 PPT</p>
                         </div>
                         <div className="flex items-center gap-3">
-                             <button onClick={handleAddTextPage} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-sm font-medium transition-all shadow-sm"><Plus size={16} /> 添加文本页面</button>
-                             <button onClick={openImageTaskModal} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-sm font-medium transition-all shadow-sm"><Plus size={16} /> 添加图片页面</button>
+                             <button onClick={handleAddTextPage} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-sm font-medium transition-all shadow-sm"><Plus size={16} /> 添加文本素材页面</button>
+                             <button onClick={openImageTaskModal} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-sm font-medium transition-all shadow-sm"><Plus size={16} /> 添加图片素材页面</button>
                              <div className="h-6 w-px bg-slate-200 mx-1"></div>
-                             <button onClick={() => openOutlineGenerator()} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 text-slate-600 rounded-lg text-sm font-medium transition-all shadow-sm"><Sparkles size={16} /> 一句话生成大纲</button>
-                             <button onClick={() => outlineFileInputRef.current?.click()} disabled={isReadingFile} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 text-slate-600 rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50">{isReadingFile ? <Loader2 size={16} className="animate-spin" /> : <FileInput size={16} />} {isReadingFile ? "解析中..." : "上传文件生成大纲"}</button>
+                             
+                             {/* Updated Button Styles to Blue and Renamed */}
+                             <button onClick={() => openOutlineGenerator()} className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-sm font-medium transition-all shadow-sm"><Sparkles size={16} /> 一句话生成页面</button>
+                             <button onClick={() => outlineFileInputRef.current?.click()} disabled={isReadingFile} className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50">{isReadingFile ? <Loader2 size={16} className="animate-spin" /> : <FileInput size={16} />} {isReadingFile ? "解析中..." : "上传文件生成页面"}</button>
+                             
                              <input type="file" ref={outlineFileInputRef} onChange={handleOutlineFileSelect} accept=".txt,.md,.json,.pdf,.doc,.docx" className="hidden" />
                              
                              {/* Batch Generate Button Moved Here */}
@@ -1041,7 +1232,34 @@ const App: React.FC = () => {
                  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
                      {/* Search */}
                      <div className="flex-1 w-full lg:w-auto relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" placeholder="搜索项目标题..." value={historySearchTerm} onChange={(e) => setHistorySearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-100" /></div>
-                     {/* ... Filters ... */}
+                     
+                     {/* Filters Toolbar */}
+                     <div className="flex flex-wrap gap-2 mt-2 lg:mt-0">
+                         <select value={historyFilterStyle} onChange={e => setHistoryFilterStyle(e.target.value)} className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none">
+                            <option value="">所有风格</option>
+                            {STYLE_PRESETS.map(s => <option key={s} value={s}>{s}</option>)}
+                         </select>
+                         <select value={historyFilterRatio} onChange={e => setHistoryFilterRatio(e.target.value)} className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none">
+                            <option value="">所有比例</option>
+                            {RATIO_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
+                         </select>
+                         <select value={historyFilterPalette} onChange={e => setHistoryFilterPalette(e.target.value)} className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none max-w-[100px]">
+                            <option value="">所有配色</option>
+                            {COLOR_PRESETS.map(c => <option key={c} value={c}>{c}</option>)}
+                         </select>
+                         <input type="text" placeholder="页数" value={historyFilterPageCount} onChange={e => setHistoryFilterPageCount(e.target.value)} className="w-16 text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none text-center" />
+                         <select value={historyFilterStatus} onChange={e => setHistoryFilterStatus(e.target.value)} className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none">
+                            <option value="">所有状态</option>
+                            <option value="completed">已完成</option>
+                            <option value="generating">生成中</option>
+                         </select>
+                         <select value={historyFilterTime} onChange={e => setHistoryFilterTime(e.target.value)} className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none">
+                            <option value="">所有时间</option>
+                            <option value="24h">24小时内</option>
+                            <option value="7d">7天内</option>
+                            <option value="30d">30天内</option>
+                       </select>
+                     </div>
                  </div>
 
                  {/* History List - Horizontal Layout */}

@@ -1,16 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, Home, LayoutList, Flag, BookOpen } from 'lucide-react';
+import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText } from 'lucide-react';
 import { refinePrompt, generateOutline, generateSlideDetail } from '../services/geminiService';
-import { OutlineItem, GeneratedSlide, StyleConfig, PageType } from '../types';
+import { OutlineItem, GeneratedSlide, StyleConfig, PageType, AppSettings } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ToastMessage } from './Toast';
 
 interface OutlineGeneratorProps {
     isOpen: boolean;
     onClose: () => void;
     onFinish: (slides: GeneratedSlide[]) => void;
     initialTopic?: string;
-    config: StyleConfig; // New: Pass global config
+    config: StyleConfig; 
+    appSettings: AppSettings;
+    onShowToast: (msg: string, type: ToastMessage['type']) => void;
 }
 
 const getPageTypeLabel = (type: PageType) => {
@@ -23,7 +26,7 @@ const getPageTypeLabel = (type: PageType) => {
     }
 }
 
-export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onClose, onFinish, initialTopic = "", config }) => {
+export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onClose, onFinish, initialTopic = "", config, appSettings, onShowToast }) => {
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [topic, setTopic] = useState(initialTopic);
     const [isRefining, setIsRefining] = useState(false);
@@ -45,12 +48,27 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
 
     if (!isOpen) return null;
 
+    const getProviderName = (task: 'text' | 'image' | 'vision') => {
+        if (appSettings.ai.provider === 'CustomCombo' && appSettings.ai.customCombo) {
+             return 'Custom Combo';
+        }
+        return appSettings.ai.provider;
+    };
+
     const handleRefine = async () => {
         if (!topic.trim()) return;
         setIsRefining(true);
+        const providerName = getProviderName('text');
+        onShowToast(`调用 ${providerName} API 服务修饰主题中...`, 'loading');
+        
         try {
-            const refined = await refinePrompt(topic);
+            const refined = await refinePrompt(topic, appSettings);
             setTopic(refined);
+            onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+        } catch (error) {
+            console.error(error);
+            onShowToast(`调用 ${providerName} API 服务失败`, 'error');
+            alert("AI 修饰失败，请检查配置。");
         } finally {
             setIsRefining(false);
         }
@@ -59,13 +77,21 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
     const handleGenerateOutline = async () => {
         if (!topic.trim()) return;
         setIsGeneratingOutline(true);
+        const providerName = getProviderName('text');
+        onShowToast(`调用 ${providerName} API 服务生成大纲中，请耐心等待⌛️`, 'loading');
+
         try {
-            // Pass config to enforce structure
-            const items = await generateOutline(topic, config);
-            setOutlineItems(items);
-            setStep(2);
+            const items = await generateOutline(topic, config, appSettings);
+            if(items.length > 0) {
+                 setOutlineItems(items);
+                 setStep(2);
+                 onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+            } else {
+                 onShowToast(`调用 ${providerName} API 服务返回空数据`, 'error');
+            }
         } catch (error) {
-            alert("生成大纲失败，请重试");
+            console.error(error);
+            onShowToast(`调用 ${providerName} API 服务失败`, 'error');
         } finally {
             setIsGeneratingOutline(false);
         }
@@ -97,34 +123,57 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         
         handleUpdateOutlineItem(id, { status: 'generating' });
         try {
-            // UPDATE: Check page type. If it is structural, skip detail generation and use brief.
             const structuralTypes: PageType[] = ['cover', 'directory', 'transition', 'end'];
             
             if (structuralTypes.includes(item.pageType)) {
-                // For structural pages, use the brief as the full content to remain concise
-                await new Promise(resolve => setTimeout(resolve, 300)); // Simulate slight delay
+                await new Promise(resolve => setTimeout(resolve, 300)); 
                 handleUpdateOutlineItem(id, { fullContent: item.brief, status: 'success' });
             } else {
-                // For content pages, generate detailed text
-                const detail = await generateSlideDetail(item.title, item.brief, topic);
+                const detail = await generateSlideDetail(item.title, item.brief, topic, appSettings);
                 handleUpdateOutlineItem(id, { fullContent: detail, status: 'success' });
             }
         } catch (e) {
             handleUpdateOutlineItem(id, { status: 'error' });
+            throw e;
         }
     };
 
     const handleBatchGenerateDetails = async () => {
         setIsGeneratingDetails(true);
+        const providerName = getProviderName('text');
+        onShowToast(`批量调用 ${providerName} API 生成详细描述中...`, 'loading');
+
         const pendingItems = outlineItems; 
         
-        const promises = pendingItems.map(async (item) => {
-            if (item.status === 'success' && item.fullContent) return; 
-            await generateDetailForId(item.id);
-        });
+        // Use concurrency from settings, default high if undefined
+        const CONCURRENCY = appSettings.performance.textConcurrency || 99;
+        const activePromises = new Set<Promise<void>>();
+        let failureCount = 0;
 
-        await Promise.all(promises);
+        for (const item of pendingItems) {
+            if (item.status === 'success' && item.fullContent) continue;
+            
+            while (activePromises.size >= CONCURRENCY) {
+                await Promise.race(activePromises);
+            }
+
+            const p = generateDetailForId(item.id).then(() => {
+                activePromises.delete(p);
+            }).catch(() => {
+                failureCount++;
+                activePromises.delete(p);
+            });
+            activePromises.add(p);
+        }
+
+        await Promise.all(activePromises);
         setIsGeneratingDetails(false);
+
+        if (failureCount > 0) {
+            onShowToast(`调用 ${providerName} API 完成，但有 ${failureCount} 页失败`, 'error');
+        } else {
+            onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+        }
     };
 
     const handleFinish = () => {
@@ -270,6 +319,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                 </div>
                                 <div className="flex gap-2">
                                     <button onClick={handleGenerateOutline} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 shadow-sm transition-all"><RefreshCw size={14} /> 重新生成</button>
+                                    <button onClick={proceedToDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200 font-medium">
+                                        下一步: 生成详细内容 <ArrowRight size={18} />
+                                    </button>
                                 </div>
                             </div>
 
@@ -314,9 +366,14 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                         <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <div className="flex justify-between items-center mb-8 sticky top-0 bg-[#fafafa]/95 backdrop-blur-sm z-20 py-2">
                                 <div><h3 className="text-xl font-bold text-slate-800">详细内容生成</h3><p className="text-sm text-slate-500">系统将为内容页生成详细演讲稿，结构页保持精简</p></div>
-                                <button onClick={handleBatchGenerateDetails} disabled={isGeneratingDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md shadow-indigo-200 font-medium">
-                                    {isGeneratingDetails ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />} {isGeneratingDetails ? "生成中..." : "批量生成详细描述"}
-                                </button>
+                                <div className="flex gap-2">
+                                    <button onClick={handleBatchGenerateDetails} disabled={isGeneratingDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md shadow-indigo-200 font-medium">
+                                        {isGeneratingDetails ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />} {isGeneratingDetails ? "生成中..." : "批量生成详细描述"}
+                                    </button>
+                                    <button onClick={handleFinish} className="flex items-center gap-2 bg-rose-500 text-white px-5 py-2.5 rounded-lg hover:bg-rose-600 transition-all shadow-md shadow-rose-200 font-medium">
+                                        <Check size={18} /> 完成并导入工作台
+                                    </button>
+                                </div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-24">
                                 {outlineItems.map((item) => (
@@ -327,24 +384,30 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${item.pageType === 'cover' ? 'bg-purple-50 text-purple-600' : item.pageType === 'content' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-600'}`}>{getPageTypeLabel(item.pageType)}</span>
                                                 <span className="font-bold text-slate-800 truncate" title={item.title}>{item.title}</span>
                                             </div>
-                                            {/* ... */}
+                                            {item.status === 'generating' && <Loader2 size={16} className="animate-spin text-indigo-500" />}
+                                            {item.status === 'success' && <div className="text-green-500 bg-green-50 rounded-full p-1"><Check size={12} /></div>}
+                                            {item.status === 'error' && <div className="text-red-500 bg-red-50 rounded-full p-1 cursor-pointer" onClick={() => generateDetailForId(item.id)} title="点击重试">!</div>}
                                         </div>
                                         <div className="relative p-4 flex-1 min-h-[240px] flex flex-col">
-                                            {/* ... Text Area ... */}
-                                            <textarea value={item.fullContent || ''} onChange={(e) => handleUpdateOutlineItem(item.id, { fullContent: e.target.value })} className="w-full h-full min-h-[220px] resize-none text-sm text-slate-700 leading-relaxed outline-none border border-transparent hover:border-slate-200 focus:border-indigo-300 rounded-lg p-2 transition-all custom-scrollbar bg-transparent focus:bg-white" placeholder={item.pageType === 'content' ? "等待生成详细内容..." : "保持大纲简述"} />
+                                            {/* Status overlay */}
+                                            {(!item.fullContent && item.status === 'idle') && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-white/60 z-10">
+                                                    <button onClick={() => generateDetailForId(item.id)} className="px-4 py-2 bg-white border border-slate-200 shadow-sm rounded-lg text-sm text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all">生成此页内容</button>
+                                                </div>
+                                            )}
+                                            
+                                            <textarea 
+                                                value={item.fullContent || ''} 
+                                                onChange={(e) => handleUpdateOutlineItem(item.id, { fullContent: e.target.value })}
+                                                placeholder={item.status === 'generating' ? "AI 正在思考中..." : "等待生成详细内容..."}
+                                                className="w-full h-full min-h-[200px] resize-none focus:outline-none bg-transparent text-sm text-slate-600 leading-relaxed custom-scrollbar"
+                                            />
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     )}
-                </div>
-
-                {/* Footer ... (Same) */}
-                <div className="px-8 py-5 border-t border-slate-200 bg-white flex justify-between items-center shrink-0 z-20">
-                    <button onClick={() => setStep(prev => Math.max(1, prev - 1) as any)} disabled={step === 1} className="px-6 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl disabled:opacity-30 disabled:hover:bg-transparent transition-colors font-medium">上一步</button>
-                    {step === 2 && <button onClick={proceedToDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-8 py-2.5 rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 font-bold active:scale-95">下一步：生成详细描述 <ArrowRight size={18} /></button>}
-                    {step === 3 && <button onClick={handleFinish} className="flex items-center gap-2 bg-rose-500 text-white px-8 py-2.5 rounded-xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 font-bold active:scale-95">下一步：生成 PPT <Check size={18} /></button>}
                 </div>
             </div>
         </div>

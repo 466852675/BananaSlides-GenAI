@@ -6,17 +6,14 @@ import { Palette, LayoutTemplate, Monitor, Heart, BookTemplate, Check, FileDigit
 interface StyleControlsProps {
   config: StyleConfig;
   onChange: (key: keyof StyleConfig, value: any) => void;
-  onSaveFavorite?: () => void;
-  onOpenFavorites?: () => void;
   readOnly?: boolean;
-  isSaved?: boolean;
 }
 
 export const STYLE_PRESETS = ["极简科技", "商务严谨", "时尚杂志", "扁平插画", "复古风"];
 export const COLOR_PRESETS = ["经典蓝白", "黑金奢华", "活力橙灰", "莫兰迪色系", "极简黑白"];
 export const RATIO_PRESETS = ["16:9", "4:3", "16:10", "1:1"];
 
-export const StyleControls: React.FC<StyleControlsProps> = ({ config, onChange, onSaveFavorite, onOpenFavorites, readOnly = false, isSaved = false }) => {
+export const StyleControls: React.FC<StyleControlsProps> = ({ config, onChange, readOnly = false }) => {
   
   // Calculate total configured pages
   const currentStructureSum = 
@@ -37,34 +34,6 @@ export const StyleControls: React.FC<StyleControlsProps> = ({ config, onChange, 
   return (
     <div className="h-full relative pr-1">
       
-      {/* Header Actions */}
-      {!readOnly && (
-        <div className="absolute top-0 right-0 flex items-center gap-2 z-10">
-            {onSaveFavorite && (
-                <button 
-                  onClick={onSaveFavorite}
-                  disabled={isSaved}
-                  className={`text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors ${
-                      isSaved 
-                        ? 'bg-green-50 text-green-600 border border-green-100 cursor-default' 
-                        : 'bg-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-500'
-                  }`}
-                >
-                    {isSaved ? <Check size={12} /> : <Heart size={12} />} 
-                    {isSaved ? "已保存" : "保存预设"}
-                </button>
-            )}
-            {onOpenFavorites && (
-                <button 
-                  onClick={onOpenFavorites}
-                  className="text-xs flex items-center gap-1 px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-500 transition-colors"
-                >
-                    <BookTemplate size={12} /> 收藏夹
-                </button>
-            )}
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 h-full">
           
           {/* Column 1 (Left): Style, Ratio, Palette */}
@@ -74,7 +43,7 @@ export const StyleControls: React.FC<StyleControlsProps> = ({ config, onChange, 
               <div>
                 <div className="flex items-center gap-2 mb-2">
                    <LayoutTemplate size={16} className="text-slate-500" />
-                   <label className="text-sm font-bold text-slate-700">PPT 风格</label>
+                   <label className="text-sm font-bold text-slate-700">风格</label>
                 </div>
                 {!readOnly && (
                     <div className="flex flex-wrap gap-1.5 mb-2">

@@ -83,6 +83,18 @@ export type AIProvider = 'OpenAI' | 'Gemini' | 'Zhipu' | 'SiliconFlow' | 'ModelS
 export type ImageResolution = '1024x1024' | '2048x2048' | '4096x4096';
 export type OutputLanguage = 'zh' | 'ja' | 'en' | 'auto';
 
+export interface ModelConnection {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+}
+
+export interface CustomComboConfig {
+    text: ModelConnection;
+    image: ModelConnection;
+    vision: ModelConnection;
+}
+
 export interface AppSettings {
     ai: {
         provider: AIProvider;
@@ -92,14 +104,15 @@ export interface AppSettings {
             text: string;
             image: string;
             vision: string;
-        }
+        };
+        customCombo?: CustomComboConfig;
     };
     imageGeneration: {
         resolution: ImageResolution;
     };
     performance: {
-        textConcurrency: number;
-        imageConcurrency: number;
+        textConcurrency?: number; // Optional/Unlimited
+        imageConcurrency?: number; // Optional/Unlimited
     };
     language: OutputLanguage;
 }
