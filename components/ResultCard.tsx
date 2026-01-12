@@ -1,8 +1,9 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { GeneratedSlide, PageType } from '../types';
 import { downloadImage } from '../utils';
-import { Download, Loader2, AlertCircle, Clock, FileText, Image as ImageIcon, GripVertical, RefreshCw, Zap, Edit, Upload, Maximize2, Layers, Trash2, Copy, BookOpen, Flag, Home, LayoutList } from 'lucide-react';
+import { exportToPdf, exportToPptx } from '../services/exportService';
+import { Download, Loader2, AlertCircle, Clock, FileText, Image as ImageIcon, GripVertical, RefreshCw, Zap, Edit, Upload, Maximize2, Layers, Trash2, Copy, BookOpen, Flag, Home, LayoutList, FileOutput, FileType, Sparkles } from 'lucide-react';
 
 interface ResultCardProps {
   item: GeneratedSlide;
@@ -19,6 +20,7 @@ interface ResultCardProps {
   onDelete?: () => void;
   onDuplicate?: () => void;
   onViewImage?: (imageUrl: string) => void;
+  onRefineContent?: (text: string) => Promise<string>;
   readOnly?: boolean;
 }
 
@@ -41,14 +43,13 @@ const getStatusColor = (status: string) => {
     }
 }
 
-// Logic to determine grid columns
-const getGridColsClass = (count: number) => {
-    if (count === 1) return 'grid-cols-1';
-    if (count === 2) return 'grid-cols-2';
-    if (count === 4) return 'grid-cols-2';
-    if (count === 6) return 'grid-cols-3';
-    if (count === 9) return 'grid-cols-3';
-    return 'grid-cols-2';
+// Updated Grid Logic for strict containment
+const getGridClass = (count: number) => {
+    if (count <= 1) return 'grid-cols-1 grid-rows-1';
+    if (count === 2) return 'grid-cols-2 grid-rows-1';
+    if (count <= 4) return 'grid-cols-2 grid-rows-2';
+    if (count <= 6) return 'grid-cols-3 grid-rows-2';
+    return 'grid-cols-3 grid-rows-3'; // Max 9
 };
 
 const getPageTypeIcon = (type: PageType) => {
@@ -86,11 +87,14 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     onDelete,
     onDuplicate,
     onViewImage,
+    onRefineContent,
     readOnly = false
 }) => {
   
   const isTextType = item.contentType === 'text';
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeVariantIndex, setActiveVariantIndex] = useState<number | null>(null);
+  const [isRefining, setIsRefining] = useState(false);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (readOnly) return;
@@ -112,6 +116,33 @@ export const ResultCard: React.FC<ResultCardProps> = ({
       }
   };
 
+  const handleSingleExport = (type: 'pdf' | 'pptx', variantUrl: string) => {
+      const tempItem = { ...item, variants: [variantUrl] };
+      const filename = `slide-${index || 'x'}-${item.title || 'export'}`;
+      
+      if (type === 'pdf') {
+          exportToPdf([tempItem], filename);
+      } else {
+          exportToPptx([tempItem], filename);
+      }
+  };
+
+  const handleSmartRefine = async () => {
+      if (!onRefineContent || !item.textContent || isRefining || readOnly) return;
+      
+      setIsRefining(true);
+      try {
+          const refined = await onRefineContent(item.textContent);
+          if (onUpdate) {
+              onUpdate({ textContent: refined });
+          }
+      } catch (error) {
+          console.error("Refine failed", error);
+      } finally {
+          setIsRefining(false);
+      }
+  };
+
   return (
     <div 
       className={`bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col transition-all hover:shadow-md relative group/card
@@ -124,8 +155,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({
       onDrop={onDrop}
     >
       {/* Header Bar */}
-      <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-white">
-        <div className="flex items-center gap-3">
+      <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
+        <div className="flex items-center gap-3 overflow-hidden">
              {!readOnly && onDragStart && (
                  <div className="cursor-grab text-slate-300 hover:text-slate-500 active:cursor-grabbing p-1">
                      <GripVertical size={16} />
@@ -143,15 +174,15 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                 </div>
              )}
 
-             <div className="flex items-center gap-2">
+             <div className="flex items-center gap-2 overflow-hidden">
                  {index !== undefined && (
-                     <span className="bg-slate-100 text-slate-500 text-xs font-bold px-2 py-0.5 rounded border border-slate-200">
+                     <span className="bg-slate-100 text-slate-500 text-xs font-bold px-2 py-0.5 rounded border border-slate-200 shrink-0">
                          P{index.toString().padStart(2, '0')}
                      </span>
                  )}
 
                  {/* Page Type Badge */}
-                 <span className={`text-[10px] flex items-center gap-1 px-2 py-0.5 rounded font-medium border
+                 <span className={`text-[10px] flex items-center gap-1 px-2 py-0.5 rounded font-medium border shrink-0
                     ${item.pageType === 'cover' ? 'bg-purple-50 text-purple-600 border-purple-100' : 
                       item.pageType === 'directory' ? 'bg-orange-50 text-orange-600 border-orange-100' :
                       item.pageType === 'end' ? 'bg-slate-800 text-white border-slate-700' :
@@ -162,10 +193,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                      {getPageTypeIcon(item.pageType)} {getPageTypeLabel(item.pageType)}
                  </span>
 
-                 <div className={`p-1 rounded ${isTextType ? 'bg-slate-50 text-slate-500' : 'bg-blue-50 text-blue-500'}`}>
+                 <div className={`p-1 rounded shrink-0 ${isTextType ? 'bg-slate-50 text-slate-500' : 'bg-blue-50 text-blue-500'}`}>
                      {isTextType ? <FileText size={12} /> : <ImageIcon size={12} />}
                  </div>
-                 <span className="text-sm font-medium text-slate-700 truncate max-w-[200px]">
+                 <span className="text-sm font-medium text-slate-700 truncate">
                     {isTextType 
                         ? (item.title || "未命名页面") 
                         : (item.originalFile?.name || "图片页面")
@@ -173,7 +204,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                  </span>
              </div>
         </div>
-        <div className={`text-xs font-medium px-2.5 py-1 rounded-full ${getStatusColor(item.status)}`}>
+        <div className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ${getStatusColor(item.status)}`}>
           {getStatusLabel(item.status)}
         </div>
       </div>
@@ -182,8 +213,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100 min-h-[350px]">
           
           {/* Left: Source Content */}
-          <div className="p-4 bg-slate-50/30 flex flex-col h-full">
-              <div className="flex justify-between items-center mb-2">
+          <div className="p-4 bg-slate-50/30 flex flex-col h-full overflow-hidden">
+              <div className="flex justify-between items-center mb-2 shrink-0">
                   <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">输入内容</div>
                   {!readOnly && (
                     <span className="text-xs text-slate-300 flex items-center gap-1">
@@ -205,13 +236,33 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                               disabled={readOnly}
                           />
                           {/* Content Input */}
-                          <textarea 
-                              className="w-full flex-1 p-3 text-sm text-slate-600 resize-none focus:outline-none focus:bg-indigo-50/20 transition-all custom-scrollbar disabled:bg-white"
-                              value={item.textContent || ''}
-                              onChange={(e) => !readOnly && onUpdate && onUpdate({ textContent: e.target.value })}
-                              placeholder={readOnly ? "无内容" : "在此输入正文内容..."}
-                              disabled={readOnly}
-                          />
+                          <div className="relative flex-1 w-full h-full">
+                              <textarea 
+                                  className="w-full h-full p-3 text-sm text-slate-600 resize-none focus:outline-none focus:bg-indigo-50/20 transition-all custom-scrollbar disabled:bg-white"
+                                  value={item.textContent || ''}
+                                  onChange={(e) => !readOnly && onUpdate && onUpdate({ textContent: e.target.value })}
+                                  placeholder={readOnly ? "无内容" : "在此输入正文内容..."}
+                                  disabled={readOnly}
+                              />
+                              {!readOnly && onRefineContent && (
+                                  <button
+                                      onClick={handleSmartRefine}
+                                      disabled={isRefining || !item.textContent}
+                                      className={`absolute bottom-2 right-2 p-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-medium transition-all shadow-sm
+                                          ${!item.textContent 
+                                              ? 'bg-slate-100 text-slate-300 cursor-not-allowed opacity-0 group-hover:opacity-100' 
+                                              : isRefining 
+                                                  ? 'bg-indigo-50 text-indigo-400 cursor-wait' 
+                                                  : 'bg-white text-indigo-600 hover:bg-indigo-50 border border-indigo-100 hover:shadow-md'
+                                          }
+                                      `}
+                                      title="AI 智能修饰"
+                                  >
+                                      {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                      {isRefining ? '修饰中...' : 'AI 修饰'}
+                                  </button>
+                              )}
+                          </div>
                       </div>
                   ) : (
                       <div className="relative w-full h-full group/image">
@@ -239,8 +290,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({
           </div>
 
           {/* Right: Status / Result */}
-          <div className="p-4 bg-white flex flex-col relative h-full">
-               <div className="flex justify-between items-center mb-3">
+          <div className="p-4 bg-white flex flex-col relative h-full overflow-hidden">
+               <div className="flex justify-between items-center mb-3 shrink-0">
                    <div className="flex items-center gap-2">
                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                            {item.status === 'success' ? '生成结果' : '设置 & 状态'}
@@ -255,11 +306,11 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                className="bg-transparent text-xs text-slate-700 font-medium focus:outline-none cursor-pointer disabled:cursor-not-allowed"
                                disabled={readOnly || item.status === 'generating'}
                            >
-                               <option value={1}>生成 1 张</option>
-                               <option value={2}>生成 2 张</option>
-                               <option value={4}>生成 4 张</option>
-                               <option value={6}>生成 6 张</option>
-                               <option value={9}>生成 9 张</option>
+                               <option value={1}>1 张</option>
+                               <option value={2}>2 张</option>
+                               <option value={4}>4 张</option>
+                               <option value={6}>6 张</option>
+                               <option value={9}>9 张</option>
                            </select>
                        </div>
                    </div>
@@ -313,7 +364,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                    )}
                </div>
                
-               <div className="flex-1 relative rounded-lg border border-dashed border-slate-100 bg-slate-50/50 overflow-hidden min-h-[200px]">
+               <div className="flex-1 relative rounded-lg border border-dashed border-slate-100 bg-slate-50/50 overflow-hidden min-h-0">
                     {/* Idle State */}
                     {item.status === 'idle' && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-3">
@@ -344,13 +395,18 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                         </div>
                     )}
 
-                    {/* Success State - Dynamic Grid */}
+                    {/* Success State - Dynamic Strict Grid */}
                     {item.status === 'success' && item.variants && (
-                        <div className={`absolute inset-0 bg-white p-2 rounded-lg overflow-y-auto custom-scrollbar grid gap-2 ${getGridColsClass(item.variants.length)}`}>
+                        <div className={`grid gap-2 h-full w-full p-2 ${getGridClass(item.variants.length)}`}>
                             {item.variants.map((variant, idx) => (
-                                <div key={idx} className="relative group/img border border-slate-200 rounded overflow-hidden bg-slate-100 aspect-video">
-                                    <div className="absolute top-2 left-2 z-10 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded backdrop-blur-sm shadow-sm pointer-events-none">
-                                        方案 {idx + 1}
+                                <div 
+                                    key={idx} 
+                                    className="relative group/img border border-slate-200 rounded overflow-hidden bg-slate-100 w-full h-full min-h-0 min-w-0"
+                                    onMouseEnter={() => setActiveVariantIndex(idx)}
+                                    onMouseLeave={() => setActiveVariantIndex(null)}
+                                >
+                                    <div className="absolute top-1 left-1 z-10 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm pointer-events-none">
+                                        {idx + 1}
                                     </div>
                                     
                                     <img 
@@ -360,20 +416,38 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                         onClick={() => onViewImage && onViewImage(variant)} 
                                     />
                                     
-                                    <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 flex items-end justify-end gap-1 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                                        
+                                        <div className="flex items-center gap-1 mr-auto">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleSingleExport('pdf', variant); }}
+                                                className="bg-white/20 hover:bg-white/40 text-white p-1 rounded-full backdrop-blur-md transition-colors"
+                                                title="导出 PDF"
+                                            >
+                                                <FileType size={10} />
+                                            </button>
+                                             <button
+                                                onClick={(e) => { e.stopPropagation(); handleSingleExport('pptx', variant); }}
+                                                className="bg-white/20 hover:bg-white/40 text-white p-1 rounded-full backdrop-blur-md transition-colors"
+                                                title="导出 PPTX"
+                                            >
+                                                <FileOutput size={10} />
+                                            </button>
+                                        </div>
+
                                         <button 
                                             onClick={(e) => { e.stopPropagation(); onViewImage && onViewImage(variant); }}
-                                            className="bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full backdrop-blur-md transition-colors"
+                                            className="bg-black/50 hover:bg-black/70 text-white p-1 rounded-full backdrop-blur-md transition-colors"
                                             title="查看大图"
                                         >
-                                            <Maximize2 size={12} />
+                                            <Maximize2 size={10} />
                                         </button>
                                         <button 
                                             onClick={(e) => { e.stopPropagation(); downloadImage(variant, `slide-${item.id}-${idx+1}.png`); }}
-                                            className="bg-rose-500 hover:bg-rose-600 text-white p-1.5 rounded-full backdrop-blur-md transition-colors shadow-sm"
-                                            title="下载"
+                                            className="bg-rose-500 hover:bg-rose-600 text-white p-1 rounded-full backdrop-blur-md transition-colors shadow-sm"
+                                            title="下载图片 (PNG)"
                                         >
-                                            <Download size={12} />
+                                            <Download size={10} />
                                         </button>
                                     </div>
                                 </div>

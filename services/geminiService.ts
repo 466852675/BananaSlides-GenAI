@@ -22,41 +22,93 @@ const getClosestSupportedRatio = (inputRatio: string): string => {
   return "9:16";
 };
 
+// Helper to sanitize Base URL for Google Native SDK
+// The SDK automatically appends /v1beta/models/..., so we must remove OpenAI-specific suffixes like /v1
+const cleanBaseUrlForGoogle = (url: string): string => {
+    let cleaned = url.trim();
+    if (cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1);
+    
+    // Common proxy suffixes to remove to ensure we hit the root for Native SDK
+    if (cleaned.endsWith('/v1')) return cleaned.slice(0, -3); 
+    if (cleaned.endsWith('/openai')) return cleaned.slice(0, -7); 
+    
+    return cleaned;
+};
+
+// Helper to create the Google GenAI Client with correct headers for Proxies
+const createGoogleClient = (config: ModelConnection) => {
+    const cleanUrl = cleanBaseUrlForGoogle(config.baseUrl);
+    const isCustomProxy = !cleanUrl.includes('googleapis.com') && !cleanUrl.includes('generativelanguage');
+
+    const options: any = {
+        apiKey: config.apiKey,
+        baseUrl: cleanUrl
+    };
+
+    // Critical Fix: Many proxies (OneAPI, etc.) require Authorization: Bearer header
+    // even when handling Google Native Protocol requests. The SDK only sends x-goog-api-key by default.
+    if (isCustomProxy) {
+        options.customHeaders = {
+            'Authorization': `Bearer ${config.apiKey}`,
+            'X-Goog-Api-Key': config.apiKey // Redundant but safe for some proxies
+        };
+    }
+
+    return new GoogleGenAI(options);
+};
+
 // Helper to get specific task configuration (Text, Image, Vision)
 const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image' | 'vision'): ModelConnection => {
     // If no settings provided, use defaults hardcoded
     if (!settings) {
         return {
             apiKey: DEFAULT_GEMINI_KEY,
-            baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+            baseUrl: 'https://generativelanguage.googleapis.com',
             model: 'gemini-3-pro-preview'
         };
     }
 
+    let connection: ModelConnection;
+
     // Handle Custom Combo
     if (settings.ai.provider === 'CustomCombo' && settings.ai.customCombo) {
-        return settings.ai.customCombo[task];
+        connection = { ...settings.ai.customCombo[task] };
+    } else {
+        // Handle Standard Providers
+        let apiKey = settings.ai.apiKey;
+        const baseUrl = settings.ai.baseUrl;
+        const model = settings.ai.models[task];
+
+        // CRITICAL: If Provider is Gemini and apiKey is empty, fallback to the environment Key (Developer Key)
+        if (settings.ai.provider === 'Gemini' && !apiKey) {
+            apiKey = DEFAULT_GEMINI_KEY;
+        }
+
+        connection = { apiKey, baseUrl, model };
     }
 
-    // Handle Standard Providers
-    let apiKey = settings.ai.apiKey;
-    const baseUrl = settings.ai.baseUrl;
-    const model = settings.ai.models[task];
-
-    // CRITICAL: If Provider is Gemini and apiKey is empty, fallback to the environment Key (Developer Key)
-    if (settings.ai.provider === 'Gemini' && !apiKey) {
-        apiKey = DEFAULT_GEMINI_KEY;
+    // Runtime Fix: Correct known bad model names (e.g. from old defaults) to prevent 404s
+    if (connection.model === 'gemini-3-pro-image-2k-16x9') {
+        connection.model = 'gemini-3-pro-image-preview';
     }
 
-    return {
-        apiKey,
-        baseUrl,
-        model
-    };
+    return connection;
 };
 
-const isGeminiProvider = (baseUrl: string): boolean => {
-    return baseUrl.includes('googleapis.com') || baseUrl.includes('generativelanguage');
+// Logic to determine if we should use the Native Gemini SDK or OpenAI Compatible Layer
+const shouldUseGeminiNative = (config: ModelConnection, settings?: AppSettings): boolean => {
+    // 1. If explicit provider is Gemini, ALWAYS use Native SDK (supports proxy via baseUrl)
+    if (settings?.ai.provider === 'Gemini') return true;
+
+    // 2. Check for URL patterns (Standard Google URLs)
+    const url = config.baseUrl.toLowerCase();
+    if (url.includes('googleapis.com') || url.includes('generativelanguage')) return true;
+
+    // 3. Check for Model Name patterns (Heuristic for Custom/Combo using Gemini models via Proxy)
+    // This ensures that if a user sets 'gemini-3-pro' in Custom Combo with a local proxy, 
+    // we still use the Native SDK features (like Reference Images).
+    const model = config.model.toLowerCase();
+    return model.includes('gemini') || model.includes('veo') || model.includes('imagen');
 };
 
 // --- Generic OpenAI Compatible Caller ---
@@ -90,20 +142,44 @@ async function callOpenAICompatible(
     const baseUrl = config.baseUrl.endsWith('/') ? config.baseUrl.slice(0, -1) : config.baseUrl;
     const url = `${baseUrl}/chat/completions`;
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(body)
-    });
+    // Retry configuration
+    const MAX_RETRIES = 5;
+    let attempt = 0;
+    let delay = 2000; // Start with 2 seconds
 
-    if (!response.ok) {
-        const err = await response.text();
-        console.error(`API Call failed to ${url}`, err);
-        throw new Error(`API Request Failed: ${response.status} - ${err}`);
+    while (true) {
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                const err = await response.text();
+                
+                // Check for Rate Limit (429) or Specific Provider Concurrency Error (1302 for Zhipu)
+                const isRateLimit = response.status === 429 || err.includes('1302') || err.includes('并发');
+
+                if (isRateLimit && attempt < MAX_RETRIES) {
+                    console.warn(`Rate limit hit for ${url}. Retrying in ${delay}ms... (Attempt ${attempt + 1})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2; // Exponential backoff
+                    attempt++;
+                    continue;
+                }
+
+                console.error(`API Call failed to ${url}`, err);
+                throw new Error(`API Request Failed: ${response.status} - ${err}`);
+            }
+
+            const data = await response.json();
+            return data.choices[0]?.message?.content || "";
+        } catch (error: any) {
+             // If we exhausted retries or caught a non-retriable error (handled above), rethrow.
+             throw error;
+        }
     }
-
-    const data = await response.json();
-    return data.choices[0]?.message?.content || "";
 }
 
 // --- Image Generation Caller (OpenAI Compatible) ---
@@ -133,28 +209,82 @@ async function callOpenAIImageGeneration(
         response_format: "b64_json" 
     };
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(body)
-    });
+    // Retry configuration
+    const MAX_RETRIES = 3;
+    let attempt = 0;
+    let delay = 3000;
 
-    if (!response.ok) {
-        const err = await response.text();
-        console.error(`Image API Call failed to ${url}`, err);
-        throw new Error(`Image API Failed: ${response.status} - ${err}`);
+    while (true) {
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                const err = await response.text();
+                
+                const isRateLimit = response.status === 429 || err.includes('1302') || err.includes('并发');
+
+                if (isRateLimit && attempt < MAX_RETRIES) {
+                    console.warn(`Rate limit hit for ${url}. Retrying in ${delay}ms... (Attempt ${attempt + 1})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                    attempt++;
+                    continue;
+                }
+
+                console.error(`Image API Call failed to ${url}`, err);
+                throw new Error(`Image API Failed: ${response.status} - ${err}`);
+            }
+
+            const data = await response.json();
+            const b64 = data.data[0]?.b64_json;
+            if (b64) return `data:image/png;base64,${b64}`;
+            const urlResult = data.data[0]?.url;
+            return urlResult || "";
+        } catch (error) {
+            throw error;
+        }
     }
-
-    const data = await response.json();
-    const b64 = data.data[0]?.b64_json;
-    if (b64) return `data:image/png;base64,${b64}`;
-    const urlResult = data.data[0]?.url;
-    // Note: If it returns a URL, we might need to proxy it or display it directly. 
-    // For local dev, URL is fine. For b64, it's safer for canvas/editing.
-    return urlResult || "";
 }
 
 // --- Exports ---
+
+export const smartRefine = async (text: string, type: 'requirement' | 'content', settings?: AppSettings): Promise<string> => {
+    const config = getTaskConfig(settings, 'text');
+    let contextPrompt = "";
+    
+    if (type === 'requirement') {
+        contextPrompt = "Refine the following design requirements for a presentation. Make them clear, professional, specific, and actionable for a design AI. Maintain the original intent but improve clarity and terminology.";
+    } else {
+        contextPrompt = "Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.";
+    }
+
+    const prompt = `Task: ${contextPrompt}
+    
+    Input Text: "${text}"
+    
+    Requirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`;
+
+    try {
+        if (shouldUseGeminiNative(config, settings)) {
+            const ai = createGoogleClient(config);
+            const response = await ai.models.generateContent({
+                model: config.model, 
+                contents: prompt,
+            });
+            return response.text?.trim() || text;
+        } else {
+            const messages = [{ role: "user", content: prompt }];
+            return await callOpenAICompatible(config, messages);
+        }
+    } catch (error) {
+        console.error("Smart Refine Error:", error);
+        throw error;
+    }
+};
 
 export const extractTextFromFile = async (file: File, settings?: AppSettings): Promise<string> => {
     const config = getTaskConfig(settings, 'vision');
@@ -165,8 +295,8 @@ export const extractTextFromFile = async (file: File, settings?: AppSettings): P
         }
 
         // Gemini Native Flow
-        if (isGeminiProvider(config.baseUrl)) {
-            const ai = new GoogleGenAI({ apiKey: config.apiKey });
+        if (shouldUseGeminiNative(config, settings)) {
+            const ai = createGoogleClient(config);
             const base64 = await fileToBase64(file);
             const contents = [
                 { inlineData: { mimeType: file.type, data: base64 } },
@@ -203,8 +333,8 @@ export const refinePrompt = async (rawText: string, settings?: AppSettings): Pro
     const prompt = `You are an expert presentation consultant. Refine the following user input into a professional, clear, and compelling topic description for a PowerPoint presentation. IMPORTANT: Return the result strictly in Simplified Chinese (简体中文). Keep it concise but descriptive. Input: "${rawText}"`;
 
     try {
-        if (isGeminiProvider(config.baseUrl)) {
-            const ai = new GoogleGenAI({ apiKey: config.apiKey });
+        if (shouldUseGeminiNative(config, settings)) {
+            const ai = createGoogleClient(config);
             const response = await ai.models.generateContent({
                 model: config.model, 
                 contents: prompt,
@@ -261,8 +391,8 @@ export const generateOutline = async (topic: string, configStyle?: StyleConfig, 
 
         let jsonStr = "";
 
-        if (isGeminiProvider(config.baseUrl)) {
-             const ai = new GoogleGenAI({ apiKey: config.apiKey });
+        if (shouldUseGeminiNative(config, settings)) {
+             const ai = createGoogleClient(config);
              const response = await ai.models.generateContent({
                 model: config.model,
                 contents: prompt,
@@ -311,6 +441,52 @@ export const generateOutline = async (topic: string, configStyle?: StyleConfig, 
     }
 };
 
+export const generateSingleOutlineItem = async (topic: string, index: number, total: number, settings?: AppSettings): Promise<{title: string, brief: string}> => {
+    const config = getTaskConfig(settings, 'text');
+    const prompt = `
+        Context: Generating a PowerPoint outline for topic "${topic}".
+        Task: Create a single slide entry for Slide #${index} out of ${total}.
+        Requirements:
+        1. Language: Simplified Chinese (简体中文).
+        2. Return a JSON object with keys: "title", "brief".
+        3. Do NOT wrap in markdown code blocks.
+    `;
+
+    try {
+        let jsonStr = "";
+        if (shouldUseGeminiNative(config, settings)) {
+             const ai = createGoogleClient(config);
+             const response = await ai.models.generateContent({
+                model: config.model,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: {
+                            title: { type: Type.STRING },
+                            brief: { type: Type.STRING }
+                        },
+                        required: ["title", "brief"]
+                    }
+                }
+            });
+            jsonStr = response.text || "{}";
+        } else {
+            const messages = [
+                { role: "system", content: "You are a JSON generator. Return only valid JSON object." },
+                { role: "user", content: prompt }
+            ];
+            const raw = await callOpenAICompatible(config, messages, 0.7, true);
+            jsonStr = raw.replace(/```json/g, '').replace(/```/g, '').trim();
+        }
+        return JSON.parse(jsonStr);
+    } catch (error) {
+        console.error("Generate Single Outline Item Error:", error);
+        throw error;
+    }
+};
+
 export const generateSlideDetail = async (title: string, brief: string, topicContext: string, settings?: AppSettings): Promise<string> => {
     const config = getTaskConfig(settings, 'text');
     const prompt = `Topic Context: ${topicContext}
@@ -326,8 +502,8 @@ export const generateSlideDetail = async (title: string, brief: string, topicCon
             4. Content length: 150-250 words.`;
 
     try {
-        if (isGeminiProvider(config.baseUrl)) {
-             const ai = new GoogleGenAI({ apiKey: config.apiKey });
+        if (shouldUseGeminiNative(config, settings)) {
+             const ai = createGoogleClient(config);
              const response = await ai.models.generateContent({
                 model: config.model,
                 contents: prompt,
@@ -356,8 +532,8 @@ export const generateSlideVariant = async (
   
   try {
     // 1. Gemini Native Image Gen (Nano Banana Style with Style Ref)
-    if (isGeminiProvider(config.baseUrl)) {
-        const ai = new GoogleGenAI({ apiKey: config.apiKey });
+    if (shouldUseGeminiNative(config, settings)) {
+        const ai = createGoogleClient(config);
         const apiRatio = getClosestSupportedRatio(targetRatio);
         const parts: any[] = [];
 
