@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { fileToBase64 } from "../utils";
-import { StyleConfig, OutlineItem, AppSettings, ModelConnection } from "../types";
+import { StyleConfig, OutlineItem, AppSettings, ModelConnection, ImageResolution } from "../types";
 
 // Default Fallback
 const DEFAULT_GEMINI_KEY = process.env.API_KEY || '';
@@ -26,13 +26,34 @@ const getClosestSupportedRatio = (inputRatio: string): string => {
 // The SDK automatically appends /v1beta/models/..., so we must remove OpenAI-specific suffixes like /v1
 const cleanBaseUrlForGoogle = (url: string): string => {
     let cleaned = url.trim();
+    if (!cleaned) return 'https://generativelanguage.googleapis.com';
     if (cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1);
     
     // Common proxy suffixes to remove to ensure we hit the root for Native SDK
-    if (cleaned.endsWith('/v1')) return cleaned.slice(0, -3); 
-    if (cleaned.endsWith('/openai')) return cleaned.slice(0, -7); 
+    // But ONLY if it's clearly a proxy URL. If it's a direct Google URL, we leave it alone.
+    if (!cleaned.includes('googleapis.com')) {
+        if (cleaned.endsWith('/v1')) return cleaned.slice(0, -3); 
+        if (cleaned.endsWith('/openai')) return cleaned.slice(0, -7); 
+    }
     
     return cleaned;
+};
+
+// Helper to calculate OpenAI compatible size based on resolution preference and aspect ratio
+const mapResolutionToSize = (resolution: ImageResolution, ratio: string, model: string): string => {
+    // --- STRATEGY: Prioritize Proxy Compatibility (Standard DALL-E 3 Sizes) ---
+    // Most OpenAI proxies (OneAPI/NewAPI) only support these specific strings.
+    // If we send non-standard 2K strings, they often fallback to 1024x1024 (1:1).
+    if (ratio === '16:9') return "1792x1024";
+    if (ratio === '9:16') return "1024x1792";
+    if (ratio === '1:1') return "1024x1024";
+    
+    // Fallback logic
+    const [rw, rh] = ratio.split(':').map(Number);
+    if (rw && rh && rw > rh) return "1792x1024";
+    if (rw && rh && rh > rw) return "1024x1792";
+    
+    return "1024x1024";
 };
 
 // Helper to create the Google GenAI Client with correct headers for Proxies
@@ -73,6 +94,16 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
     // Handle Custom Combo
     if (settings.ai.provider === 'CustomCombo' && settings.ai.customCombo) {
         connection = { ...settings.ai.customCombo[task] };
+        
+        // --- SMART FALLBACKS ---
+        // 1. If Combo specific Key is missing, use the main Global API Key
+        if (!connection.apiKey) connection.apiKey = settings.ai.apiKey;
+        
+        // 2. If Combo specific Base URL is missing, use the main Global Base URL
+        if (!connection.baseUrl) connection.baseUrl = settings.ai.baseUrl;
+        
+        // 3. Last resort fallback for API Key
+        if (!connection.apiKey) connection.apiKey = DEFAULT_GEMINI_KEY;
     } else {
         // Handle Standard Providers
         let apiKey = settings.ai.apiKey;
@@ -87,9 +118,9 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
         connection = { apiKey, baseUrl, model };
     }
 
-    // Runtime Fix: Correct known bad model names (e.g. from old defaults) to prevent 404s
-    if (connection.model === 'gemini-3-pro-image-2k-16x9') {
-        connection.model = 'gemini-3-pro-image-preview';
+    // Runtime Fix: Normalize model names to prevent 404s
+    if (connection.model.includes('gemini-3-pro-image-2k-16x9') || connection.model.includes('gemini-3-pro-image-preview')) {
+        connection.model = 'gemini-3-pro-image';
     }
 
     return connection;
@@ -97,18 +128,27 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
 
 // Logic to determine if we should use the Native Gemini SDK or OpenAI Compatible Layer
 const shouldUseGeminiNative = (config: ModelConnection, settings?: AppSettings): boolean => {
-    // 1. If explicit provider is Gemini, ALWAYS use Native SDK (supports proxy via baseUrl)
+    // 1. Explicitly chosen Gemini provider
     if (settings?.ai.provider === 'Gemini') return true;
 
-    // 2. Check for URL patterns (Standard Google URLs)
-    const url = config.baseUrl.toLowerCase();
-    if (url.includes('googleapis.com') || url.includes('generativelanguage')) return true;
-
-    // 3. Check for Model Name patterns (Heuristic for Custom/Combo using Gemini models via Proxy)
-    // This ensures that if a user sets 'gemini-3-pro' in Custom Combo with a local proxy, 
-    // we still use the Native SDK features (like Reference Images).
+    const url = config.baseUrl.toLowerCase().trim();
     const model = config.model.toLowerCase();
-    return model.includes('gemini') || model.includes('veo') || model.includes('imagen');
+    const isGoogleModel = model.includes('gemini') || model.includes('imagen') || model.includes('veo');
+
+    // 2. Explicitly pointing to a Google endpoint with a Google model
+    if ((url.includes('googleapis.com') || url.includes('generativelanguage')) && isGoogleModel) return true;
+
+    // 3. For Custom/Combo providers: 
+    // If it's NOT a Google model, ALWAYS use OpenAI protocol (e.g. GLM, Qwen, GPT)
+    if (!isGoogleModel) return false;
+
+    // 4. If it IS a Google model but the URL looks like an OpenAI proxy:
+    const normalizedUrl = url.replace(/\/$/, "");
+    if (normalizedUrl.endsWith('/chat/completions') || normalizedUrl.endsWith('/v1')) return false;
+
+    // If it's a Gemini model and URL is just a custom domain (often a direct proxy),
+    // we take a best-guess. Native is generally better for Imagen 3.
+    return true;
 };
 
 // --- Generic OpenAI Compatible Caller ---
@@ -138,9 +178,15 @@ async function callOpenAICompatible(
         body.response_format = { type: "json_object" };
     }
 
-    // Remove trailing slash if exists
-    const baseUrl = config.baseUrl.endsWith('/') ? config.baseUrl.slice(0, -1) : config.baseUrl;
-    const url = `${baseUrl}/chat/completions`;
+    // Normalize URL
+    let baseUrl = config.baseUrl.trim();
+    if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+    
+    // Append /chat/completions if not already present
+    let url = baseUrl;
+    if (!url.toLowerCase().endsWith('/chat/completions')) {
+        url = `${baseUrl}/chat/completions`;
+    }
 
     // Retry configuration
     const MAX_RETRIES = 5;
@@ -148,12 +194,20 @@ async function callOpenAICompatible(
     let delay = 2000; // Start with 2 seconds
 
     while (true) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            console.warn(`Request to ${url} timed out after 120 seconds. Attempt ${attempt + 1}.`);
+            controller.abort();
+        }, 120000); // 2 minute timeout
+
         try {
             const response = await fetch(url, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify(body)
+                body: JSON.stringify(body),
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const err = await response.text();
@@ -201,7 +255,7 @@ async function callOpenAIImageGeneration(
     const url = `${baseUrl}/images/generations`;
 
     // Map strict resolution enums if needed, or pass through
-    const body = {
+    const body: any = {
         model: config.model,
         prompt: prompt,
         n: 1,
@@ -214,12 +268,17 @@ async function callOpenAIImageGeneration(
     let attempt = 0;
     let delay = 3000;
 
+    // Timeout control
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 150000); // 2.5 minute timeout for images
+
     while (true) {
         try {
             const response = await fetch(url, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify(body)
+                body: JSON.stringify(body),
+                signal: controller.signal
             });
 
             if (!response.ok) {
@@ -236,10 +295,12 @@ async function callOpenAIImageGeneration(
                 }
 
                 console.error(`Image API Call failed to ${url}`, err);
+                clearTimeout(timeoutId);
                 throw new Error(`Image API Failed: ${response.status} - ${err}`);
             }
 
             const data = await response.json();
+            clearTimeout(timeoutId);
             const b64 = data.data[0]?.b64_json;
             if (b64) return `data:image/png;base64,${b64}`;
             const urlResult = data.data[0]?.url;
@@ -346,7 +407,7 @@ export const refinePrompt = async (rawText: string, settings?: AppSettings): Pro
         }
     } catch (error) {
         console.error("Refine Prompt Error:", error);
-        return rawText;
+        throw error; // Throw so UI can handle failure
     }
 };
 
@@ -558,20 +619,33 @@ export const generateSlideVariant = async (
 
         parts.push({
             text: `
-                Design Instructions:
-                - Style: ${configStyle.styleName}
-                - Palette: ${configStyle.colorPalette}
-                - Ratio: ${targetRatio}
-                - Language: Simplified Chinese.
-                - Variant: ${variantLabel}
+                ### GLOBAL VISUAL STYLE (Framework Only)
+                - Style Description: ${configStyle.styleName}
+                - Color Palette: ${configStyle.colorPalette}
+                - Global Design Requirements: ${configStyle.requirements || "Professional and clean"}
+                
+                ### SLIDE-SPECIFIC CONTENT (Primary Information Source)
+                - SLIDE TITLE: "${title || 'Untitled'}"
+                - SLIDE BODY CONTENT: "${contentSource}"
+                
+                ### MANDATORY DESIGN INSTRUCTIONS
+                - Ratio: ${targetRatio} (MANDATORY). Use horizontal landscape for 16:9.
+                - Resolution: High Definition detail.
+                - Content Strategy: DO NOT try to render long paragraphs. ONLY render the TITLE and key BULLET POINTS from the content as legible text. Use clean icons and abstract graphics to represent details.
+                - Chinese Typography: Render only core text (Title/Keywords) with professional, crisp fonts. Ensure NO garbled characters.
+                - Language: Simplified Chinese (简体中文).
+                - Variant Label: ${variantLabel}
             `
         });
 
         const response = await ai.models.generateContent({
             model: config.model || 'gemini-3-pro-image',
             contents: { parts: parts },
-            config: { imageConfig: { aspectRatio: apiRatio as any } }
-        });
+            generationConfig: { 
+                aspectRatio: apiRatio as any, // Multi-level redundancy for proxies
+                imageConfig: { aspectRatio: apiRatio as any }
+            }
+        } as any); // Cast because of varying SDK property names in different versions
 
         const candidates = response.candidates;
         if (!candidates || candidates.length === 0) throw new Error("No response");
@@ -592,23 +666,42 @@ export const generateSlideVariant = async (
     
     // 2. OpenAI / Compatible Image Gen (DALL-E 3 Style)
     else {
-        // Construct a rich text prompt because standard DALL-E 3 doesn't support input images for style ref easily via standard API yet
-        let fullPrompt = `Create a professional presentation slide. Ratio: ${targetRatio}. Style: ${configStyle.styleName}. Color Palette: ${configStyle.colorPalette}. `;
-        
-        if (title) fullPrompt += `Slide Title: "${title}". `;
-        
-        if (typeof contentSource === 'string') {
-            fullPrompt += `Content to visualize: "${contentSource}". `;
-        } else {
-             fullPrompt += `Content is visually implied (Abstract representation). `;
-        }
+        // Construct a highly structured prompt to separate Style vs Content
+        let ratioDesc = "";
+        if (targetRatio === '16:9') ratioDesc = "WIDE SCREEN 16:9 aspect ratio. HD Landscape.";
+        else if (targetRatio === '9:16') ratioDesc = "VERTICAL 9:16 aspect ratio. Portrait.";
+        else ratioDesc = `Aspect ratio: ${targetRatio}.`;
 
+        let fullPrompt = `Task: Create a professional PowerPoint slide visual.
+            
+            [SECTION 1: GLOBAL VISUAL STYLE]
+            - Style Theme: ${configStyle.styleName}
+            - Color Palette: ${configStyle.colorPalette}
+            - Visual Requirements: ${configStyle.requirements || "Clean, high-end, professional design."}
+            - Aspect Ratio: ${ratioDesc}
+            
+            [SECTION 2: SLIDE-SPECIFIC INFORMATION (MANDATORY CONTENT)]
+            - TITLE TO DISPLAY: "${title || 'Main Topic'}"
+            - CORE CONTENT/DATA: "${contentSource}"
+            
+            [SECTION 3: EXECUTION RULES]
+            - Visual Style: Clean Corporate Presentation.
+            - Legibility Priority: Render Slide TITLE and KEY HEADINGS only. Do not attempt to fit dense body text into the image; represent details with professional infographics.
+            - Aspect Ratio: MANDATORY ${targetRatio} ASPECT RATIO.
+            - Chinese Rendering: Professional typography for keywords. No distortion.
+            - Language: Simplified Chinese (简体中文).
+        `;
+        
         if (styleFile) {
-            fullPrompt += `(Note: User provided a style reference image, but current API only supports text description. Aim for the defined style).`;
+            fullPrompt += `\n[NOTE: Reference the style and layout from the user's provided sample image while prioritizing the specific text content.]`;
         }
 
-        const resolution = settings?.imageGeneration.resolution || "1024x1024";
-        return await callOpenAIImageGeneration(config, fullPrompt, resolution);
+        const rawRes = settings?.imageGeneration.resolution || "1024x1024";
+        const calculatedSize = mapResolutionToSize(rawRes, targetRatio, config.model);
+        
+        console.log(`[ImageGen] Requesting size: ${calculatedSize}, Ratio: ${targetRatio}, Model: ${config.model} via OpenAI Protocol`);
+        
+        return await callOpenAIImageGeneration(config, fullPrompt, calculatedSize);
     }
 
   } catch (error) {

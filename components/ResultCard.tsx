@@ -294,7 +294,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                <div className="flex justify-between items-center mb-3 shrink-0">
                    <div className="flex items-center gap-2">
                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                           {item.status === 'success' ? '生成结果' : '设置 & 状态'}
+                           {item.status === 'success' ? '生成结果' : '输出内容'}
                        </span>
                        
                        {/* Variant Count Selector */}

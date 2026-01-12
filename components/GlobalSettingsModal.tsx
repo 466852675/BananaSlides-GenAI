@@ -75,7 +75,7 @@ const DEFAULT_COMBO_CONFIG: CustomComboConfig = {
     image: {
         baseUrl: 'https://generativelanguage.googleapis.com',
         apiKey: '',
-        model: 'gemini-3-pro-image-preview'
+        model: 'gemini-3-pro-image'
     },
     vision: {
         baseUrl: 'https://api.siliconflow.cn/v1',
@@ -224,6 +224,9 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                             {/* Config Area */}
                             {isCombo ? (
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="md:col-span-3 bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-800">
+                                        💡 <b>自定义组合模式：</b> 您可以为不同任务指定独立的 API 终结点。若某项 Key 为空，将自动尝试使用上方填写的“全局 API Key”。
+                                    </div>
                                     {/* Text Settings */}
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
                                         <h5 className="font-bold text-slate-700 flex items-center gap-2 text-sm border-b border-slate-100 pb-2">

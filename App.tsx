@@ -2168,85 +2168,82 @@ const App: React.FC = () => {
                     在此添加具体的幻灯片内容素材，每个任务将对应生成一页 PPT
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleAddTextPage}
-                    className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-sm font-medium transition-all shadow-sm"
-                  >
-                    <Plus size={16} /> 添加文本素材页面
-                  </button>
-                  <button
-                    onClick={openImageTaskModal}
-                    className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-sm font-medium transition-all shadow-sm"
-                  >
-                    <Plus size={16} /> 添加图片素材页面
-                  </button>
-                  <div className="h-6 w-px bg-slate-200 mx-1"></div>
-
-                  {/* Updated Button Styles to Blue and Renamed */}
-                  <button
-                    onClick={() => openOutlineGenerator()}
-                    className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-sm font-medium transition-all shadow-sm"
-                  >
-                    <Sparkles size={16} /> 一句话生成页面
-                  </button>
-                  <button
-                    onClick={() => outlineFileInputRef.current?.click()}
-                    disabled={isReadingFile}
-                    className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50"
-                  >
-                    {isReadingFile ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <FileInput size={16} />
-                    )}{" "}
-                    {isReadingFile ? "解析中..." : "上传文件生成页面"}
-                  </button>
-
-                  <input
-                    type="file"
-                    ref={outlineFileInputRef}
-                    onChange={handleOutlineFileSelect}
-                    accept=".txt,.md,.json,.pdf,.doc,.docx"
-                    className="hidden"
-                  />
-
-                  {/* Batch Generate Button Moved Here */}
-                  <button
-                    onClick={handleGenerateBatch}
-                    disabled={items.length === 0 || isProcessing}
-                    className={`ml-2 flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white shadow-sm transition-all transform active:scale-95 ${
-                      items.length === 0 || isProcessing
-                        ? "bg-rose-300 cursor-not-allowed"
-                        : "bg-rose-400 hover:bg-rose-500 hover:shadow-rose-100"
-                    }`}
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" /> 生成中...
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 size={16} /> 批量生成
-                      </>
-                    )}
-                  </button>
-
-                  {/* Global Export Dropdown */}
-                  <div className="relative">
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                      disabled={
-                        items.filter((i) => i.status === "success").length === 0
-                      }
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all border shadow-sm ${
-                        items.filter((i) => i.status === "success").length === 0
-                          ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-200"
+                      onClick={handleAddTextPage}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap"
+                    >
+                      <Plus size={14} /> 添加文本
+                    </button>
+                    <button
+                      onClick={openImageTaskModal}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap"
+                    >
+                      <Plus size={14} /> 添加图片
+                    </button>
+                    <div className="h-5 w-px bg-slate-200 mx-0.5"></div>
+
+                    <button
+                      onClick={() => openOutlineGenerator()}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap"
+                    >
+                      <Sparkles size={14} /> 一句话生成
+                    </button>
+                    <button
+                      onClick={() => outlineFileInputRef.current?.click()}
+                      disabled={isReadingFile}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {isReadingFile ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <FileInput size={14} />
+                      )}{" "}
+                      {isReadingFile ? "解析中..." : "解析文件生成"}
+                    </button>
+
+                    <input
+                      type="file"
+                      ref={outlineFileInputRef}
+                      onChange={handleOutlineFileSelect}
+                      accept=".txt,.md,.json,.pdf,.doc,.docx"
+                      className="hidden"
+                    />
+
+                    <button
+                      onClick={handleGenerateBatch}
+                      disabled={items.length === 0 || isProcessing}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition-all transform active:scale-95 whitespace-nowrap ${
+                        items.length === 0 || isProcessing
+                          ? "bg-rose-300 cursor-not-allowed"
+                          : "bg-rose-400 hover:bg-rose-500 hover:shadow-rose-100"
                       }`}
                     >
-                      <Download size={16} /> 导出
+                      {isProcessing ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" /> 生成中...
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 size={14} /> 批量生成图片
+                        </>
+                      )}
                     </button>
+
+                    <div className="relative">
+                      <button
+                        onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                        disabled={
+                          items.filter((i) => i.status === "success").length === 0
+                        }
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border shadow-sm whitespace-nowrap ${
+                          items.filter((i) => i.status === "success").length === 0
+                            ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-200"
+                        }`}
+                      >
+                        <Download size={14} /> 导出
+                      </button>
                     {isExportMenuOpen && (
                       <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
                         <button

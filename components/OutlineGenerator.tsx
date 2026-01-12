@@ -68,8 +68,12 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         
         try {
             const refined = await refinePrompt(topic, appSettings);
-            setTopic(refined);
-            onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+            if (refined && refined.trim()) {
+                setTopic(refined);
+                onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+            } else {
+                onShowToast(`调用 ${providerName} API 服务返回内容为空`, 'error');
+            }
         } catch (error) {
             console.error(error);
             onShowToast(`调用 ${providerName} API 服务失败`, 'error');
