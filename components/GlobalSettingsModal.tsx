@@ -92,7 +92,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         apiKey: '', // Empty by default, triggers internal fallback
         models: {
             text: 'gemini-3-pro-preview',
-            image: 'gemini-2.5-flash-image',
+            image: 'gemini-3-pro-image',
             vision: 'gemini-3-pro-preview'
         },
         customCombo: DEFAULT_COMBO_CONFIG

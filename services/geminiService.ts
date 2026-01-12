@@ -568,7 +568,7 @@ export const generateSlideVariant = async (
         });
 
         const response = await ai.models.generateContent({
-            model: config.model || 'gemini-2.5-flash-image',
+            model: config.model || 'gemini-3-pro-image',
             contents: { parts: parts },
             config: { imageConfig: { aspectRatio: apiRatio as any } }
         });
