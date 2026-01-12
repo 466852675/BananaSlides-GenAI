@@ -1,15 +1,16 @@
 
 import React, { useState, useRef, useEffect, ClipboardEvent } from 'react';
-import { Wand2, LayoutGrid, History, Trash2, FileText, Image as ImageIcon, Link as LinkIcon, X, Upload, Clipboard, Plus, Settings2, Layers, Heart, ArrowRight, Eye, RefreshCcw, Calendar, Search, Filter, Save, CheckCircle2, AlertTriangle, Edit3, MoreHorizontal, Check, ListChecks, Sparkles, FileInput, Loader2, Flag, BookOpen, Home, LayoutList, FileDigit, ZoomIn, Clock, ChevronLeft, ChevronRight, CornerDownRight, Settings, BookTemplate } from 'lucide-react';
+import { Wand2, LayoutGrid, History, Trash2, FileText, Image as ImageIcon, Link as LinkIcon, X, Upload, Clipboard, Plus, Settings2, Layers, Heart, ArrowRight, Eye, RefreshCcw, Calendar, Search, Filter, Save, CheckCircle2, AlertTriangle, Edit3, MoreHorizontal, Check, ListChecks, Sparkles, FileInput, Loader2, Flag, BookOpen, Home, LayoutList, FileDigit, ZoomIn, Clock, ChevronLeft, ChevronRight, CornerDownRight, Settings, BookTemplate, Maximize, Minimize, Download, FileDown, Presentation } from 'lucide-react';
 import { ImageUploader } from './components/ImageUploader';
 import { StyleControls, STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from './components/StyleControls';
 import { ResultCard } from './components/ResultCard';
 import { StyleConfig, GeneratedSlide, StylePreset, ProjectSession, PageType, GlobalStyleMap, AppSettings } from './types';
-import { generateSlideVariant, extractTextFromFile } from './services/geminiService';
+import { generateSlideVariant, extractTextFromFile, smartRefine } from './services/geminiService';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { OutlineGenerator } from './components/OutlineGenerator';
 import { GlobalSettingsModal, DEFAULT_SETTINGS } from './components/GlobalSettingsModal';
 import { Toast, ToastMessage } from './components/Toast';
+import { exportToZip, exportToPdf, exportToPptx } from './services/exportService';
 
 // --- Constants ---
 const SETTINGS_STORAGE_KEY = 'bananaslides_global_settings_v1';
@@ -23,14 +24,15 @@ interface ModalProps {
   footer?: React.ReactNode;
   variant?: 'default' | 'lightbox';
   maxWidth?: string;
+  zIndex?: string; // New Prop for Z-Index
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer, variant = 'default', maxWidth = 'max-w-2xl' }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer, variant = 'default', maxWidth = 'max-w-2xl', zIndex = 'z-[100]' }) => {
   if (!isOpen) return null;
 
   if (variant === 'lightbox') {
       return (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={onClose}>
+          <div className={`fixed inset-0 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md ${zIndex}`} onClick={onClose}>
               <div className="relative max-w-7xl max-h-screen w-full h-full flex flex-col items-center justify-center">
                   <button 
                     onClick={onClose} 
@@ -47,7 +49,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer,
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className={`fixed inset-0 flex items-center justify-center p-4 ${zIndex}`}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${maxWidth} overflow-hidden flex flex-col max-h-[90vh]`}>
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white">
@@ -73,6 +75,7 @@ const App: React.FC = () => {
   // --- State ---
   const [viewMode, setViewMode] = useState<'workbench' | 'history' | 'history-detail'>('workbench');
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Settings with Persistence
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
@@ -141,9 +144,21 @@ const App: React.FC = () => {
   
   const [items, setItems] = useState<GeneratedSlide[]>([]);
 
-  // Data - History (Sessions)
+  // Project Sessions State
   const [sessions, setSessions] = useState<ProjectSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
+  // Refs for Auto-Save
+  const itemsRef = useRef(items);
+  const configRef = useRef(config);
+  const styleMapRef = useRef(styleMap);
+  const selectedSessionIdRef = useRef(selectedSessionId);
+
+  // Update Refs on change
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  useEffect(() => { configRef.current = config; }, [config]);
+  useEffect(() => { styleMapRef.current = styleMap; }, [styleMap]);
+  useEffect(() => { selectedSessionIdRef.current = selectedSessionId; }, [selectedSessionId]);
 
   // History Page State
   const [historySearchTerm, setHistorySearchTerm] = useState('');
@@ -162,6 +177,7 @@ const App: React.FC = () => {
   // UI State
   const [isProcessing, setIsProcessing] = useState(false);
   const [isReadingFile, setIsReadingFile] = useState(false); 
+  const [isRefiningRequirements, setIsRefiningRequirements] = useState(false);
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
   const [isImageTaskModalOpen, setIsImageTaskModalOpen] = useState(false);
   
@@ -183,6 +199,7 @@ const App: React.FC = () => {
   const [filterTime, setFilterTime] = useState('');
   
   const [selectedPresetForDetail, setSelectedPresetForDetail] = useState<StylePreset | null>(null);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
   const [confirmation, setConfirmation] = useState<{
       isOpen: boolean;
@@ -201,7 +218,41 @@ const App: React.FC = () => {
   const outlineFileInputRef = useRef<HTMLInputElement>(null);
   const styleInputRef = useRef<HTMLInputElement>(null); // For replacing style image
 
+  // --- Effects ---
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+        setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // --- Auto-Save Interval (3 Minutes) ---
+  useEffect(() => {
+      const intervalId = setInterval(() => {
+          // Check if there is data to save
+          if (itemsRef.current.length > 0) {
+              console.log("Auto-saving project session...", selectedSessionIdRef.current);
+              // CRITICAL: Pass the Ref current value to ensure we update the SAME session
+              saveProjectSession(itemsRef.current, configRef.current, styleMapRef.current, selectedSessionIdRef.current);
+              showToast("已自动保存当前进度", "info");
+          }
+      }, 3 * 60 * 1000); // 3 minutes
+
+      return () => clearInterval(intervalId);
+  }, []);
+
   // --- Helpers ---
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+  };
+
   const showToast = (message: string, type: ToastMessage['type'] = 'info') => {
       setToast({ id: Date.now().toString(), message, type });
   };
@@ -211,6 +262,27 @@ const App: React.FC = () => {
             return 'Custom Combo';
       }
       return appSettings.ai.provider;
+  };
+
+  const getFavoriteThumbnail = (preset: StylePreset) => {
+        // Priority 1: Uploaded Reference Images (Specific Order)
+        const map = preset.styleMap;
+        if (map) {
+            if (map.cover) return URL.createObjectURL(map.cover);
+            if (map.directory) return URL.createObjectURL(map.directory);
+            if (map.transition) return URL.createObjectURL(map.transition);
+            if (map.content) return URL.createObjectURL(map.content);
+            if (map.end) return URL.createObjectURL(map.end);
+        }
+        // Legacy single file support
+        if (preset.styleFile) return URL.createObjectURL(preset.styleFile);
+        
+        // Priority 2: Generated Samples (Assuming index 0 is high priority due to save logic)
+        if (preset.sampleImages && preset.sampleImages.length > 0) {
+            return preset.sampleImages[0];
+        }
+        
+        return null;
   };
 
   // --- Logic for Page Types Limits & Assignment ---
@@ -323,6 +395,7 @@ const App: React.FC = () => {
               setItems([]);
               setOutlineInitialTopic(''); // Clear cache
               setOutlineResetKey(prev => prev + 1); // Increment key to force re-mount
+              setSelectedSessionId(null); // Clear session ID
               closeConfirm();
               showToast("工作台已清空", 'success');
           },
@@ -405,6 +478,35 @@ const App: React.FC = () => {
       return matchSearch && matchStyle && matchRatio && matchPalette && matchStatus && matchTime && matchPageCount;
   });
 
+  // --- Refinement Handlers ---
+  const handleRefineRequirements = async () => {
+      if (!config.requirements.trim()) return;
+      setIsRefiningRequirements(true);
+      try {
+          const refined = await smartRefine(config.requirements, 'requirement', appSettings);
+          handleConfigChange('requirements', refined);
+          showToast("设计要求修饰成功", "success");
+      } catch (error) {
+          console.error(error);
+          showToast("AI 修饰服务调用失败", "error");
+      } finally {
+          setIsRefiningRequirements(false);
+      }
+  };
+
+  const handleRefineSlideContent = async (text: string): Promise<string> => {
+      if (!text.trim()) return text;
+      try {
+          const refined = await smartRefine(text, 'content', appSettings);
+          showToast("内容修饰成功", "success");
+          return refined;
+      } catch (error) {
+          console.error(error);
+          showToast("AI 修饰服务调用失败", "error");
+          throw error;
+      }
+  };
+
   // --- Add Text Page Logic (Direct) ---
   const handleAddTextPage = () => {
       if (!validateAddPage()) return; // Check limits
@@ -425,7 +527,7 @@ const App: React.FC = () => {
       };
       
       setItems(prev => [...prev, newItem]);
-      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 100);
   };
 
   const confirmImageTasks = () => {
@@ -457,6 +559,7 @@ const App: React.FC = () => {
       setItems(prev => [...prev, ...newItems]);
       setIsImageTaskModalOpen(false);
       setTempImageFiles([]);
+      setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 100);
   };
 
   // 1. Save Preset Logic
@@ -468,11 +571,13 @@ const App: React.FC = () => {
   const confirmSavePreset = () => {
       if (!presetNameInput.trim()) return;
       showConfirm("确认保存预设", "确定保存当前配置（含页面规划）吗？", () => {
-             // NEW: Capture samples from current items
-             const samples = items
+             // Smart Sample Collection: Sort by type priority (Cover > Directory > ...)
+             const typePriority: Record<string, number> = { cover: 0, directory: 1, transition: 2, content: 3, end: 4, custom: 5 };
+             const sortedItems = items
                 .filter(i => i.status === 'success' && i.variants.length > 0)
-                .slice(0, 4) // Limit to 4 samples
-                .map(i => i.variants[0]);
+                .sort((a, b) => (typePriority[a.pageType] || 9) - (typePriority[b.pageType] || 9));
+
+             const samples = sortedItems.slice(0, 4).map(i => i.variants[0]);
 
              const newPreset: StylePreset = {
                 id: Math.random().toString(36).substr(2, 9),
@@ -528,8 +633,14 @@ const App: React.FC = () => {
       }, 'danger');
   };
 
-  const saveProjectSession = (currentItems: GeneratedSlide[]) => {
-      const sessionId = selectedSessionId || Math.random().toString(36).substr(2, 9);
+  const saveProjectSession = (
+      currentItems: GeneratedSlide[], 
+      currentConfig: StyleConfig, 
+      currentStyleMap: GlobalStyleMap, 
+      explicitId?: string | null
+  ) => {
+      // Use provided explicit ID (from Ref) or current state, or generate new if neither exists
+      const sessionId = explicitId || selectedSessionId || Math.random().toString(36).substr(2, 9);
       
       // Attempt to find the cover page for the thumbnail
       const coverItem = currentItems.find(i => i.pageType === 'cover');
@@ -546,15 +657,29 @@ const App: React.FC = () => {
           }
       }
 
+      // Logic for Project Title (Priority: Cover > Directory > First Title > StyleName)
+      let projectTitle = currentConfig.styleName || `Project ${new Date().toLocaleDateString()}`;
+      
+      const directoryItem = currentItems.find(i => i.pageType === 'directory');
+      const firstItemWithTitle = currentItems.find(i => i.title && i.title.trim().length > 0);
+
+      if (coverItem && coverItem.title && coverItem.title.trim().length > 0) {
+          projectTitle = coverItem.title;
+      } else if (directoryItem && directoryItem.title && directoryItem.title.trim().length > 0) {
+          projectTitle = directoryItem.title;
+      } else if (firstItemWithTitle) {
+          projectTitle = firstItemWithTitle.title!;
+      }
+
       const sessionData: ProjectSession = {
           id: sessionId,
-          title: config.styleName ? `${config.styleName} Project` : `Project ${new Date().toLocaleDateString()}`,
+          title: projectTitle,
           pageCount: currentItems.length,
           lastModified: Date.now(),
           status: currentItems.some(i => i.status === 'generating') ? 'generating' : 'completed',
           items: currentItems,
-          globalConfig: config,
-          globalStyleMap: { ...styleMap },
+          globalConfig: currentConfig,
+          globalStyleMap: { ...currentStyleMap },
           thumbnailUrl: thumbUrl
       };
 
@@ -625,7 +750,11 @@ const App: React.FC = () => {
     await Promise.all(activePromises);
     
     setIsProcessing(false);
-    setItems(currentItems => { saveProjectSession(currentItems); return currentItems; });
+    // Explicitly call save with latest state
+    setItems(currentItems => { 
+        saveProjectSession(currentItems, config, styleMap, selectedSessionIdRef.current); 
+        return currentItems; 
+    });
 
     if (failureCount > 0) {
         showToast(`调用 ${providerName} API 完成，但有 ${failureCount} 张生成失败`, 'error');
@@ -660,6 +789,30 @@ const App: React.FC = () => {
         showToast(`调用 ${providerName} API 服务成功`, 'success');
       } catch (e) {
         showToast(`调用 ${providerName} API 失败`, 'error');
+      }
+  };
+
+  // Export Logic
+  const handleBatchExport = (type: 'zip' | 'pdf' | 'pptx') => {
+      const title = config.styleName || 'bananaslides';
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `${title}_${timestamp}`;
+      
+      showToast('正在准备导出文件...', 'loading');
+      
+      try {
+          if (type === 'zip') {
+              exportToZip(items, filename);
+          } else if (type === 'pdf') {
+              exportToPdf(items, filename);
+          } else if (type === 'pptx') {
+              exportToPptx(items, filename);
+          }
+          setIsExportMenuOpen(false);
+          showToast('导出成功开始下载', 'success');
+      } catch (e) {
+          console.error(e);
+          showToast('导出失败，请重试', 'error');
       }
   };
 
@@ -813,6 +966,8 @@ const App: React.FC = () => {
       { type: 'end', label: '结束页 (End)' },
   ];
 
+  const isFull = items.length >= config.targetPageCount;
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans">
       
@@ -843,13 +998,14 @@ const App: React.FC = () => {
       />
 
       {/* Lightbox */}
-      <Modal isOpen={!!lightboxImage} onClose={() => setLightboxImage(null)} variant="lightbox">
+      <Modal isOpen={!!lightboxImage} onClose={() => setLightboxImage(null)} variant="lightbox" zIndex="z-[200]">
           {lightboxImage && <img src={lightboxImage} alt="Full size view" className="max-w-full max-h-[90vh] object-contain rounded shadow-2xl" />}
       </Modal>
       
-      {/* Favorite Detail Modal */}
+      {/* Favorite Detail Modal - Increased Z-Index to appear over the Favorites List */}
       {selectedPresetForDetail && (
-          <Modal isOpen={!!selectedPresetForDetail} onClose={() => setSelectedPresetForDetail(null)} title="风格详情" maxWidth="max-w-4xl" footer={<div className="flex gap-2 w-full justify-end"><button onClick={() => setSelectedPresetForDetail(null)} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100">关闭</button><button onClick={() => handleApplyPresetRequest(selectedPresetForDetail)} className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg">应用此风格</button></div>}>
+          <Modal isOpen={!!selectedPresetForDetail} onClose={() => setSelectedPresetForDetail(null)} title="风格详情" maxWidth="max-w-4xl" zIndex="z-[110]" footer={<div className="flex gap-2 w-full justify-end"><button onClick={() => setSelectedPresetForDetail(null)} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100">关闭</button><button onClick={() => handleApplyPresetRequest(selectedPresetForDetail)} className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg">应用此风格</button></div>}>
+              {/* Content remains the same */}
               <div className="space-y-6">
                   <div className="flex flex-col lg:flex-row gap-6 lg:h-[340px]">
                         {/* Left: Images */}
@@ -906,6 +1062,7 @@ const App: React.FC = () => {
 
       {/* Favorites List Modal */}
       <Modal isOpen={isFavoritesModalOpen} onClose={() => setIsFavoritesModalOpen(false)} title="我的风格收藏夹" maxWidth="max-w-4xl" footer={<div className="flex justify-between items-center w-full px-1"><span className="text-xs text-slate-500 font-medium">共找到 {filteredFavorites.length} 个预设</span></div>}>
+           {/* Favorites list content remains same */}
            <div className="space-y-6">
               <div className="flex flex-col md:flex-row gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
                   <div className="flex-1 relative">
@@ -936,20 +1093,26 @@ const App: React.FC = () => {
               </div>
               {filteredFavorites.length === 0 ? (<div className="text-center py-20 text-slate-400"><Heart size={48} className="mx-auto mb-3 text-slate-200" /><p>没有找到匹配的风格预设</p></div>) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                      {filteredFavorites.map(fav => (
+                      {filteredFavorites.map(fav => {
+                          const thumbnailSrc = getFavoriteThumbnail(fav);
+                          return (
                           <div key={fav.id} className={`border rounded-xl overflow-hidden hover:shadow-lg transition-all flex flex-col group bg-white border-slate-200`}>
                                <div className="h-32 bg-slate-100 relative border-b border-slate-100">
                                    {/* Show cover or first available style */}
-                                   {fav.styleMap?.cover ? (<img src={URL.createObjectURL(fav.styleMap.cover)} className="w-full h-full object-contain bg-slate-50" />) : 
-                                    fav.styleFile ? (<img src={URL.createObjectURL(fav.styleFile)} className="w-full h-full object-contain bg-slate-50" />) :
+                                   {thumbnailSrc ? (<img src={thumbnailSrc} className="w-full h-full object-contain bg-slate-50" />) :
                                    (<div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={24} /></div>)}
                                    <div className="absolute top-2 right-2 flex gap-1"><span className="bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">{fav.config.targetPageCount}P</span></div>
                                </div>
                                <div className="p-3 flex-1 flex flex-col">
                                    <h4 className="font-semibold text-slate-800 text-sm truncate mb-1">{fav.name}</h4>
+                                   {/* Updated Labels to show full structure */}
                                    <div className="flex flex-wrap gap-1 mb-2">
-                                       <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">{fav.config.styleName}</span>
-                                       <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">{fav.config.pageStructure.content}正文</span>
+                                       {/* REMOVED: Redundant styleName tag */}
+                                       {fav.config.pageStructure.cover > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded border border-purple-100">封面{fav.config.pageStructure.cover}</span>}
+                                       {fav.config.pageStructure.directory > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-orange-50 text-orange-600 rounded border border-orange-100">目录{fav.config.pageStructure.directory}</span>}
+                                       {fav.config.pageStructure.transition > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-teal-50 text-teal-600 rounded border border-teal-100">过渡{fav.config.pageStructure.transition}</span>}
+                                       {fav.config.pageStructure.content > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded border border-indigo-100">正文{fav.config.pageStructure.content}</span>}
+                                       {fav.config.pageStructure.end > 0 && <span className="text-[10px] px-1.5 py-0.5 bg-slate-800 text-slate-200 rounded border border-slate-700">结束{fav.config.pageStructure.end}</span>}
                                    </div>
                                    <div className="mt-auto flex gap-2">
                                        <button onClick={() => setSelectedPresetForDetail(fav)} className="flex-1 py-1.5 border border-slate-200 rounded text-xs text-slate-600 hover:bg-slate-50">详情</button>
@@ -958,7 +1121,7 @@ const App: React.FC = () => {
                                    </div>
                                </div>
                           </div>
-                      ))}
+                      )})}
                   </div>
               )}
           </div>
@@ -1022,6 +1185,13 @@ const App: React.FC = () => {
               <button onClick={() => setViewMode('history')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'history' || viewMode === 'history-detail' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-800'}`}><History size={14} /> 历史记录 ({sessions.length})</button>
           </div>
           <div className="flex items-center gap-4">
+              <button 
+                  onClick={toggleFullscreen}
+                  className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-full transition-all"
+                  title={isFullscreen ? "退出全屏" : "全屏模式"}
+              >
+                  {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+              </button>
               {viewMode === 'workbench' ? (
                 // Replaced Batch Generate with Global Config
                 <button 
@@ -1160,12 +1330,30 @@ const App: React.FC = () => {
                         {/* Bottom Row: Requirements (Increased Height) */}
                         <div className="flex flex-col">
                             <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><LinkIcon size={14} className="text-slate-500"/> 全局设计要求</h3>
-                            <textarea 
-                                value={config.requirements} 
-                                onChange={(e) => handleConfigChange('requirements', e.target.value)} 
-                                placeholder={`在此输入详细的排版、字体或布局要求...`} 
-                                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px]" 
-                            />
+                            <div className="relative w-full">
+                                <textarea 
+                                    value={config.requirements} 
+                                    onChange={(e) => handleConfigChange('requirements', e.target.value)} 
+                                    placeholder={`在此输入详细的排版、字体或布局要求...`} 
+                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px]" 
+                                />
+                                <button
+                                    onClick={handleRefineRequirements}
+                                    disabled={isRefiningRequirements || !config.requirements.trim()}
+                                    className={`absolute bottom-3 right-3 p-1.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-all shadow-sm
+                                        ${!config.requirements.trim()
+                                            ? 'bg-slate-100 text-slate-300 cursor-not-allowed opacity-50' 
+                                            : isRefiningRequirements 
+                                                ? 'bg-indigo-50 text-indigo-400 cursor-wait' 
+                                                : 'bg-white text-indigo-600 hover:bg-indigo-50 border border-indigo-100 hover:shadow-md'
+                                        }
+                                    `}
+                                    title="AI 智能修饰设计要求"
+                                >
+                                    {isRefiningRequirements ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                                    {isRefiningRequirements ? '修饰中...' : 'AI 修饰'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1197,6 +1385,26 @@ const App: React.FC = () => {
                                 {isProcessing ? (<><Loader2 size={16} className="animate-spin" /> 生成中...</>) : (<><Wand2 size={16} /> 批量生成</>)}
                              </button>
 
+                             {/* Global Export Dropdown */}
+                             <div className="relative">
+                                 <button 
+                                    onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                                    disabled={items.filter(i => i.status === 'success').length === 0}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all border shadow-sm ${items.filter(i => i.status === 'success').length === 0 ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-200'}`}
+                                 >
+                                    <Download size={16} /> 导出
+                                 </button>
+                                 {isExportMenuOpen && (
+                                     <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
+                                         <button onClick={() => handleBatchExport('zip')} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2"><ImageIcon size={14}/> 导出图片 (ZIP)</button>
+                                         <button onClick={() => handleBatchExport('pdf')} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2 border-t border-slate-100"><FileDown size={14}/> 导出 PDF</button>
+                                         <button onClick={() => handleBatchExport('pptx')} className="w-full text-left px-4 py-3 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2 border-t border-slate-100"><Presentation size={14}/> 导出 PPTX</button>
+                                     </div>
+                                 )}
+                                 {/* Close export menu when clicking outside - simple implementation via overlay or effect could be added, here relying on toggle */}
+                                 {isExportMenuOpen && <div className="fixed inset-0 z-[90] cursor-default" onClick={() => setIsExportMenuOpen(false)}></div>}
+                             </div>
+
                              <div className="h-6 w-px bg-slate-200 mx-1"></div>
                              <button onClick={clearWorkbench} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="清空列表"><Trash2 size={18} /></button>
                         </div>
@@ -1218,8 +1426,46 @@ const App: React.FC = () => {
                                         onGenerateSingle={() => handleSingleGenerate(item.id)} onRegenerate={() => handleRegenerate(item.id)}
                                         onUpdate={(updates) => handleUpdateItem(item.id, updates)} onDelete={() => handleDeletePage(item.id)} onDuplicate={() => handleDuplicatePage(item.id)}
                                         onViewImage={(url) => setLightboxImage(url)}
+                                        onRefineContent={handleRefineSlideContent}
                                     />
                                 ))}
+                                
+                                {/* Quick Add Card at the end of the grid */}
+                                <div className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center gap-4 transition-all group min-h-[350px]
+                                    ${isFull 
+                                        ? 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-70' 
+                                        : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                                    }
+                                `}>
+                                    <div className={`p-3 rounded-full mb-2 transition-all ${isFull ? 'bg-slate-100 text-slate-400' : 'bg-white text-indigo-500 shadow-sm group-hover:shadow-md group-hover:scale-110'}`}>
+                                        <Plus size={24} />
+                                    </div>
+                                    
+                                    {isFull ? (
+                                        <div className="text-center">
+                                            <span className="font-bold text-slate-500 block mb-1">页面上限已达</span>
+                                            <span className="text-xs text-slate-400">已达到全局设置的 {config.targetPageCount} 页</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <span className="font-bold text-slate-700 mb-2">快速添加页面 (P{items.length + 1})</span>
+                                            <div className="flex gap-3 w-full max-w-xs">
+                                                <button 
+                                                    onClick={handleAddTextPage} 
+                                                    className="flex-1 flex flex-col items-center gap-2 p-3 rounded-lg border border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50 transition-all text-sm font-medium text-slate-600 hover:text-indigo-600"
+                                                >
+                                                    <FileText size={18} /> 文本页面
+                                                </button>
+                                                <button 
+                                                    onClick={openImageTaskModal} 
+                                                    className="flex-1 flex flex-col items-center gap-2 p-3 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50 transition-all text-sm font-medium text-slate-600 hover:text-blue-600"
+                                                >
+                                                    <ImageIcon size={18} /> 图片页面
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1229,6 +1475,7 @@ const App: React.FC = () => {
         
         {viewMode === 'history' && (
              <div className="min-h-[500px] flex flex-col">
+                 {/* ... (History view remains same) ... */}
                  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
                      {/* Search */}
                      <div className="flex-1 w-full lg:w-auto relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="text" placeholder="搜索项目标题..." value={historySearchTerm} onChange={(e) => setHistorySearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-100" /></div>

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText } from 'lucide-react';
-import { refinePrompt, generateOutline, generateSlideDetail } from '../services/geminiService';
+import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser } from 'lucide-react';
+import { refinePrompt, generateOutline, generateSlideDetail, generateSingleOutlineItem } from '../services/geminiService';
 import { OutlineItem, GeneratedSlide, StyleConfig, PageType, AppSettings } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ToastMessage } from './Toast';
@@ -34,6 +34,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
     const [isGeneratingDetails, setIsGeneratingDetails] = useState(false);
     const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
     
+    // Track regeneration loading states per item ID
+    const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
+
     useEffect(() => {
         setTopic(initialTopic);
     }, [initialTopic]);
@@ -54,6 +57,8 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         }
         return appSettings.ai.provider;
     };
+
+    // --- Actions ---
 
     const handleRefine = async () => {
         if (!topic.trim()) return;
@@ -105,6 +110,45 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         setOutlineItems(prev => prev.filter(item => item.id !== id).map((item, idx) => ({ ...item, index: idx + 1 })));
     };
 
+    // --- Back Navigation ---
+    const handleBackStep = () => {
+        if (step > 1) {
+            setStep(prev => (prev - 1) as 1 | 2);
+        }
+    };
+
+    // --- Step 2 Actions (Outline Structure) ---
+
+    const handleRegenerateSingleOutlineItem = async (id: string, index: number) => {
+        setLoadingItems(prev => ({ ...prev, [id]: true }));
+        try {
+             const result = await generateSingleOutlineItem(topic, index, outlineItems.length, appSettings);
+             handleUpdateOutlineItem(id, { title: result.title, brief: result.brief });
+        } catch (e) {
+             onShowToast("单页大纲重写失败", 'error');
+        } finally {
+             setLoadingItems(prev => ({ ...prev, [id]: false }));
+        }
+    };
+
+    const handleClearSingleOutlineItem = (id: string) => {
+        handleUpdateOutlineItem(id, { title: '', brief: '' });
+    };
+
+    const handleClearAllOutlineItems = () => {
+        setConfirmState({
+            isOpen: true,
+            title: "清空大纲内容",
+            message: "确定要清空所有卡片的标题和简介吗？(结构保留)",
+            onConfirm: () => {
+                setOutlineItems(prev => prev.map(item => ({ ...item, title: '', brief: '' })));
+                setConfirmState(prev => ({ ...prev, isOpen: false }));
+            }
+        });
+    };
+
+    // --- Step 3 Actions (Detail Content) ---
+
     const proceedToDetails = () => {
         setConfirmState({
             isOpen: true,
@@ -136,6 +180,22 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
             handleUpdateOutlineItem(id, { status: 'error' });
             throw e;
         }
+    };
+
+    const handleClearSingleDetail = (id: string) => {
+        handleUpdateOutlineItem(id, { fullContent: '', status: 'idle' });
+    };
+
+    const handleClearAllDetails = () => {
+        setConfirmState({
+            isOpen: true,
+            title: "清空详细内容",
+            message: "确定要清空所有生成的详细文案吗？",
+            onConfirm: () => {
+                setOutlineItems(prev => prev.map(item => ({ ...item, fullContent: '', status: 'idle' })));
+                setConfirmState(prev => ({ ...prev, isOpen: false }));
+            }
+        });
     };
 
     const handleBatchGenerateDetails = async () => {
@@ -228,7 +288,18 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 {/* Header */}
                 <div className="px-8 py-5 border-b border-slate-200 flex justify-between items-center bg-white shrink-0 shadow-sm z-10">
                     <div className="flex items-center gap-2">
-                        {/* Stepper UI ... */}
+                        {/* Back Button */}
+                        {step > 1 && (
+                             <button 
+                                onClick={handleBackStep} 
+                                className="mr-3 p-2 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors"
+                                title="返回上一步"
+                             >
+                                 <ArrowLeft size={20} />
+                             </button>
+                        )}
+
+                        {/* Stepper UI */}
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ${step >= 1 ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-md' : 'bg-slate-100 text-slate-400'}`}>1</div>
                         <div className={`h-1 w-12 rounded-full transition-colors duration-300 ${step > 1 ? 'bg-indigo-600' : 'bg-slate-200'}`} />
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ${step >= 2 ? 'bg-indigo-600 text-white shadow-indigo-200 shadow-md' : 'bg-slate-100 text-slate-400'}`}>2</div>
@@ -318,7 +389,8 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                     <p className="text-sm text-slate-500">已生成 {outlineItems.length} 页 (目标 {config.targetPageCount} 页)</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={handleGenerateOutline} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 shadow-sm transition-all"><RefreshCw size={14} /> 重新生成</button>
+                                    <button onClick={handleClearAllOutlineItems} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-red-50 transition-all"><Eraser size={14} /> 清空内容</button>
+                                    <button onClick={handleGenerateOutline} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 shadow-sm transition-all"><RefreshCw size={14} /> 重新生成大纲</button>
                                     <button onClick={proceedToDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200 font-medium">
                                         下一步: 生成详细内容 <ArrowRight size={18} />
                                     </button>
@@ -346,14 +418,19 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                             </div>
                                             {/* ... Actions ... */}
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute top-4 right-4 bg-white pl-2">
-                                                {/* ... buttons ... */}
+                                                {/* Clear Single */}
+                                                <button onClick={() => handleClearSingleOutlineItem(item.id)} className="p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors" title="清空内容"><Eraser size={16} /></button>
+                                                {/* Regenerate Single */}
+                                                <button onClick={() => handleRegenerateSingleOutlineItem(item.id, item.index)} disabled={loadingItems[item.id]} className={`p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors ${loadingItems[item.id] ? 'animate-spin' : ''}`} title="重写此页"><RefreshCw size={16} /></button>
+                                                {/* Delete */}
+                                                <div className="h-4 w-px bg-slate-200 mx-1"></div>
                                                 <button onClick={() => handleDeleteOutlineItem(item.id)} className="p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors" title="删除"><Trash2 size={16} /></button>
                                             </div>
                                         </div>
                                         {/* Content Inputs */}
                                         <div className="space-y-3 mt-2">
-                                            <input value={item.title} onChange={(e) => handleUpdateOutlineItem(item.id, { title: e.target.value })} className="w-full font-bold text-lg text-slate-800 border-b border-transparent focus:border-indigo-300 hover:border-slate-200 bg-transparent p-1 focus:outline-none transition-colors" />
-                                            <textarea value={item.brief} onChange={(e) => handleUpdateOutlineItem(item.id, { brief: e.target.value })} className="w-full text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 focus:border-indigo-300 focus:bg-white focus:outline-none resize-none transition-all h-24" />
+                                            <input value={item.title} onChange={(e) => handleUpdateOutlineItem(item.id, { title: e.target.value })} className="w-full font-bold text-lg text-slate-800 border-b border-transparent focus:border-indigo-300 hover:border-slate-200 bg-transparent p-1 focus:outline-none transition-colors" placeholder="页面标题" />
+                                            <textarea value={item.brief} onChange={(e) => handleUpdateOutlineItem(item.id, { brief: e.target.value })} className="w-full text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 focus:border-indigo-300 focus:bg-white focus:outline-none resize-none transition-all h-24" placeholder="页面简介内容" />
                                         </div>
                                     </div>
                                 ))}
@@ -367,6 +444,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                             <div className="flex justify-between items-center mb-8 sticky top-0 bg-[#fafafa]/95 backdrop-blur-sm z-20 py-2">
                                 <div><h3 className="text-xl font-bold text-slate-800">详细内容生成</h3><p className="text-sm text-slate-500">系统将为内容页生成详细演讲稿，结构页保持精简</p></div>
                                 <div className="flex gap-2">
+                                    <button onClick={handleClearAllDetails} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-red-50 transition-all"><Eraser size={14} /> 清空内容</button>
                                     <button onClick={handleBatchGenerateDetails} disabled={isGeneratingDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md shadow-indigo-200 font-medium">
                                         {isGeneratingDetails ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />} {isGeneratingDetails ? "生成中..." : "批量生成详细描述"}
                                     </button>
@@ -384,9 +462,15 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${item.pageType === 'cover' ? 'bg-purple-50 text-purple-600' : item.pageType === 'content' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-200 text-slate-600'}`}>{getPageTypeLabel(item.pageType)}</span>
                                                 <span className="font-bold text-slate-800 truncate" title={item.title}>{item.title}</span>
                                             </div>
-                                            {item.status === 'generating' && <Loader2 size={16} className="animate-spin text-indigo-500" />}
-                                            {item.status === 'success' && <div className="text-green-500 bg-green-50 rounded-full p-1"><Check size={12} /></div>}
-                                            {item.status === 'error' && <div className="text-red-500 bg-red-50 rounded-full p-1 cursor-pointer" onClick={() => generateDetailForId(item.id)} title="点击重试">!</div>}
+                                            <div className="flex items-center gap-1">
+                                                {item.status === 'generating' && <Loader2 size={16} className="animate-spin text-indigo-500 mr-2" />}
+                                                {/* Clear Single */}
+                                                <button onClick={() => handleClearSingleDetail(item.id)} className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="清空内容"><Eraser size={14} /></button>
+                                                {/* Regenerate Single */}
+                                                <button onClick={() => generateDetailForId(item.id)} className="p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="重新生成"><RefreshCw size={14} /></button>
+                                                {item.status === 'success' && <div className="text-green-500 bg-green-50 rounded-full p-1 ml-1"><Check size={12} /></div>}
+                                                {item.status === 'error' && <div className="text-red-500 bg-red-50 rounded-full p-1 cursor-pointer ml-1" onClick={() => generateDetailForId(item.id)} title="点击重试">!</div>}
+                                            </div>
                                         </div>
                                         <div className="relative p-4 flex-1 min-h-[240px] flex flex-col">
                                             {/* Status overlay */}

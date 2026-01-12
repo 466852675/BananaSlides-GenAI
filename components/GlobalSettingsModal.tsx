@@ -36,8 +36,8 @@ const PROVIDER_PRESETS: Partial<Record<AIProvider, ProviderPreset>> = {
         models: { text: 'gpt-4-turbo', image: 'dall-e-3', vision: 'gpt-4-vision-preview' }
     },
     'Gemini': {
-        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-        models: { text: 'gemini-3-pro-preview', image: 'gemini-2.5-flash-image', vision: 'gemini-3-pro-preview' }
+        baseUrl: 'https://generativelanguage.googleapis.com',
+        models: { text: 'gemini-3-pro-preview', image: 'gemini-3-pro-image-preview', vision: 'gemini-3-pro-preview' }
     },
     'Zhipu': {
         baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
@@ -73,9 +73,9 @@ const DEFAULT_COMBO_CONFIG: CustomComboConfig = {
         model: 'glm-4.7'
     },
     image: {
-        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        baseUrl: 'https://generativelanguage.googleapis.com',
         apiKey: '',
-        model: 'gemini-3-pro-image-2k-16x9'
+        model: 'gemini-3-pro-image-preview'
     },
     vision: {
         baseUrl: 'https://api.siliconflow.cn/v1',
@@ -88,7 +88,7 @@ const DEFAULT_COMBO_CONFIG: CustomComboConfig = {
 export const DEFAULT_SETTINGS: AppSettings = {
     ai: {
         provider: 'Gemini',
-        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        baseUrl: 'https://generativelanguage.googleapis.com',
         apiKey: '', // Empty by default, triggers internal fallback
         models: {
             text: 'gemini-3-pro-preview',
@@ -293,7 +293,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                                 value={settings.ai.customCombo?.image.model || ''}
                                                 onChange={(e) => updateComboSettings('image', 'model', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-bold text-slate-700"
-                                                placeholder="e.g. gemini-3-pro-image-2k-16x9"
+                                                placeholder="e.g. gemini-3-pro-image-preview"
                                             />
                                         </div>
                                     </div>
