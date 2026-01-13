@@ -1,39 +1,117 @@
-# AI 代理协作体系 (AGENTS.md)
+# 🤖 Multi-Agent System Architecture (多代理协同架构)
 
-BananaSlides-GenAI 不单是一个工具，而是一个由多个专业化 AI 代理（Agents）协作运行的生态系统。
+> **BananaSlides-GenAI** 并非简单的 LLM 接口调用，而是一个拥有明确分工、严谨数据流与错误自愈能力的 **多代理协同系统 (Multi-Agent System)**。
 
-## 代理矩阵
+---
 
-### 1. 技术架构师: Antigravity
+## 🏛️ 代理角色矩阵 (Agent Matrix)
 
-- **定位**：系统稳定性的守护者。
-- **职责**：负责 Vite 构建、React 组件树管理、环境变量注入及依赖项（如 `jspdf`, `pptxgenjs`）的集成。
-- **最新动态**：已修复入口加载异常及依赖项缺失问题，确保物理层运行通畅。
+系统核心由三个具备独立职能的“虚拟专家”组成，它们共享上下文，但拥有独立的 Prompt System 和 Error Handling 策略。
 
-### 2. 内容策略专家 (Content Strategist)
+### 1. 🧙‍♂️ Content Strategist (内容策略师)
 
-- **定位**：PPT 的灵魂策划者。
-- **职责**：
-  - **需求解析**：识别并优化用户的模糊指令。
-  - **动态策划**：根据全局设定的“封面-目录-过渡-正文-结束”结构，计算并分配页面配比。
-  - **细节丰满**：为每一页生成 150-250 字的高质量演讲内容。
-- **决策逻辑**：基于 `OutlineGenerator` 进行多轮迭代。
+_负责理性的逻辑与结构_
 
-### 3. 感知与视觉专家 (Perception & Vision Agent)
+| 维度            | 属性描述                                                           |
+| :-------------- | :----------------------------------------------------------------- |
+| **底层模型**    | `gemini-3-pro-preview` / `gpt-4-turbo` / `glm-4-plus`              |
+| **核心职能**    | 意图识别、大纲规划、数据提取、演讲备注撰写。                       |
+| **输出格式**    | 严格的 **JSON Schema**，确保大纲层级树 (Outline Tree) 绝对可解析。 |
+| **Prompt 特性** | 强调逻辑性、结构化思维与商业分析框架 (SWOT, PEST)。                |
+| **代码映射**    | `components/OutlineGenerator.tsx` -> `generateOutline()`           |
 
-- **定位**：跨模态设计师。
-- **职责**：
-  - **视觉理解**：通过 Vision 模型读取用户上传的参考图、PDF 或文档截图。
-  - **艺术渲染**：将文案转化为视觉提示词，结合 `StyleControls` 设定的配色方案（如莫兰迪色系、金黑等）生成页面。
-  - **变体实验**：支持单页面生成 1、2、4、6、9 张不同风格的变体供用户挑选。
+### 2. 🎨 Visual Designer (视觉设计师)
 
-## 协作流程 (Workflow Excellence)
+_负责感性的审美与渲染_
 
-1.  **感知阶段 (Perception)**：视觉专家读取输入素材，转化成结构化文本需求。
-2.  **策划阶段 (Planning)**：策略专家生成多级大纲 JSON，并由用户在前端进行拖拉拽排序（Drag & Drop）和手动微调。
-3.  **渲染阶段 (Rendering)**：视觉专家接收策略专家最终确定的文案，调用图像引擎生成多方案预览。
-4.  **封装阶段 (Packaging)**：Antigravity 调动本地导出服务，将云端生成的素材转化为标准的 `.pptx` 或 `.pdf` 文件。
+| 维度            | 属性描述                                                         |
+| :-------------- | :--------------------------------------------------------------- |
+| **底层模型**    | `gemini-3-pro-image` / `dall-e-3` / `flux-pro`                   |
+| **核心职能**    | 风格迁移、Prompt 编译、色彩心理学分析、背景图渲染。              |
+| **输出格式**    | 16:9 高清图像 (Base64/Blob) + 布局坐标建议。                     |
+| **Prompt 特性** | 内置丰富的艺术词库 (Artstation, Cyberpunk, Cinematic Lighting)。 |
+| **代码映射**    | `services/geminiService.ts` -> `generateImage()`                 |
 
-## 用户交互节点
+### 3. 🛡️ System Orchestrator (系统调度中枢)
 
-用户作为“总导演”，在 `StyleControls` (风格控制) 和 `GlobalSettings` (全局参数) 中下达指令，代理集群负责具体实施。
+_负责系统的稳定与交付_
+
+| 维度         | 属性描述                                                              |
+| :----------- | :-------------------------------------------------------------------- |
+| **底层模型** | _N/A (React 运行时逻辑)_                                              |
+| **核心职能** | 任务分发、状态管理 (IndexedDB)、错误熔断、并发控制。                  |
+| **容错机制** | 当下游代理超时或报错时，自动触发重试 (Retry) 或降级 (Fallback) 策略。 |
+| **最终交付** | 将各代理产出的碎片化素材，组装为标准的 `.pptx` 二进制文件。           |
+| **代码映射** | `App.tsx` (ProjectSession 管理) + `services/exportService.ts`         |
+
+---
+
+## 🔄 协作流水线 (The Pipeline)
+
+一个标准的 PPT 生成任务，实际上是一场精密的接力赛。
+
+```mermaid
+sequenceDiagram
+    participant User as 👤 User
+    participant Core as 🛡️ Orchestrator
+    participant Strat as 🧙‍♂️ Strategist
+    participant Vis as 🎨 Designer
+    participant DB as 💾 IndexedDB
+
+    Note over User, DB: Stage 1: 策划阶段
+    User->>Core: 输入 "帮我写关于量子计算的科普"
+    Core->>Strat: 请求意图识别与大纲规划
+    Strat-->>Strat: 思考受众、风格、章节结构
+    Strat->>Core: 返回 JSON 大纲树 (Outline Tree)
+    Core->>User: 展示大纲编辑器
+    User->>Core: 调整章节顺序，点击 "生成"
+
+    Note over User, DB: Stage 2: 并发生产
+    Core->>DB: 创建 ProjectSession (状态持久化)
+    loop Parallel Generation (Max Concurrency: 3)
+        Core->>Strat: 生成 Page N 的详细正文与备注
+        Strat->>Core: 返回 Markdown 格式文本
+
+        par Parallel Rendering
+            Core->>Vis: 基于文本生成背景图 Prompt
+            Vis->>Vis: AI 智能润色 (Smart Refine)
+            Vis->>Core: 返回高清背景图 (Blob)
+        end
+
+        Core->>DB: 实时写入单页数据 (Auto-Save)
+        Core->>User: 更新进度条
+    end
+
+    Note over User, DB: Stage 3: 交付
+    User->>Core: 点击 "导出 PPTX"
+    Core->>DB: 读取完整 Session 数据
+    Core->>User: 触发浏览器下载 (.pptx)
+```
+
+---
+
+## 🧠 核心技术亮点
+
+### 1. 结构化思维链 (Structured CoT)
+
+Content Strategist 不仅仅是写字，它遵循 **ReAct (Reason + Act)** 模式：
+
+1.  **Thought**: 用户说"年会"，意味着需要热闹、庆祝的氛围，受众是全公司员工。
+2.  **Plan**: 封面要宏大，中间要有数据回顾，结尾要有展望。
+3.  **Action**: 生成对应的 JSON 节点。
+
+### 2. 视觉语义映射 (Visual-Semantic Mapping)
+
+Visual Designer 拥有一套 **"文本转视觉"** 的翻译引擎：
+
+- 输入: "公司的业绩增长很快"
+- 转换: "Rising bar chart, futuristic hud interface, upward arrow, golden lighting"
+- 结果: 一张寓意增长的科技感背景图，而不是简单的文字堆砌。
+
+### 3. 本地状态优先 (Local-First State)
+
+Orchestrator 采用 **"乐观更新 (Optimistic UI)"** + **"最终一致性"** 策略：
+
+- 用户的每一步操作都立即反馈在 UI 上。
+- 后台静默将数据写入 `IndexedDB`。
+- 即使浏览器崩溃，重启后 `App.tsx` 会根据 `lastActiveProject` 自动恢复现场。
