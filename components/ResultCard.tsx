@@ -3,7 +3,8 @@ import React, { useRef, useState } from 'react';
 import { GeneratedSlide, PageType } from '../types';
 import { downloadImage } from '../utils';
 import { exportToPdf, exportToPptx } from '../services/exportService';
-import { Download, Loader2, AlertCircle, Clock, FileText, Image as ImageIcon, GripVertical, RefreshCw, Zap, Edit, Upload, Maximize2, Layers, Trash2, Copy, BookOpen, Flag, Home, LayoutList, FileOutput, FileType, Sparkles } from 'lucide-react';
+import { Download, Loader2, AlertCircle, Clock, FileText, Image as ImageIcon, GripVertical, RefreshCw, Zap, Edit, Upload, Maximize2, Layers, Trash2, Copy, BookOpen, Flag, Home, LayoutList, FileOutput, FileType, Sparkles, Eye, Edit3 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 interface ResultCardProps {
   item: GeneratedSlide;
@@ -90,13 +91,14 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     onRefineContent,
     readOnly = false
 }) => {
-  
-  const isTextType = item.contentType === 'text';
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeVariantIndex, setActiveVariantIndex] = useState<number | null>(null);
-  const [isRefining, setIsRefining] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isRefining, setIsRefining] = useState(false);
+    const [isPreviewMode, setIsPreviewMode] = useState(false); // Add preview mode state
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const isTextType = item.contentType === 'text';
+    const [activeVariantIndex, setActiveVariantIndex] = useState<number | null>(null);
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (readOnly) return;
       if (e.target.files && e.target.files[0] && onUpdate) {
           const file = e.target.files[0];
@@ -216,11 +218,29 @@ export const ResultCard: React.FC<ResultCardProps> = ({
           <div className="p-4 bg-slate-50/30 flex flex-col h-full overflow-hidden">
               <div className="flex justify-between items-center mb-2 shrink-0">
                   <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">输入内容</div>
-                  {!readOnly && (
-                    <span className="text-xs text-slate-300 flex items-center gap-1">
-                        {isTextType ? '可编辑' : '可替换'} <Edit size={10} />
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* Preview Toggle */}
+                    {isTextType && item.textContent && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setIsPreviewMode(!isPreviewMode); }}
+                            className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors ${
+                                isPreviewMode 
+                                    ? 'bg-indigo-100 text-indigo-600 font-medium' 
+                                    : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-50'
+                            }`}
+                            title={isPreviewMode ? "切换编辑" : "切换预览"}
+                        >
+                            {isPreviewMode ? <Edit3 size={11} /> : <Eye size={11} />}
+                            {isPreviewMode ? '编辑' : '预览'}
+                        </button>
+                    )}
+                    
+                    {!readOnly && (
+                        <span className="text-xs text-slate-300 flex items-center gap-1">
+                            {isTextType ? '可编辑' : '可替换'} <Edit size={10} />
+                        </span>
+                    )}
+                  </div>
               </div>
 
               <div className="flex-1 bg-white border border-slate-200 rounded-lg overflow-hidden relative group flex flex-col">
@@ -235,15 +255,38 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                               placeholder={readOnly ? "无标题" : "请输入页面标题..."}
                               disabled={readOnly}
                           />
-                          {/* Content Input */}
-                          <div className="relative flex-1 w-full h-full">
-                              <textarea 
-                                  className="w-full h-full p-3 text-sm text-slate-600 resize-none focus:outline-none focus:bg-indigo-50/20 transition-all custom-scrollbar disabled:bg-white"
-                                  value={item.textContent || ''}
-                                  onChange={(e) => !readOnly && onUpdate && onUpdate({ textContent: e.target.value })}
-                                  placeholder={readOnly ? "无内容" : "在此输入正文内容..."}
-                                  disabled={readOnly}
-                              />
+                          {/* Content Input / Preview */}
+                          <div className="relative flex-1 w-full h-full overflow-hidden">
+                              {isPreviewMode && item.textContent ? (
+                                  <div className="w-full h-full p-4 overflow-y-auto custom-scrollbar prose prose-sm prose-slate max-w-none">
+                                      <ReactMarkdown
+                                          components={{
+                                              h1: ({ children }) => <h1 className="text-xl font-bold text-slate-800 mb-2 pb-1 border-b">{children}</h1>,
+                                              h2: ({ children }) => <h2 className="text-lg font-bold text-slate-700 mt-2 mb-1">{children}</h2>,
+                                              h3: ({ children }) => <h3 className="text-base font-semibold text-slate-700 mt-2 mb-1">{children}</h3>,
+                                              p: ({ children }) => <p className="text-slate-600 mb-2 leading-relaxed text-sm">{children}</p>,
+                                              ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-2 text-slate-600 text-sm">{children}</ul>,
+                                              ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-2 text-slate-600 text-sm">{children}</ol>,
+                                              img: ({ src, alt }) => {
+                                                  if (src?.startsWith('data:image')) {
+                                                      return <img src={src} alt={alt || 'image'} className="max-w-full h-auto rounded-md my-2 border border-slate-100 shadow-sm" style={{ maxHeight: '160px' }} />;
+                                                  }
+                                                  return <span className="text-xs text-slate-400 block my-1">[图片: {alt}]</span>;
+                                              }
+                                          }}
+                                      >
+                                          {item.textContent}
+                                      </ReactMarkdown>
+                                  </div>
+                              ) : (
+                                  <textarea 
+                                      className="w-full h-full p-3 text-sm text-slate-600 resize-none focus:outline-none focus:bg-indigo-50/20 transition-all custom-scrollbar disabled:bg-white"
+                                      value={item.textContent || ''}
+                                      onChange={(e) => !readOnly && onUpdate && onUpdate({ textContent: e.target.value })}
+                                      placeholder={readOnly ? "无内容" : "在此输入正文内容..."}
+                                      disabled={readOnly}
+                                  />
+                              )}
                               {!readOnly && onRefineContent && (
                                   <button
                                       onClick={handleSmartRefine}

@@ -1,7 +1,9 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { fileToBase64 } from "../utils";
-import { StyleConfig, OutlineItem, AppSettings, ModelConnection, ImageResolution } from "../types";
+import { StyleConfig, OutlineItem, AppSettings, ModelConnection, ImageResolution, DocParserConfig } from "../types";
+import JSZip from 'jszip';
+import mammoth from 'mammoth';
 
 // Default Fallback
 const DEFAULT_GEMINI_KEY = process.env.API_KEY || '';
@@ -347,12 +349,89 @@ export const smartRefine = async (text: string, type: 'requirement' | 'content',
     }
 };
 
+const wrapWithMinerUProxy = (url: string): string => {
+    if (url.startsWith('https://mineru.net')) {
+        return url.replace('https://mineru.net', '/mineru-proxy');
+    }
+    if (url.startsWith('https://mineru.oss-cn-shanghai.aliyuncs.com')) {
+        return url.replace('https://mineru.oss-cn-shanghai.aliyuncs.com', '/mineru-oss-proxy');
+    }
+    return url;
+};
+
+const extractTextWithMinerU = async (file: File, config: DocParserConfig): Promise<string> => {
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('config', JSON.stringify({
+            apiKey: config.apiKey,
+            baseUrl: config.baseUrl
+        }));
+
+        const response = await fetch('http://localhost:1111/api/doc-parser/parse', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || '后端解析失败');
+        }
+
+        const data = await response.json();
+        return data.markdown;
+    } catch (error: any) {
+        console.error("MinerU Backend Proxy Error:", error);
+        throw error;
+    }
+};
+
 export const extractTextFromFile = async (file: File, settings?: AppSettings): Promise<string> => {
+    // 0. Priority: Check if MinerU is configured for PDF
+    if (file.type === 'application/pdf' && settings?.docParser?.apiKey) {
+        try {
+            return await extractTextWithMinerU(file, settings.docParser);
+        } catch (e: any) {
+            console.error("MinerU profound failure:", e);
+            // Log full error for debugging
+            if (e instanceof Error) {
+                console.error("Error name:", e.name);
+                console.error("Error message:", e.message);
+                console.error("Error stack:", e.stack);
+            }
+            throw new Error(`MinerU 解析失败: ${e.message || e}`);
+        }
+    }
+
     const config = getTaskConfig(settings, 'vision');
 
     try {
+        // Debug: Log file info
+        console.log('[File Extract] File info:', { name: file.name, type: file.type, size: file.size });
+        
         if (file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.json') || file.name.endsWith('.txt')) {
-             return await file.text();
+             const textContent = await file.text();
+             console.log('[File Extract] Text file content length:', textContent.length);
+             return textContent;
+        }
+
+        // Word Document (.doc, .docx) - Use mammoth to extract text
+        if (file.name.endsWith('.docx') || file.name.endsWith('.doc') || 
+            file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+            file.type === 'application/msword') {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.extractRawText({ arrayBuffer });
+                if (result.value && result.value.trim()) {
+                    console.log('[Word Extraction] Successfully extracted text from Word document');
+                    return result.value;
+                }
+                // If mammoth fails to extract meaningful text, fall through to AI
+                console.warn('[Word Extraction] Mammoth returned empty, falling back to AI...');
+            } catch (mammothError) {
+                console.warn('[Word Extraction] Mammoth failed:', mammothError);
+                // Fall through to AI-based extraction
+            }
         }
 
         // Gemini Native Flow
@@ -371,6 +450,12 @@ export const extractTextFromFile = async (file: File, settings?: AppSettings): P
         } 
         // OpenAI Compatible Flow (Vision)
         else {
+             // CRITICAL: OpenAI Chat Completions API does NOT support PDF files in image_url.
+             // It only supports: png, jpeg, gif, webp.
+             if (file.type === 'application/pdf') {
+                 throw new Error("OpenAI 兼容模式不支持直接读取 PDF。请在全局设置中配置 MinerU 文档解析服务，或切换至 Gemini Native 模式。");
+             }
+
              const base64 = await fileToBase64(file);
              const messages = [
                  {
@@ -383,9 +468,13 @@ export const extractTextFromFile = async (file: File, settings?: AppSettings): P
              ];
              return await callOpenAICompatible(config, messages);
         }
-    } catch (error) {
-        console.error("Extract Text Error:", error);
-        throw new Error("Failed to extract content from file.");
+    } catch (error: any) {
+        console.error("Extract Text Error Detail:", error);
+        // Pass the specific error message up
+        if (error.message && error.message.includes("OpenAI")) {
+            throw error;
+        }
+        throw new Error("Failed to extract content from file. 请检查控制台日志 (F12) 获取详细错误。");
     }
 };
 

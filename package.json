@@ -9,14 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.2.3",
-    "lucide-react": "^0.562.0",
-    "react-dom": "^19.2.3",
     "@google/genai": "^1.35.0",
+    "file-saver": "^2.0.5",
     "jspdf": "2.5.1",
-    "pptxgenjs": "3.12.0",
     "jszip": "3.10.1",
-    "file-saver": "^2.0.5"
+    "lucide-react": "^0.562.0",
+    "mammoth": "^1.11.0",
+    "pptxgenjs": "3.12.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

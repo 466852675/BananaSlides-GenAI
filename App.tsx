@@ -107,6 +107,7 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  [x: string]: any;
   public state = { hasError: false, error: null as Error | null };
 
   constructor(props: ErrorBoundaryProps) {
@@ -293,6 +294,14 @@ const App: React.FC = () => {
                 ...DEFAULT_SETTINGS.imageGeneration,
                 ...(parsed.imageGeneration || {}),
             },
+            docParser: {
+                ...DEFAULT_SETTINGS.docParser,
+                ...(parsed.docParser || {}),
+                // Auto-migration: If the saved URL contains the old API version paths, strip them to match new backend logic
+                baseUrl: (parsed.docParser?.baseUrl?.includes('/api/v') || parsed.docParser?.baseUrl?.includes('/v1') || parsed.docParser?.baseUrl?.includes('/v4'))
+                    ? DEFAULT_SETTINGS.docParser.baseUrl
+                    : (parsed.docParser?.baseUrl || DEFAULT_SETTINGS.docParser.baseUrl)
+            }
             };
         }
       }
@@ -701,18 +710,94 @@ const App: React.FC = () => {
       return;
     }
 
+    // CRITICAL: Read text file content BEFORE any state updates to prevent reference loss
+    // The file object can become invalid after React re-renders
+    const isPDF = file.type === 'application/pdf';
+    const isWord = file.name.endsWith('.docx') || file.name.endsWith('.doc') || 
+                   file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                   file.type === 'application/msword';
+    const isText = file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.json') || file.name.endsWith('.txt');
+    
+    // For text files, read content using FileReader (more reliable than file.text())
+    let preReadTextContent: string | null = null;
+    if (isText) {
+      try {
+        // Use FileReader for more reliable reading
+        preReadTextContent = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsText(file, 'UTF-8');
+        });
+        console.log('[Pre-Read] Text file read successfully, length:', preReadTextContent.length);
+      } catch (readError) {
+        console.error('[Pre-Read] Failed to read text file:', readError);
+      }
+    }
+    
+    // For Word files, read array buffer immediately
+    let preReadWordBuffer: ArrayBuffer | null = null;
+    if (isWord) {
+      try {
+        preReadWordBuffer = await file.arrayBuffer();
+        console.log('[Pre-Read] Word file buffer read, size:', preReadWordBuffer.byteLength);
+      } catch (readError) {
+        console.error('[Pre-Read] Failed to read Word file:', readError);
+      }
+    }
+
+    // Now safe to update state
     setIsReadingFile(true);
-    const providerName = getProviderName("vision");
-    showToast(`调用 ${providerName} API 识别文件中...`, "loading");
+    
+    // Show appropriate loading message
+    let loadingMsg = "";
+    let successMsg = "";
+    let errorMsg = "";
+    
+    if (isPDF && appSettings.docParser?.apiKey) {
+      loadingMsg = "调用 MinerU 解析 PDF 中...";
+      successMsg = "MinerU 解析成功";
+      errorMsg = "MinerU 解析失败";
+    } else if (isWord) {
+      loadingMsg = "正在解析 Word 文档...";
+      successMsg = "Word 文档解析成功";
+      errorMsg = "Word 文档解析失败";
+    } else if (isText) {
+      loadingMsg = "正在读取文本文件...";
+      successMsg = "文本文件读取成功";
+      errorMsg = "文本文件读取失败";
+    } else {
+      const providerName = getProviderName("vision");
+      loadingMsg = `调用 ${providerName} API 识别文件中...`;
+      successMsg = `调用 ${providerName} API 识别成功`;
+      errorMsg = `调用 ${providerName} API 失败`;
+    }
+    
+    showToast(loadingMsg, "loading");
 
     try {
-      const text = await extractTextFromFile(file, appSettings);
+      let text: string;
+      
+      // Use pre-read content if available
+      if (preReadTextContent !== null) {
+        text = preReadTextContent;
+      } else if (preReadWordBuffer !== null) {
+        // Use mammoth with pre-read buffer
+        const mammoth = await import('mammoth');
+        const result = await mammoth.default.extractRawText({ arrayBuffer: preReadWordBuffer });
+        text = result.value || '';
+      } else {
+        // For PDF and other files, use the standard extraction
+        text = await extractTextFromFile(file, appSettings);
+      }
+      
       openOutlineGenerator(text);
-      showToast(`调用 ${providerName} API 识别成功`, "success");
+      showToast(successMsg, "success");
     } catch (err) {
       console.error("File read error", err);
-      showToast(`调用 ${providerName} API 失败`, "error");
-      alert("读取文件失败，请重试或直接复制内容。");
+      showToast(errorMsg, "error");
+      const msg = err instanceof Error ? err.message : "读取文件失败，请重试或直接复制内容。";
+      alert(msg);
     } finally {
       setIsReadingFile(false);
       e.target.value = "";
@@ -753,8 +838,14 @@ const App: React.FC = () => {
         setItems([]);
         setOutlineInitialTopic(""); // Clear cache
         setOutlineResetKey((prev) => prev + 1); // Increment key to force re-mount
-        setCurrentProjectId(null); // Clear project ID
-        setViewMode('dashboard'); // Return to dashboard
+        // Do NOT clear project ID or return to dashboard if we are inside a project
+        // setCurrentProjectId(null); 
+        // setViewMode('dashboard'); 
+        
+        // If we are NOT in a project context (e.g. quick start), then maybe we stay? 
+        // Actually, user expects to stay in the workbench to start over.
+        // So we just remove these two lines.
+        
         closeConfirm();
         showToast("工作台已清空", "success");
       },
@@ -1168,11 +1259,8 @@ const App: React.FC = () => {
                  thumbnailUrl: thumbUrl,
                  status: items.some(i => i.status === 'generating') ? 'generating' : 
                          (items.length > 0 && items.every(i => i.status === 'success')) ? 'completed' : 
-                         items.length === 0 ? 'active' : p.status,
-                 meta: {
-                    ...p.meta,
-                    methods: Array.from(new Set([...(p.meta?.methods || []), config.generationMode === 'text' ? 'text' : 'image'])) as any
-                 }
+                         items.length === 0 ? 'generating' : p.status,
+                 // meta: { ... } removed
              };
         }
         return p;
@@ -1521,17 +1609,8 @@ const App: React.FC = () => {
       setConfig(session.globalConfig);
       if (session.globalStyleMap) {
         setStyleMap(session.globalStyleMap);
-      } else if ((session as any).globalStyleFiles) {
-        // Backward compatibility logic
-        const f = (session as any).globalStyleFiles[0];
-        setStyleMap({
-          cover: f,
-          directory: f,
-          transition: f,
-          content: f,
-          end: f,
-          custom: null,
-        });
+      } else {
+        // Fallback or empty
       }
       setCurrentProjectId(session.id);
       setViewMode("workbench");
@@ -1557,8 +1636,9 @@ const App: React.FC = () => {
       methods: ['one-sentence'],
       globalConfig: { 
         ...config, 
-        // Only overwrite styleName if it's empty, otherwise keep the template's styleName
-        styleName: config.styleName && config.styleName.trim().length > 0 ? config.styleName : title 
+        // CRITICAL FIX: Ensure styleName is empty for new projects to show placeholder
+        // Also clear if it somehow got set to the default project title "未命名项目"
+        styleName: (config.styleName && config.styleName !== "未命名项目") ? config.styleName : "" 
       },
       globalStyleMap: { ...styleMap }, // Persist the current style map (images)
       isPinned: false
@@ -1593,15 +1673,8 @@ const App: React.FC = () => {
             }
         });
         setStyleMap(safeMap);
-    } else if (project.globalStyleFiles) {
-         // Compat
-         // ... existing ... but make sure it is blob
-         const f = project.globalStyleFiles[0];
-         if (f && f instanceof Blob) {
-             setStyleMap({ cover: f, directory: f, transition: f, content: f, end: f, custom: null });
-         } else {
-             setStyleMap({ cover: null, directory: null, transition: null, content: null, end: null, custom: null });
-         }
+    } else {
+         // Legacy globalStyleFiles logic removed
     }
 
     setCurrentProjectId(id);
@@ -1621,12 +1694,11 @@ const App: React.FC = () => {
       "恢复编辑",
       "确定要将此项目恢复为草稿状态吗？这将允许您修改内容和配置。",
       () => {
-         setProjects(prev => prev.map(p => {
-             if (p.id === id) {
-                 return { ...p, status: 'active', lastModified: Date.now() };
-             }
-             return p;
-         }));
+         setProjects(prev => prev.map(p => 
+        p.id === id 
+          ? { ...p, status: 'generating', lastModified: Date.now() } // Set to generating
+          : p
+      ));
          // Set View to Workbench
          setCurrentProjectId(id);
          setViewMode('workbench');
@@ -2226,11 +2298,10 @@ const App: React.FC = () => {
     
       {/* Toast Notification */}
       {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
+        <Toast 
+        toast={toast}
+        onClose={() => setToast(null)}
+      />
       )}
       <header className="sticky top-0 z-[100] bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-4">
         <div className="max-w-[1440px] mx-auto flex items-center justify-between">
@@ -2561,6 +2632,7 @@ const App: React.FC = () => {
                     <button
                       onClick={() => outlineFileInputRef.current?.click()}
                       disabled={isReadingFile}
+                      title="支持的格式: PDF, Word (.doc/.docx), Markdown (.md), 文本 (.txt), JSON"
                       className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm disabled:opacity-50 whitespace-nowrap"
                     >
                       {isReadingFile ? (
@@ -2877,7 +2949,7 @@ const App: React.FC = () => {
                         </div>
                       )}
                       <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-xs font-medium backdrop-blur-sm pointer-events-none">
-                        P{session.pageCount}
+                        P{session.items.length}
                       </div>
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100">
                         <ZoomIn

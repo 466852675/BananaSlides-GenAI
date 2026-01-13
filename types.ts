@@ -108,6 +108,12 @@ export interface CustomComboConfig {
     vision: ModelConnection;
 }
 
+export interface DocParserConfig {
+    provider: 'MinerU' | 'None';
+    baseUrl: string;
+    apiKey: string;
+}
+
 export interface AppSettings {
     ai: {
         provider: AIProvider;
@@ -120,6 +126,7 @@ export interface AppSettings {
         };
         customCombo?: CustomComboConfig;
     };
+    docParser: DocParserConfig; // New Field
     imageGeneration: {
         resolution: ImageResolution;
     };

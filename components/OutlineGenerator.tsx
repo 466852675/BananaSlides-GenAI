@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
-import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser, Eye, Edit3 } from 'lucide-react';
 import { refinePrompt, generateOutline, generateSlideDetail, generateSingleOutlineItem } from '../services/geminiService';
 import { OutlineItem, GeneratedSlide, StyleConfig, PageType, AppSettings } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ToastMessage } from './Toast';
+import ReactMarkdown from 'react-markdown';
 
 interface OutlineGeneratorProps {
     isOpen: boolean;
@@ -26,6 +27,47 @@ const getPageTypeLabel = (type: PageType) => {
     }
 }
 
+// Full Markdown Renderer Component with react-markdown
+const MarkdownPreview: React.FC<{ content: string }> = ({ content }) => {
+    return (
+        <div className="prose prose-slate prose-sm max-w-none">
+            <ReactMarkdown
+                components={{
+                    // Custom styles for markdown elements
+                    h1: ({ children }) => <h1 className="text-2xl font-bold text-slate-800 mt-4 mb-2 border-b pb-2">{children}</h1>,
+                    h2: ({ children }) => <h2 className="text-xl font-bold text-slate-700 mt-3 mb-2">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-lg font-semibold text-slate-700 mt-3 mb-1">{children}</h3>,
+                    h4: ({ children }) => <h4 className="text-base font-semibold text-slate-600 mt-2 mb-1">{children}</h4>,
+                    p: ({ children }) => <p className="text-slate-600 mb-2 leading-relaxed">{children}</p>,
+                    ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-2 text-slate-600">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-2 text-slate-600">{children}</ol>,
+                    li: ({ children }) => <li className="text-slate-600">{children}</li>,
+                    strong: ({ children }) => <strong className="font-bold text-slate-800">{children}</strong>,
+                    em: ({ children }) => <em className="italic text-slate-600">{children}</em>,
+                    blockquote: ({ children }) => <blockquote className="border-l-4 border-indigo-300 pl-4 py-1 my-2 bg-indigo-50 text-slate-600 italic">{children}</blockquote>,
+                    code: ({ children }) => <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono text-indigo-600">{children}</code>,
+                    img: ({ src, alt }) => {
+                        if (src?.startsWith('data:image')) {
+                            return (
+                                <img 
+                                    src={src} 
+                                    alt={alt || 'image'} 
+                                    className="max-w-full h-auto rounded-lg my-2 shadow-sm border border-slate-200"
+                                    style={{ maxHeight: '200px' }}
+                                />
+                            );
+                        }
+                        return <span className="text-slate-400 text-xs">[图片: {alt || 'image'}]</span>;
+                    },
+                    hr: () => <hr className="border-slate-200 my-4" />,
+                }}
+            >
+                {content}
+            </ReactMarkdown>
+        </div>
+    );
+};
+
 export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onClose, onFinish, initialTopic = "", config, appSettings, onShowToast }) => {
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [topic, setTopic] = useState(initialTopic);
@@ -33,12 +75,17 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
     const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
     const [isGeneratingDetails, setIsGeneratingDetails] = useState(false);
     const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
+    const [isPreviewMode, setIsPreviewMode] = useState(false); // Step 1 preview toggle
+    const [previewItems, setPreviewItems] = useState<Record<string, boolean>>({}); // Step 3 per-item preview toggle
     
     // Track regeneration loading states per item ID
     const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
-        setTopic(initialTopic);
+        if (initialTopic) {
+            setTopic(initialTopic);
+            setStep(1); // Reset to step 1 when new content is loaded
+        }
     }, [initialTopic]);
 
     // Confirmation State
@@ -332,16 +379,44 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                     {step === 1 && (
                         <div className="h-full flex flex-col items-center justify-center max-w-3xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <div className="w-full bg-white rounded-2xl shadow-lg border border-slate-200 p-6 relative group focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-300 transition-all">
-                                <label className="block text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                                    <FileText size={16} className="text-indigo-500"/> 
-                                    输入 PPT 主题或粘贴内容
-                                </label>
-                                <textarea 
-                                    value={topic}
-                                    onChange={(e) => setTopic(e.target.value)}
-                                    placeholder="请输入 PPT 主题，例如：'关于2025年人工智能发展趋势的商业路演'，或者上传文件后在此处查看识别内容..."
-                                    className="w-full h-64 p-4 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl bg-slate-50 border border-slate-100 focus:bg-white transition-colors"
-                                />
+                                <div className="flex items-center justify-between mb-3">
+                                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                                        <FileText size={16} className="text-indigo-500"/> 
+                                        输入 PPT 主题或粘贴内容
+                                    </label>
+                                    {/* Preview Toggle */}
+                                    <button
+                                        onClick={() => setIsPreviewMode(!isPreviewMode)}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                            isPreviewMode 
+                                                ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' 
+                                                : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-600'
+                                        }`}
+                                        title={isPreviewMode ? "切换到编辑模式" : "预览富文本内容（含图片）"}
+                                    >
+                                        {isPreviewMode ? <Edit3 size={12} /> : <Eye size={12} />}
+                                        {isPreviewMode ? '编辑' : '预览'}
+                                    </button>
+                                </div>
+                                
+                                {/* Conditional Render: Preview or Edit */}
+                                {isPreviewMode ? (
+                                    <div className="w-full h-64 p-4 overflow-y-auto rounded-xl bg-slate-50 border border-slate-100">
+                                        {topic ? (
+                                            <MarkdownPreview content={topic} />
+                                        ) : (
+                                            <span className="text-slate-300">暂无内容...</span>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <textarea 
+                                        value={topic}
+                                        onChange={(e) => setTopic(e.target.value)}
+                                        placeholder="请输入 PPT 主题，例如：'关于2025年人工智能发展趋势的商业路演'，或者上传文件后在此处查看识别内容..."
+                                        className="w-full h-64 p-4 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl bg-slate-50 border border-slate-100 focus:bg-white transition-colors"
+                                    />
+                                )}
+                                
                                 <div className="flex justify-between items-center mt-4">
                                      <span className="text-xs text-slate-400">系统将按照全局设置的 {config.targetPageCount} 页结构生成</span>
                                      <div className="flex gap-2">
@@ -468,10 +543,24 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 {item.status === 'generating' && <Loader2 size={16} className="animate-spin text-indigo-500 mr-2" />}
+                                                {/* Preview Toggle */}
+                                                {item.fullContent && (
+                                                    <button 
+                                                        onClick={() => setPreviewItems(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                                        className={`p-1.5 rounded-lg transition-colors ${
+                                                            previewItems[item.id] 
+                                                                ? 'bg-indigo-100 text-indigo-600' 
+                                                                : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                                                        }`}
+                                                        title={previewItems[item.id] ? "编辑模式" : "预览模式"}
+                                                    >
+                                                        {previewItems[item.id] ? <Edit3 size={14} /> : <Eye size={14} />}
+                                                    </button>
+                                                )}
                                                 {/* Clear Single */}
-                                                <button onClick={() => handleClearSingleDetail(item.id)} className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="清空内容"><Eraser size={14} /></button>
+                                                <button onClick={() => handleClearSingleDetail(item.id)} className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors" title="清空内容"><Eraser size={14} /></button>
                                                 {/* Regenerate Single */}
-                                                <button onClick={() => generateDetailForId(item.id)} className="p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="重新生成"><RefreshCw size={14} /></button>
+                                                <button onClick={() => generateDetailForId(item.id)} className="p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors" title="重新生成"><RefreshCw size={14} /></button>
                                                 {item.status === 'success' && <div className="text-green-500 bg-green-50 rounded-full p-1 ml-1"><Check size={12} /></div>}
                                                 {item.status === 'error' && <div className="text-red-500 bg-red-50 rounded-full p-1 cursor-pointer ml-1" onClick={() => generateDetailForId(item.id)} title="点击重试">!</div>}
                                             </div>
@@ -484,12 +573,19 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                                 </div>
                                             )}
                                             
-                                            <textarea 
-                                                value={item.fullContent || ''} 
-                                                onChange={(e) => handleUpdateOutlineItem(item.id, { fullContent: e.target.value })}
-                                                placeholder={item.status === 'generating' ? "AI 正在思考中..." : "等待生成详细内容..."}
-                                                className="w-full h-full min-h-[200px] resize-none focus:outline-none bg-transparent text-sm text-slate-600 leading-relaxed custom-scrollbar"
-                                            />
+                                            {/* Conditional Render: Preview or Edit */}
+                                            {previewItems[item.id] && item.fullContent ? (
+                                                <div className="w-full h-full min-h-[200px] overflow-y-auto custom-scrollbar">
+                                                    <MarkdownPreview content={item.fullContent} />
+                                                </div>
+                                            ) : (
+                                                <textarea 
+                                                    value={item.fullContent || ''} 
+                                                    onChange={(e) => handleUpdateOutlineItem(item.id, { fullContent: e.target.value })}
+                                                    placeholder={item.status === 'generating' ? "AI 正在思考中..." : "等待生成详细内容..."}
+                                                    className="w-full h-full min-h-[200px] resize-none focus:outline-none bg-transparent text-sm text-slate-600 leading-relaxed custom-scrollbar"
+                                                />
+                                            )}
                                         </div>
                                     </div>
                                 ))}

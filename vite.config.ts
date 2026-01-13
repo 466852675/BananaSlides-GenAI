@@ -8,6 +8,18 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 1000,
         host: '0.0.0.0',
+        proxy: {
+          '/mineru-proxy': {
+            target: 'https://mineru.net',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/mineru-proxy/, '')
+          },
+          '/mineru-oss-proxy': {
+            target: 'https://mineru.oss-cn-shanghai.aliyuncs.com',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/mineru-oss-proxy/, '')
+          }
+        }
       },
       plugins: [react()],
       define: {

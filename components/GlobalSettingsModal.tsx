@@ -97,6 +97,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
         },
         customCombo: DEFAULT_COMBO_CONFIG
     },
+    docParser: {
+        provider: 'MinerU',
+        baseUrl: 'https://mineru.net',
+        apiKey: ''
+    },
     imageGeneration: {
         resolution: '2048x2048'
     },
@@ -399,6 +404,49 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                     </div>
                                 </div>
                             )}
+                        </section>
+
+                        {/* 1.5 Document Parser Configuration (MinerU) */}
+                        <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                             <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
+                                <FileText size={18} className="text-orange-500" /> 文档解析配置 (MinerU)
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="md:col-span-2 bg-orange-50 border border-orange-100 p-3 rounded-lg text-xs text-orange-800 flex items-start gap-2">
+                                     <span className="text-lg">💡</span>
+                                     <div>
+                                        <b>MinerU (Magic-PDF)</b> 是开源的高精度 PDF 转 Markdown 工具。配置后，系统将优先使用 MinerU 解析 PDF 文档，从而解决部分 AI 模型无法直接读取 PDF 的问题。
+                                        <a href="https://mineru.net" target="_blank" rel="noreferrer" className="underline ml-1 font-bold">官网获取 Token &gt;</a>
+                                     </div>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">MinerU API Base</label>
+                                    <input 
+                                        type="text" 
+                                        value={settings.docParser?.baseUrl || 'https://mineru.net'}
+                                        onChange={(e) => setSettings(s => ({ 
+                                            ...s, 
+                                            docParser: { ...s.docParser, baseUrl: e.target.value, provider: 'MinerU' } 
+                                        }))}
+                                        placeholder="https://mineru.net"
+                                        className="w-full p-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+                                    />
+                                    <p className="text-[10px] text-slate-400 mt-1">默认为 https://mineru.net，私有部署请填写您的 API 地址</p>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">MinerU Token</label>
+                                    <input 
+                                        type="password" 
+                                        value={settings.docParser?.apiKey || ''}
+                                        onChange={(e) => setSettings(s => ({ 
+                                            ...s, 
+                                            docParser: { ...s.docParser, apiKey: e.target.value, provider: 'MinerU' } 
+                                        }))}
+                                        placeholder="sk-..."
+                                        className="w-full p-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 font-mono"
+                                    />
+                                </div>
+                            </div>
                         </section>
 
                         {/* 2. Image Generation Config */}
