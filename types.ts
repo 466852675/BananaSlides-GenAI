@@ -53,18 +53,31 @@ export interface StylePreset {
   createdAt: number;
 }
 
+export type ProjectStatus = 'idle' | 'generating' | 'paused' | 'completed' | 'error';
+
 export interface ProjectSession {
   id: string;
   title: string;
-  pageCount: number;
   lastModified: number;
-  status: 'completed' | 'generating' | 'not-started';
+  createdAt: number; // Added
+  status: ProjectStatus; // Use the enum
+  isPinned?: boolean; // New
+  styleTemplateId?: string; // New
+  methods: string[]; // New: ['text', 'image', 'file'] etc.
+  progress: number; // New: 0-100
   items: GeneratedSlide[];
-  globalConfig: StyleConfig;
-  globalStyleMap?: GlobalStyleMap; // Updated
-  /** @deprecated use globalStyleMap */
-  globalStyleFiles?: File[];
+  globalConfig: StyleConfig; // The config used for this project
+  globalStyleMap?: GlobalStyleMap;
   thumbnailUrl?: string;
+}
+
+export interface StyleTemplate {
+  id: string;
+  name: string;
+  config: StyleConfig;
+  styleMap?: GlobalStyleMap;
+  isCustom: boolean; // System vs User
+  createdAt: number;
 }
 
 export interface OutlineItem {

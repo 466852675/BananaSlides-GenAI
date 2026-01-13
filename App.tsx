@@ -15,6 +15,7 @@ import {
   Layers,
   Heart,
   ArrowRight,
+  ArrowLeft,
   Eye,
   RefreshCcw,
   Calendar,
@@ -22,6 +23,7 @@ import {
   Filter,
   Save,
   CheckCircle2,
+  AlertCircle,
   AlertTriangle,
   Edit3,
   MoreHorizontal,
@@ -82,9 +84,94 @@ import {
   exportToPdf,
   exportToPptx,
 } from "./services/exportService";
+import { Dashboard } from "./components/Dashboard";
+import { OnboardingGuide } from "./components/OnboardingGuide";
+import { StyleTemplateManager } from "./components/StyleTemplateManager";
+import { SharedStyleCard } from "./components/SharedStyleCard";
+import { StyleTemplate, ProjectStatus } from "./types";
 
 // --- Constants ---
 const SETTINGS_STORAGE_KEY = "bananaslides_global_settings_v1";
+const PROJECTS_STORAGE_KEY = "bananaslides_projects_v1";
+const TEMPLATES_STORAGE_KEY = "bananaslides_templates_v1";
+const ONBOARDING_STORAGE_KEY = "bananaslides_onboarding_v1";
+
+// --- Error Boundary ---
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state = { hasError: false, error: null as Error | null };
+
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  handleReset = () => {
+    try {
+        localStorage.clear();
+        window.location.reload();
+    } catch (e) {
+        window.location.href = '/';
+    }
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 flex flex-col items-center justify-center p-8 bg-slate-50 text-center">
+          <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-slate-200">
+             <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                 <AlertCircle size={32} />
+             </div>
+             <h2 className="text-2xl font-bold text-slate-800 mb-2">程序遇到了一点问题</h2>
+             <p className="text-slate-500 mb-6 text-sm">
+               检测到未捕获的异常，可能是由于本地缓存数据与新版本不兼容导致的。
+             </p>
+             <div className="bg-slate-50 p-4 rounded-lg mb-6 text-left overflow-auto max-h-32">
+                 <code className="text-xs text-slate-600 font-mono break-all leading-relaxed">
+                     {this.state.error?.message || "Unknown Error"}
+                 </code>
+             </div>
+             
+             <div className="flex flex-col gap-3">
+                 <button
+                   onClick={() => window.location.reload()}
+                   className="w-full py-3 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all"
+                 >
+                   尝试刷新页面
+                 </button>
+                 <button
+                   onClick={this.handleReset}
+                   className="w-full py-3 px-4 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-500/20 transition-all flex items-center justify-center gap-2"
+                 >
+                   <Trash2 size={18} />
+                   清除缓存并重置
+                 </button>
+             </div>
+          </div>
+          <p className="mt-8 text-xs text-slate-400">BananaSlides Gen-AI Error Protection</p>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // --- Modal Component ---
 interface ModalProps {
@@ -170,8 +257,8 @@ const Modal: React.FC<ModalProps> = ({
 const App: React.FC = () => {
   // --- State ---
   const [viewMode, setViewMode] = useState<
-    "workbench" | "history" | "history-detail"
-  >("workbench");
+    "dashboard" | "workbench" | "history" | "history-detail" | "templates"
+  >("dashboard");
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -181,30 +268,33 @@ const App: React.FC = () => {
     try {
       const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved);
-        // Merge with DEFAULT_SETTINGS to ensure all fields exist (deep merge simulation)
-        return {
-          ...DEFAULT_SETTINGS,
-          ...parsed,
-          ai: {
-            ...DEFAULT_SETTINGS.ai,
-            ...(parsed.ai || {}),
-            models: {
-              ...DEFAULT_SETTINGS.ai.models,
-              ...(parsed.ai?.models || {}),
+        let parsed;
+        try { parsed = JSON.parse(saved); } catch { parsed = {}; }
+        if (parsed && typeof parsed === 'object') {
+             // Merge with DEFAULT_SETTINGS to ensure all fields exist (deep merge simulation)
+            return {
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            ai: {
+                ...DEFAULT_SETTINGS.ai,
+                ...(parsed.ai || {}),
+                models: {
+                ...DEFAULT_SETTINGS.ai.models,
+                ...(parsed.ai?.models || {}),
+                },
+                customCombo:
+                parsed.ai?.customCombo || DEFAULT_SETTINGS.ai.customCombo,
             },
-            customCombo:
-              parsed.ai?.customCombo || DEFAULT_SETTINGS.ai.customCombo,
-          },
-          performance: {
-            ...DEFAULT_SETTINGS.performance,
-            ...(parsed.performance || {}),
-          },
-          imageGeneration: {
-            ...DEFAULT_SETTINGS.imageGeneration,
-            ...(parsed.imageGeneration || {}),
-          },
-        };
+            performance: {
+                ...DEFAULT_SETTINGS.performance,
+                ...(parsed.performance || {}),
+            },
+            imageGeneration: {
+                ...DEFAULT_SETTINGS.imageGeneration,
+                ...(parsed.imageGeneration || {}),
+            },
+            };
+        }
       }
     } catch (e) {
       console.warn("Failed to load settings from storage", e);
@@ -240,20 +330,127 @@ const App: React.FC = () => {
     },
   });
   const [isPresetSaved, setIsPresetSaved] = useState(false);
+  const [saveToFavorites, setSaveToFavorites] = useState(true);
+  const [saveToLibrary, setSaveToLibrary] = useState(true);
 
   const [items, setItems] = useState<GeneratedSlide[]>([]);
 
-  // Project Sessions State
-  const [sessions, setSessions] = useState<ProjectSession[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
-    null
-  );
+  // Multi-Project State
+  const [projects, setProjects] = useState<ProjectSession[]>(() => {
+    try {
+      const saved = localStorage.getItem(PROJECTS_STORAGE_KEY);
+      if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+              // Sanitize: Ensure items is always an array to prevent Dashboard crashes
+              return parsed.map((p: any) => ({
+                  ...p,
+                  items: Array.isArray(p.items) ? p.items : [],
+                  // Ensure other critical fields
+                  globalConfig: p.globalConfig || { ...DEFAULT_SETTINGS }, // partial fallback
+              }));
+          }
+      }
+    } catch (e) {
+      console.warn("Failed to load projects", e);
+    }
+    return [];
+  });
+
+  // --- Effects ---
+  useEffect(() => {
+    // Sync local storage state on load
+    const savedProjects = localStorage.getItem(PROJECTS_STORAGE_KEY);
+    if (savedProjects) {
+        try {
+           const parsed = JSON.parse(savedProjects);
+           // Defensive check: ensure items is array
+           if (parsed && Array.isArray(parsed.items)) {
+             setProjects(parsed);
+           }
+        } catch(e) { console.error("Failed to load projects", e)}
+    }
+
+    const savedTemplates = localStorage.getItem(TEMPLATES_STORAGE_KEY);
+    if (savedTemplates) {
+         try {
+            const parsed = JSON.parse(savedTemplates);
+             if (Array.isArray(parsed)) {
+                setStyleTemplates(parsed);
+             }
+         } catch(e) { console.error("Failed to load templates", e) }
+    }
+
+    // Listen for fullscreen change events (e.g. user presses Esc)
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen mode: ${err.message} (${err.name})`);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
+  const [styleTemplates, setStyleTemplates] = useState<StyleTemplate[]>(() => {
+    try {
+      const saved = localStorage.getItem(TEMPLATES_STORAGE_KEY);
+      if (saved) {
+          const parsed = JSON.parse(saved);
+          return Array.isArray(parsed) ? parsed : [];
+      }
+    } catch (e) {
+      console.warn("Failed to load templates", e);
+    }
+    return [];
+  });
+
+  // Track the currently active template ID (defaulting to the first system template or null)
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(() => {
+     return localStorage.getItem("bananaslides_active_template_id_v1") || null;
+  });
+  
+  // Persist active template ID
+  useEffect(() => {
+     if (activeTemplateId) {
+         localStorage.setItem("bananaslides_active_template_id_v1", activeTemplateId);
+     } else {
+         localStorage.removeItem("bananaslides_active_template_id_v1");
+     }
+  }, [activeTemplateId]);
+
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    return !localStorage.getItem(ONBOARDING_STORAGE_KEY);
+  });
+
+  const [isStyleManagerOpen, setIsStyleManagerOpen] = useState(false);
+
+  // Active project data (migrated from current session state)
+  const currentProject = projects.find(p => p.id === currentProjectId);
+
+  // Sync Workbench State with Current Project
+  useEffect(() => {
+    if (currentProject) {
+      setConfig(currentProject.globalConfig);
+      setItems(currentProject.items);
+      if (currentProject.globalStyleMap) setStyleMap(currentProject.globalStyleMap);
+    }
+  }, [currentProjectId]);
 
   // Refs for Auto-Save
   const itemsRef = useRef(items);
   const configRef = useRef(config);
   const styleMapRef = useRef(styleMap);
-  const selectedSessionIdRef = useRef(selectedSessionId);
+  const currentProjectIdRef = useRef(currentProjectId);
 
   // Update Refs on change
   useEffect(() => {
@@ -266,8 +463,8 @@ const App: React.FC = () => {
     styleMapRef.current = styleMap;
   }, [styleMap]);
   useEffect(() => {
-    selectedSessionIdRef.current = selectedSessionId;
-  }, [selectedSessionId]);
+    currentProjectIdRef.current = currentProjectId;
+  }, [currentProjectId]);
 
   // History Page State
   const [historySearchTerm, setHistorySearchTerm] = useState("");
@@ -352,18 +549,24 @@ const App: React.FC = () => {
   useEffect(() => {
     const intervalId = setInterval(() => {
       // Check if there is data to save
-      if (itemsRef.current.length > 0) {
+      if (itemsRef.current.length > 0 && currentProjectIdRef.current) {
         console.log(
           "Auto-saving project session...",
-          selectedSessionIdRef.current
+          currentProjectIdRef.current
         );
-        // CRITICAL: Pass the Ref current value to ensure we update the SAME session
-        saveProjectSession(
-          itemsRef.current,
-          configRef.current,
-          styleMapRef.current,
-          selectedSessionIdRef.current
-        );
+        // We use the setProjects updater directly now
+        setProjects(prev => prev.map(p => {
+            if (p.id === currentProjectIdRef.current) {
+                return {
+                    ...p,
+                    items: itemsRef.current,
+                    globalConfig: configRef.current,
+                    globalStyleMap: styleMapRef.current,
+                    lastModified: Date.now()
+                };
+            }
+            return p;
+        }));
         showToast("已自动保存当前进度", "info");
       }
     }, 3 * 60 * 1000); // 3 minutes
@@ -372,15 +575,7 @@ const App: React.FC = () => {
   }, []);
 
   // --- Helpers ---
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      }
-    }
-  };
+
 
   const showToast = (message: string, type: ToastMessage["type"] = "info") => {
     setToast({ id: Date.now().toString(), message, type });
@@ -534,6 +729,13 @@ const App: React.FC = () => {
       setItems((prev) => [...prev, ...slides.slice(0, allowed)]);
     } else {
       setItems((prev) => [...prev, ...slides]);
+      // Update methods
+      setProjects(prev => prev.map(p => {
+          if (p.id === currentProjectIdRef.current && !p.methods.includes('file')) {
+              return { ...p, methods: [...p.methods, 'file'] };
+          }
+          return p;
+      }));
       setTimeout(
         () => showToast(`已成功添加 ${slides.length} 个页面`, "success"),
         100
@@ -551,7 +753,8 @@ const App: React.FC = () => {
         setItems([]);
         setOutlineInitialTopic(""); // Clear cache
         setOutlineResetKey((prev) => prev + 1); // Increment key to force re-mount
-        setSelectedSessionId(null); // Clear session ID
+        setCurrentProjectId(null); // Clear project ID
+        setViewMode('dashboard'); // Return to dashboard
         closeConfirm();
         showToast("工作台已清空", "success");
       },
@@ -625,7 +828,7 @@ const App: React.FC = () => {
   });
 
   // --- History Logic ---
-  const filteredHistory = sessions.filter((session) => {
+  const filteredHistory = projects.filter((session) => {
     const matchSearch = session.title
       .toLowerCase()
       .includes(historySearchTerm.toLowerCase());
@@ -719,6 +922,13 @@ const App: React.FC = () => {
     };
 
     setItems((prev) => [...prev, newItem]);
+    // Update methods
+    setProjects(prev => prev.map(p => {
+        if (p.id === currentProjectIdRef.current && !p.methods.includes('text')) {
+            return { ...p, methods: [...p.methods, 'text'] };
+        }
+        return p;
+    }));
     setTimeout(
       () =>
         window.scrollTo({
@@ -758,6 +968,13 @@ const App: React.FC = () => {
     });
 
     setItems((prev) => [...prev, ...newItems]);
+    // Update methods
+    setProjects(prev => prev.map(p => {
+        if (p.id === currentProjectIdRef.current && !p.methods.includes('image')) {
+            return { ...p, methods: [...p.methods, 'image'] };
+        }
+        return p;
+    }));
     setIsImageTaskModalOpen(false);
     setTempImageFiles([]);
     setTimeout(
@@ -775,6 +992,8 @@ const App: React.FC = () => {
     setPresetNameInput(
       `${config.styleName || "新风格"} ${new Date().toLocaleDateString()}`
     );
+    setSaveToFavorites(true);
+    setSaveToLibrary(true);
     setIsSavePresetModalOpen(true);
   };
 
@@ -808,9 +1027,30 @@ const App: React.FC = () => {
         sampleImages: samples,
         createdAt: Date.now(),
       };
-      setFavorites((prev) => [...prev, newPreset]);
+
+      // Sync to Style Templates Library
+      const newTemplate: StyleTemplate = {
+        id: `style_${newPreset.id}`,
+        name: newPreset.name,
+        config: { ...newPreset.config },
+        styleMap: { ...newPreset.styleMap },
+        isCustom: true,
+        createdAt: newPreset.createdAt
+      };
+
+      setFavorites((prev) => saveToFavorites ? [...prev, newPreset] : prev);
+      setStyleTemplates((prev) => saveToLibrary ? [...prev, newTemplate] : prev);
+      
       setIsSavePresetModalOpen(false);
       setIsPresetSaved(true);
+      
+      const targetMsg = saveToFavorites && saveToLibrary 
+        ? "风格已同步至收藏夹与模板库" 
+        : saveToFavorites 
+          ? "风格已保存至我的收藏夹" 
+          : "风格已保存至模板库";
+          
+      showToast(targetMsg, "success");
       closeConfirm();
     });
   };
@@ -839,6 +1079,34 @@ const App: React.FC = () => {
     });
   };
 
+  const handleApplyTemplate = (template: StyleTemplate) => {
+    setConfig({ ...template.config });
+    if (template.styleMap) {
+      setStyleMap({ ...template.styleMap });
+    }
+    setActiveTemplateId(template.id);
+  };
+
+  const handleToggleFavorite = (template: StyleTemplate) => {
+    setFavorites((prev) => {
+      const exists = prev.some((p) => p.id === template.id);
+      if (exists) {
+        showToast("已取消收藏", "success");
+        return prev.filter((p) => p.id !== template.id);
+      } else {
+        const newPreset: StylePreset = {
+          id: template.id,
+          name: template.name || template.config.styleName,
+          config: template.config,
+          styleMap: template.styleMap,
+          createdAt: Date.now(),
+        };
+        showToast("已添加至收藏夹", "success");
+        return [...prev, newPreset];
+      }
+    });
+  };
+
   const handleUpdatePreset = (updatedPreset: StylePreset) => {
     setFavorites((prev) =>
       prev.map((p) => (p.id === updatedPreset.id ? updatedPreset : p))
@@ -861,80 +1129,65 @@ const App: React.FC = () => {
     );
   };
 
-  const saveProjectSession = (
-    currentItems: GeneratedSlide[],
-    currentConfig: StyleConfig,
-    currentStyleMap: GlobalStyleMap,
-    explicitId?: string | null
-  ) => {
-    // Use provided explicit ID (from Ref) or current state, or generate new if neither exists
-    const sessionId =
-      explicitId ||
-      selectedSessionId ||
-      Math.random().toString(36).substr(2, 9);
+  // Manual save if needed (like after generating)
+  const syncCurrentProject = () => {
+    if (!currentProjectId) return;
+    
+    setProjects(prev => prev.map(p => {
+        if (p.id === currentProjectId) {
+             const coverItem = items.find((i) => i.pageType === "cover");
+             const firstItem = items[0];
+             const bestItem = coverItem || firstItem;
 
-    // Attempt to find the cover page for the thumbnail
-    const coverItem = currentItems.find((i) => i.pageType === "cover");
-    const firstItem = currentItems[0];
-    const thumbnailItem = coverItem || firstItem;
+             let thumbUrl = p.thumbnailUrl;
 
-    // Prioritize the generated variant (result) over the previewUrl (input) if available
-    let thumbUrl = undefined;
-    if (thumbnailItem) {
-      if (thumbnailItem.variants && thumbnailItem.variants.length > 0) {
-        thumbUrl = thumbnailItem.variants[0];
-      } else {
-        thumbUrl = thumbnailItem.previewUrl;
-      }
-    }
+             if (bestItem) {
+               if (bestItem.variants && bestItem.variants.length > 0) {
+                 thumbUrl = bestItem.variants[0];
+               } else if (bestItem.previewUrl) {
+                 thumbUrl = bestItem.previewUrl;
+               }
+             }
+             
+             // Fallback to style reference
+             // CRITICAL FIX: explicit check for Blob to prevent crash on restored JSON data
+             if ((!thumbUrl || thumbUrl.startsWith('blob:')) && !bestItem && styleMap.cover && styleMap.cover instanceof Blob) {
+                 thumbUrl = URL.createObjectURL(styleMap.cover);
+             } else if ((!thumbUrl || thumbUrl.startsWith('blob:')) && !bestItem && !styleMap.cover) {
+                 // Clean up invalid blob URLs if we can't refresh them
+                 thumbUrl = undefined;
+             }
 
-    // Logic for Project Title (Priority: Cover > Directory > First Title > StyleName)
-    let projectTitle =
-      currentConfig.styleName || `Project ${new Date().toLocaleDateString()}`;
-
-    const directoryItem = currentItems.find((i) => i.pageType === "directory");
-    const firstItemWithTitle = currentItems.find(
-      (i) => i.title && i.title.trim().length > 0
-    );
-
-    if (coverItem && coverItem.title && coverItem.title.trim().length > 0) {
-      projectTitle = coverItem.title;
-    } else if (
-      directoryItem &&
-      directoryItem.title &&
-      directoryItem.title.trim().length > 0
-    ) {
-      projectTitle = directoryItem.title;
-    } else if (firstItemWithTitle) {
-      projectTitle = firstItemWithTitle.title!;
-    }
-
-    const sessionData: ProjectSession = {
-      id: sessionId,
-      title: projectTitle,
-      pageCount: currentItems.length,
-      lastModified: Date.now(),
-      status: currentItems.some((i) => i.status === "generating")
-        ? "generating"
-        : "completed",
-      items: currentItems,
-      globalConfig: currentConfig,
-      globalStyleMap: { ...currentStyleMap },
-      thumbnailUrl: thumbUrl,
-    };
-
-    setSessions((prev) => {
-      const exists = prev.find((s) => s.id === sessionId);
-      if (exists) {
-        return prev.map((s) => (s.id === sessionId ? sessionData : s));
-      }
-      return [sessionData, ...prev];
-    });
-
-    if (!selectedSessionId) {
-      setSelectedSessionId(sessionId);
-    }
+             return {
+                 ...p,
+                 title: items.find(i => i.pageType === 'cover')?.title || p.title,
+                 items: [...items],
+                 globalConfig: { ...config },
+                 globalStyleMap: { ...styleMap },
+                 lastModified: Date.now(),
+                 thumbnailUrl: thumbUrl,
+                 status: items.some(i => i.status === 'generating') ? 'generating' : 
+                         (items.length > 0 && items.every(i => i.status === 'success')) ? 'completed' : 
+                         items.length === 0 ? 'active' : p.status,
+                 meta: {
+                    ...p.meta,
+                    methods: Array.from(new Set([...(p.meta?.methods || []), config.generationMode === 'text' ? 'text' : 'image'])) as any
+                 }
+             };
+        }
+        return p;
+    }));
   };
+
+  // Auto-sync Project State on content changes (Debounced)
+  useEffect(() => {
+    if (currentProjectId && (items.length > 0 || config)) {
+        const timer = setTimeout(() => {
+            syncCurrentProject();
+        }, 800);
+        return () => clearTimeout(timer);
+    }
+  }, [items, config, styleMap, currentProjectId]);
 
   // Generation Logic
   const processItem = async (item: GeneratedSlide) => {
@@ -1045,12 +1298,19 @@ const App: React.FC = () => {
     setIsProcessing(false);
     // Explicitly call save with latest state
     setItems((currentItems) => {
-      saveProjectSession(
-        currentItems,
-        config,
-        styleMap,
-        selectedSessionIdRef.current
-      );
+      // Manual sync if needed
+      setProjects(prev => prev.map(p => {
+          if (p.id === currentProjectIdRef.current) {
+              return {
+                  ...p,
+                  items: [...currentItems],
+                  globalConfig: { ...config },
+                  globalStyleMap: { ...styleMap },
+                  lastModified: Date.now()
+              };
+          }
+          return p;
+      }));
       return currentItems;
     });
 
@@ -1229,7 +1489,7 @@ const App: React.FC = () => {
       "批量删除",
       `确定删除选中的 ${selectedHistoryIds.size} 个项目吗？`,
       () => {
-        setSessions((prev) =>
+        setProjects((prev) =>
           prev.filter((s) => !selectedHistoryIds.has(s.id))
         );
         setSelectedHistoryIds(new Set());
@@ -1244,9 +1504,9 @@ const App: React.FC = () => {
       "删除项目",
       "确定删除此历史记录吗？",
       () => {
-        setSessions((prev) => prev.filter((s) => s.id !== id));
-        if (selectedSessionId === id) {
-          setSelectedSessionId(null);
+        setProjects((prev) => prev.filter((s) => s.id !== id));
+        if (currentProjectId === id) {
+          setCurrentProjectId(null);
           setViewMode("history");
         }
         closeConfirm();
@@ -1261,9 +1521,9 @@ const App: React.FC = () => {
       setConfig(session.globalConfig);
       if (session.globalStyleMap) {
         setStyleMap(session.globalStyleMap);
-      } else if (session.globalStyleFiles) {
+      } else if ((session as any).globalStyleFiles) {
         // Backward compatibility logic
-        const f = session.globalStyleFiles[0];
+        const f = (session as any).globalStyleFiles[0];
         setStyleMap({
           cover: f,
           directory: f,
@@ -1273,11 +1533,168 @@ const App: React.FC = () => {
           custom: null,
         });
       }
-      setSelectedSessionId(session.id);
+      setCurrentProjectId(session.id);
       setViewMode("workbench");
       closeConfirm();
     });
   };
+
+  // --- PROJECT ACTIONS ---
+  const handleCreateProject = (titleInput: any = "未命名项目") => {
+    // Detect if input is an event (common when binding directly to onClick)
+    const title = (typeof titleInput === 'string' && titleInput.length > 0) 
+      ? titleInput 
+      : "未命名项目";
+
+    const newProject: ProjectSession = {
+      id: `proj_${Date.now()}`,
+      title,
+      lastModified: Date.now(),
+      createdAt: Date.now(),
+      status: 'idle',
+      items: [],
+      progress: 0,
+      methods: ['one-sentence'],
+      globalConfig: { 
+        ...config, 
+        // Only overwrite styleName if it's empty, otherwise keep the template's styleName
+        styleName: config.styleName && config.styleName.trim().length > 0 ? config.styleName : title 
+      },
+      globalStyleMap: { ...styleMap }, // Persist the current style map (images)
+      isPinned: false
+    };
+    setProjects(prev => [newProject, ...prev]);
+    setCurrentProjectId(newProject.id);
+    setViewMode('workbench');
+    showToast("项目创建成功", "success");
+  };
+
+  const handleOpenProject = (id: string) => {
+    const project = projects.find(p => p.id === id);
+    if (!project) return;
+
+    // Defense: Sanitize items to remove invalid File objects from JSON restore
+    const sanitizedItems = (Array.isArray(project.items) ? project.items : [])
+        .filter(item => item && typeof item === 'object')
+        .map(item => ({
+        ...item,
+        originalFile: (item.originalFile && item.originalFile instanceof Blob) ? item.originalFile : null
+    }));
+
+    setItems(sanitizedItems);
+    setConfig(project.globalConfig);
+    
+    // Defense: Sanitize Style Map
+    if (project.globalStyleMap) {
+        const safeMap = { ...project.globalStyleMap };
+        (Object.keys(safeMap) as PageType[]).forEach(key => {
+            if (safeMap[key] && !(safeMap[key] instanceof Blob)) {
+                safeMap[key] = null;
+            }
+        });
+        setStyleMap(safeMap);
+    } else if (project.globalStyleFiles) {
+         // Compat
+         // ... existing ... but make sure it is blob
+         const f = project.globalStyleFiles[0];
+         if (f && f instanceof Blob) {
+             setStyleMap({ cover: f, directory: f, transition: f, content: f, end: f, custom: null });
+         } else {
+             setStyleMap({ cover: null, directory: null, transition: null, content: null, end: null, custom: null });
+         }
+    }
+
+    setCurrentProjectId(id);
+    
+    // NEW: Read-Only Mode for Completed Projects
+    if (project.status === 'completed') {
+        setViewMode('history-detail');
+        // Ensure scrolling to top
+        window.scrollTo(0, 0);
+    } else {
+        setViewMode('workbench');
+    }
+  };
+
+  const handleRestoreToEdit = (id: string) => {
+    showConfirm(
+      "恢复编辑",
+      "确定要将此项目恢复为草稿状态吗？这将允许您修改内容和配置。",
+      () => {
+         setProjects(prev => prev.map(p => {
+             if (p.id === id) {
+                 return { ...p, status: 'active', lastModified: Date.now() };
+             }
+             return p;
+         }));
+         // Set View to Workbench
+         setCurrentProjectId(id);
+         setViewMode('workbench');
+         closeConfirm();
+         showToast("项目已恢复编辑状态", "success");
+      },
+      "info"
+    );
+  };
+
+  const handleDeleteProject = (id: string) => {
+    setProjects(prev => prev.filter(p => p.id !== id));
+    if (currentProjectId === id) setCurrentProjectId(null);
+    showToast("项目已删除", "success");
+  };
+
+  const handleTogglePin = (id: string) => {
+    setProjects(prev => prev.map(p => 
+      p.id === id ? { ...p, isPinned: !p.isPinned } : p
+    ));
+  };
+
+  const handleTogglePause = (id: string) => {
+    setProjects(prev => prev.map(p => 
+      p.id === id ? { ...p, status: p.status === 'generating' ? 'paused' : 'generating' } : p
+    ));
+  };
+
+  // --- AUTO-SAVE LOGIC ---
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (currentProjectIdRef.current) {
+        setProjects(prev => prev.map(p => {
+          if (p.id === currentProjectIdRef.current) {
+            // Only update if there are actual items or config changes
+            return {
+              ...p,
+              items: itemsRef.current,
+              globalConfig: configRef.current,
+              globalStyleMap: styleMapRef.current,
+              lastModified: Date.now(),
+              // Recalculate progress
+              progress: itemsRef.current.length > 0 
+                ? Math.round((itemsRef.current.filter(i => i.status === 'success').length / itemsRef.current.length) * 100)
+                : 0
+            };
+          }
+          return p;
+        }));
+        console.log("项目自动保存已触发 (3分钟间隔)");
+      }
+    }, 180000); // 3 minutes
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Global persistence for everything
+  useEffect(() => {
+    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+  }, [projects]);
+
+  useEffect(() => {
+    localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(styleTemplates));
+  }, [styleTemplates]);
+
+  useEffect(() => {
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, "completed");
+  }, [showOnboarding === false]);
 
   const toggleHistorySelection = (id: string) => {
     const newSet = new Set(selectedHistoryIds);
@@ -1286,7 +1703,7 @@ const App: React.FC = () => {
     setSelectedHistoryIds(newSet);
   };
 
-  const activeSession = sessions.find((s) => s.id === selectedSessionId);
+  const activeSession = projects.find((s) => s.id === currentProjectId);
   const hasAnyStyle = Object.values(styleMap).some((f) => f !== null);
 
   // Helper for Style Modal Types
@@ -1387,20 +1804,22 @@ const App: React.FC = () => {
                 selectedPresetForDetail.styleFile ? (
                   <>
                     <img
-                      src={URL.createObjectURL(
-                        selectedPresetForDetail.styleMap?.cover ||
-                          selectedPresetForDetail.styleFile!
-                      )}
+                      src={
+                        (selectedPresetForDetail.styleMap?.cover instanceof Blob) ? 
+                        URL.createObjectURL(selectedPresetForDetail.styleMap.cover) :
+                        (selectedPresetForDetail.styleFile instanceof Blob) ?
+                        URL.createObjectURL(selectedPresetForDetail.styleFile) : ''
+                      }
                       className="w-full h-full object-contain bg-slate-50"
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100">
                       <button
                         onClick={() =>
                           setLightboxImage(
-                            URL.createObjectURL(
-                              selectedPresetForDetail.styleMap?.cover ||
-                                selectedPresetForDetail.styleFile!
-                            )
+                            (selectedPresetForDetail.styleMap?.cover instanceof Blob) ?
+                             URL.createObjectURL(selectedPresetForDetail.styleMap.cover) :
+                            (selectedPresetForDetail.styleFile instanceof Blob) ?
+                             URL.createObjectURL(selectedPresetForDetail.styleFile) : undefined
                           )
                         }
                         className="flex flex-col items-center justify-center gap-1 bg-white/90 hover:bg-white text-slate-800 w-16 h-16 rounded-lg backdrop-blur shadow-sm transition-all"
@@ -1459,7 +1878,12 @@ const App: React.FC = () => {
             </button>
             <button
               onClick={confirmSavePreset}
-              className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg"
+              disabled={!saveToFavorites && !saveToLibrary}
+              className={`px-6 py-2 rounded-lg text-white transition-all ${
+                (!saveToFavorites && !saveToLibrary)
+                  ? "bg-slate-200 cursor-not-allowed"
+                  : "bg-indigo-500 hover:bg-indigo-600"
+              }`}
             >
               下一步
             </button>
@@ -1478,6 +1902,43 @@ const App: React.FC = () => {
             placeholder="例如：科技蓝商务风格 10P"
             autoFocus
           />
+          
+          <div className="pt-2 space-y-3">
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
+              <input 
+                type="checkbox" 
+                checked={saveToFavorites}
+                onChange={(e) => setSaveToFavorites(e.target.checked)}
+                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+              />
+              <div className="flex-1">
+                <span className="text-sm font-bold text-slate-700 block">保存到我的收藏夹</span>
+                <span className="text-[10px] text-slate-400">仅限当前项目级快速访问</span>
+              </div>
+              <Heart size={16} className={saveToFavorites ? "text-rose-500" : "text-slate-300"} />
+            </label>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
+              <input 
+                type="checkbox" 
+                checked={saveToLibrary}
+                onChange={(e) => setSaveToLibrary(e.target.checked)}
+                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+              />
+              <div className="flex-1">
+                <span className="text-sm font-bold text-slate-700 block">保存到风格模板库</span>
+                <span className="text-[10px] text-slate-400">跨项目全局复用素材</span>
+              </div>
+              <BookTemplate size={16} className={saveToLibrary ? "text-indigo-500" : "text-slate-300"} />
+            </label>
+          </div>
+          
+          {(!saveToFavorites && !saveToLibrary) && (
+            <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2 text-xs text-amber-700">
+              <AlertTriangle size={14} />
+              <span>请至少选择一个保存位置</span>
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -1574,88 +2035,16 @@ const App: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {filteredFavorites.map((fav) => {
-                const thumbnailSrc = getFavoriteThumbnail(fav);
-                return (
-                  <div
-                    key={fav.id}
-                    className={`border rounded-xl overflow-hidden hover:shadow-lg transition-all flex flex-col group bg-white border-slate-200`}
-                  >
-                    <div className="h-32 bg-slate-100 relative border-b border-slate-100">
-                      {/* Show cover or first available style */}
-                      {thumbnailSrc ? (
-                        <img
-                          src={thumbnailSrc}
-                          className="w-full h-full object-contain bg-slate-50"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-300">
-                          <ImageIcon size={24} />
-                        </div>
-                      )}
-                      <div className="absolute top-2 right-2 flex gap-1">
-                        <span className="bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
-                          {fav.config.targetPageCount}P
-                        </span>
-                      </div>
-                    </div>
-                    <div className="p-3 flex-1 flex flex-col">
-                      <h4 className="font-semibold text-slate-800 text-sm truncate mb-1">
-                        {fav.name}
-                      </h4>
-                      {/* Updated Labels to show full structure */}
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {/* REMOVED: Redundant styleName tag */}
-                        {fav.config.pageStructure.cover > 0 && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded border border-purple-100">
-                            封面{fav.config.pageStructure.cover}
-                          </span>
-                        )}
-                        {fav.config.pageStructure.directory > 0 && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-orange-50 text-orange-600 rounded border border-orange-100">
-                            目录{fav.config.pageStructure.directory}
-                          </span>
-                        )}
-                        {fav.config.pageStructure.transition > 0 && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-teal-50 text-teal-600 rounded border border-teal-100">
-                            过渡{fav.config.pageStructure.transition}
-                          </span>
-                        )}
-                        {fav.config.pageStructure.content > 0 && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded border border-indigo-100">
-                            正文{fav.config.pageStructure.content}
-                          </span>
-                        )}
-                        {fav.config.pageStructure.end > 0 && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-800 text-slate-200 rounded border border-slate-700">
-                            结束{fav.config.pageStructure.end}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-auto flex gap-2">
-                        <button
-                          onClick={() => setSelectedPresetForDetail(fav)}
-                          className="flex-1 py-1.5 border border-slate-200 rounded text-xs text-slate-600 hover:bg-slate-50"
-                        >
-                          详情
-                        </button>
-                        <button
-                          onClick={() => handleApplyPresetRequest(fav)}
-                          className="flex-1 py-1.5 bg-indigo-50 text-indigo-600 rounded text-xs font-medium hover:bg-indigo-100"
-                        >
-                          应用
-                        </button>
-                        <button
-                          onClick={() => handleDeleteFavoriteRequest(fav.id)}
-                          className="px-2 py-1.5 border border-slate-200 rounded text-xs text-slate-400 hover:text-red-500 hover:bg-red-50"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {filteredFavorites.map((fav) => (
+                <SharedStyleCard 
+                  key={fav.id}
+                  item={fav}
+                  onDetail={() => setSelectedPresetForDetail(fav)}
+                  onApply={() => handleApplyPresetRequest(fav)}
+                  onDelete={() => handleDeleteFavoriteRequest(fav.id)}
+                  variant="favorites"
+                />
+              ))}
             </div>
           )}
         </div>
@@ -1832,128 +2221,104 @@ const App: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Main UI Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50 h-16 shadow-sm">
-        <div className="max-w-[1440px] mx-auto px-6 h-full flex items-center justify-between">
-          <div
-            className="flex items-center gap-2 cursor-pointer"
-            onClick={() => setViewMode("workbench")}
-          >
-            <div className="text-yellow-500">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M4.5 18.5C4.5 18.5 3.5 14.5 6.5 10.5C9.5 6.5 16.5 4.5 19.5 4.5C19.5 4.5 18 9 14.5 12C11 15 8 18.5 4.5 18.5Z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+    <ErrorBoundary>
+    <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans selection:bg-rose-100 selection:text-rose-600 flex flex-col">
+    
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+      <header className="sticky top-0 z-[100] bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-4">
+        <div className="max-w-[1440px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div
+              className="flex items-center gap-2.5 cursor-pointer group"
+              onClick={() => setViewMode('dashboard')}
+            >
+              <div className="w-10 h-10 bg-gradient-to-br from-rose-400 to-rose-600 rounded-2xl flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:scale-110 transition-transform">
+                <Wand2 className="text-white" size={20} />
+              </div>
+              <div>
+                <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">BananaSlides</h1>
+                <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mt-1 block">Gen-AI PPT</span>
+              </div>
             </div>
-            <h1 className="text-lg font-bold tracking-tight text-slate-900">
-              BananaSlide
-            </h1>
+
+            <nav className="hidden md:flex items-center bg-slate-100/50 p-1 rounded-xl border border-slate-200/50">
+              <button
+                onClick={() => setViewMode("dashboard")}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === "dashboard"
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Home size={14} /> 仪表盘
+              </button>
+              <button
+                onClick={() => setViewMode("history")}
+                className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  viewMode === "history" || viewMode === "history-detail"
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <History size={14} /> 历史库
+              </button>
+            </nav>
           </div>
-          <div className="flex items-center bg-slate-100 p-1 rounded-lg">
+
+          <div className="flex items-center gap-3">
+            {viewMode === "workbench" && (
+              <button
+                onClick={() => setViewMode("dashboard")}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-xl text-xs font-bold transition-all shadow-sm"
+              >
+                <ArrowLeft size={14} /> 返回主页
+              </button>
+            )}
             <button
-              onClick={() => setViewMode("workbench")}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                viewMode === "workbench"
-                  ? "bg-white shadow-sm text-slate-800"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
+               onClick={() => setViewMode('templates')}
+               className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white hover:bg-black rounded-xl text-xs font-bold transition-all shadow-lg shadow-slate-200/50"
             >
-              <LayoutGrid size={14} /> 工作台 ({items.length}/
-              {config.targetPageCount})
+              <BookTemplate size={14} /> 风格模板库
             </button>
+            <div className="h-4 w-px bg-slate-200 mx-1"></div>
             <button
-              onClick={() => setViewMode("history")}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                viewMode === "history" || viewMode === "history-detail"
-                  ? "bg-white shadow-sm text-slate-800"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              <History size={14} /> 历史记录 ({sessions.length})
-            </button>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={toggleFullscreen}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-full transition-all"
-              title={isFullscreen ? "退出全屏" : "全屏模式"}
+               onClick={toggleFullscreen}
+               className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+               title={isFullscreen ? "退出全屏" : "全屏模式"}
             >
               {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
             </button>
-            {viewMode === "workbench" ? (
-              // Replaced Batch Generate with Global Config
-              <button
-                onClick={() => setIsGlobalSettingsOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-800 transition-all shadow-sm"
-              >
-                <Settings size={18} /> 全局配置
-              </button>
-            ) : viewMode === "history" ? (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    setIsHistorySelectionMode(!isHistorySelectionMode);
-                    setSelectedHistoryIds(new Set());
-                  }}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                    isHistorySelectionMode
-                      ? "bg-indigo-50 text-indigo-600 border border-indigo-200"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  <ListChecks size={16} />{" "}
-                  {isHistorySelectionMode ? "退出管理" : "管理"}
-                </button>
-                {isHistorySelectionMode && (
-                  <button
-                    onClick={handleBatchDeleteHistory}
-                    disabled={selectedHistoryIds.size === 0}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      selectedHistoryIds.size === 0
-                        ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                        : "bg-red-500 text-white hover:bg-red-600"
-                    }`}
-                  >
-                    <Trash2 size={16} /> 删除 ({selectedHistoryIds.size})
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button
-                  onClick={() =>
-                    activeSession && handleDeleteSession(activeSession.id)
-                  }
-                  className="flex items-center gap-2 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium transition-all"
-                >
-                  <Trash2 size={16} /> 删除
-                </button>
-                <button
-                  onClick={() =>
-                    activeSession && handleRestoreSession(activeSession)
-                  }
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-medium transition-all"
-                >
-                  <RefreshCcw size={16} /> 恢复项目
-                </button>
-              </div>
-            )}
+            <button
+              onClick={() => setIsGlobalSettingsOpen(true)}
+              className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+              title="全局设置"
+            >
+              <Settings size={20} />
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-[1440px] mx-auto px-6 py-6 space-y-8">
+      {viewMode !== 'templates' && (
+      <main className="max-w-[1600px] mx-auto px-6 py-6 space-y-8 flex-1">
+        {viewMode === "dashboard" && (
+          <Dashboard
+            projects={projects}
+            onCreateProject={handleCreateProject}
+            onOpenProject={handleOpenProject}
+            onTogglePause={handleTogglePause}
+            onDeleteProject={handleDeleteProject}
+            onTogglePin={handleTogglePin}
+          />
+        )}
+
         {viewMode === "workbench" && (
           <>
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden">
@@ -1964,7 +2329,7 @@ const App: React.FC = () => {
               {/* --- Moved Save Preset & Favorites Buttons Here --- */}
               <div className="absolute top-4 right-6 flex items-center gap-3 z-10">
                 <button
-                  onClick={openSavePresetModal}
+                  onClick={() => setViewMode('templates')}
                   disabled={isPresetSaved}
                   className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm transition-all font-medium ${
                     isPresetSaved
@@ -1972,8 +2337,7 @@ const App: React.FC = () => {
                       : "bg-white text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"
                   }`}
                 >
-                  {isPresetSaved ? <Check size={14} /> : <Heart size={14} />}
-                  {isPresetSaved ? "已保存" : "保存预设"}
+                  <BookTemplate size={14} /> 风格库
                 </button>
                 <button
                   onClick={() => setIsFavoritesModalOpen(true)}
@@ -1984,44 +2348,49 @@ const App: React.FC = () => {
               </div>
 
               {/* Updated Layout: Top Row (Left 1/3, Right 2/3) + Bottom Row */}
-              <div className="flex flex-col gap-6 mt-6">
-                <div className="flex flex-col lg:flex-row gap-6 lg:h-[340px]">
+              {/* Updated Layout: Top Row (Left 1/3, Right 2/3) + Bottom Row */}
+              <div className="flex flex-col gap-6 mt-6 min-w-0 w-full">
+                <div className="flex flex-col lg:flex-row gap-6 lg:h-[340px] w-full min-w-0">
                   {/* Left 1/3: Global Style Images - CAROUSEL PREVIEW */}
-                  <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group">
+                  <div className="w-full lg:flex-1 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group min-w-0">
                     {hasAnyStyle ? (
                       <>
                         {/* Main View Area */}
-                        <div className="flex-1 relative bg-slate-100 flex items-center justify-center p-2">
+                        {/* Main View Area */}
+                        <div className="flex-1 relative bg-slate-100 w-full min-h-0">
                           {styleMap[activePreviewType] ? (
-                            <img
-                              src={URL.createObjectURL(
-                                styleMap[activePreviewType]!
-                              )}
-                              alt={activePreviewType}
-                              className="w-full h-full object-contain cursor-zoom-in"
-                              onClick={() =>
-                                setLightboxImage(
-                                  URL.createObjectURL(
-                                    styleMap[activePreviewType]!
+                            <div className="absolute inset-2 flex items-center justify-center">
+                              <img
+                                src={URL.createObjectURL(
+                                  styleMap[activePreviewType]!
+                                )}
+                                alt={activePreviewType}
+                                className="w-full h-full object-contain cursor-zoom-in"
+                                onClick={() =>
+                                  setLightboxImage(
+                                    URL.createObjectURL(
+                                      styleMap[activePreviewType]!
+                                    )
                                   )
-                                )
-                              }
-                            />
-                          ) : (
-                            <div className="text-slate-400 text-xs flex flex-col items-center gap-2">
-                              <ImageIcon size={32} opacity={0.5} />
-                              <span>
-                                无
-                                {
-                                  PAGE_TYPES.find(
-                                    (p) => p.type === activePreviewType
-                                  )?.label.split(" ")[0]
                                 }
-                                参考图
-                              </span>
-                              <span className="text-[10px] text-slate-300">
-                                将使用默认风格
-                              </span>
+                              />
+                            </div>
+                          ) : (
+                            <div className="absolute inset-0 p-4">
+                              <div
+                                onClick={openStyleModal}
+                                className="w-full h-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:bg-rose-50/30 transition-all rounded-lg cursor-pointer flex flex-col items-center justify-center text-center bg-slate-50"
+                              >
+                                <div className="bg-white p-4 rounded-full mb-4 shadow-sm text-rose-500 border border-slate-100">
+                                  <Upload size={24} />
+                                </div>
+                                <h4 className="font-bold text-slate-700 mb-1">
+                                  上传风格参考图
+                                </h4>
+                                <p className="text-xs text-slate-400 px-4">
+                                  支持为封面、目录、正文等不同页面分别设置风格
+                                </p>
+                              </div>
                             </div>
                           )}
 
@@ -2048,12 +2417,12 @@ const App: React.FC = () => {
                         </div>
 
                         {/* Bottom Carousel / Tabs */}
-                        <div className="h-14 bg-white border-t border-slate-200 flex items-center px-2 gap-2 overflow-x-auto custom-scrollbar shrink-0">
+                        <div className="h-14 bg-white border-t border-slate-200 flex items-center px-2 gap-2 overflow-x-auto custom-scrollbar shrink-0 w-full">
                           {PAGE_TYPES.map((pt) => (
                             <button
                               key={pt.type}
                               onClick={() => setActivePreviewType(pt.type)}
-                              className={`flex-1 min-w-[60px] h-10 rounded border transition-all relative overflow-hidden group/thumb
+                              className={`flex-1 min-w-[50px] h-10 rounded border transition-all relative overflow-hidden group/thumb
                                                         ${
                                                           activePreviewType ===
                                                           pt.type
@@ -2082,10 +2451,10 @@ const App: React.FC = () => {
                         </div>
                       </>
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
+                      <div className="absolute inset-0 p-4">
                         <div
                           onClick={openStyleModal}
-                          className="w-full h-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:bg-rose-50/30 transition-all rounded-lg cursor-pointer flex flex-col items-center justify-center text-center p-4 bg-slate-50"
+                          className="w-full h-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:bg-rose-50/30 transition-all rounded-lg cursor-pointer flex flex-col items-center justify-center text-center bg-slate-50"
                         >
                           <div className="bg-white p-4 rounded-full mb-4 shadow-sm text-rose-500 border border-slate-100">
                             <Upload size={24} />
@@ -2102,7 +2471,7 @@ const App: React.FC = () => {
                   </div>
 
                   {/* Right 2/3: Controls */}
-                  <div className="w-full lg:w-2/3 bg-white border border-slate-200 rounded-xl p-5 h-full overflow-hidden">
+                  <div className="w-full lg:flex-[2] bg-white border border-slate-200 rounded-xl p-5 h-full overflow-hidden min-w-0">
                     <StyleControls
                       config={config}
                       onChange={handleConfigChange}
@@ -2530,33 +2899,22 @@ const App: React.FC = () => {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setViewMode("history-detail");
-                                  setSelectedSessionId(session.id);
+                                  handleOpenProject(session.id);
                                 }}
                                 className="text-sm bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 font-medium transition-colors"
                               >
-                                查看详情
+                                打开项目
                               </button>
                               <div className="h-4 w-px bg-slate-200 mx-1"></div>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDeleteSession(session.id);
+                                  handleDeleteProject(session.id);
                                 }}
                                 className="text-sm text-slate-400 hover:text-red-500 px-2 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
                                 title="删除"
                               >
                                 <Trash2 size={16} />
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRestoreSession(session);
-                                }}
-                                className="text-sm text-slate-400 hover:text-green-600 px-2 py-1.5 rounded-lg hover:bg-green-50 transition-colors"
-                                title="恢复到工作台"
-                              >
-                                <RefreshCcw size={16} />
                               </button>
                             </div>
                           )}
@@ -2600,16 +2958,27 @@ const App: React.FC = () => {
               <button
                 onClick={() => setViewMode("history")}
                 className="text-slate-400 hover:text-slate-700 flex items-center gap-1 text-sm font-medium transition-colors"
+                title="返回历史列表"
               >
                 <ArrowRight size={16} className="rotate-180" /> 返回列表
               </button>
+              
               <div className="h-4 w-px bg-slate-300 mx-2"></div>
+              
               <h2 className="text-xl font-bold text-slate-800">
                 {activeSession.title}
               </h2>
               <span className="text-slate-400 text-sm">
-                ({activeSession.pageCount} 页)
+                ({activeSession.items.length} 页)
               </span>
+
+              {/* Restore Button */}
+              <button
+                onClick={() => handleRestoreToEdit(activeSession.id)}
+                className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-100 transition-colors shadow-sm"
+              >
+                <Edit3 size={14} /> 恢复编辑
+              </button>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden mb-8">
@@ -2621,13 +2990,11 @@ const App: React.FC = () => {
                 <div className="flex flex-col lg:flex-row gap-6 lg:h-[340px]">
                   {/* Left 1/3: Images - Single View */}
                   <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group">
-                    {activeSession.globalStyleMap?.cover ||
-                    activeSession.globalStyleFiles?.length ? (
+                    {activeSession.globalStyleMap?.cover ? (
                       <>
                         <img
                           src={URL.createObjectURL(
-                            activeSession.globalStyleMap?.cover ||
-                              activeSession.globalStyleFiles?.[0]!
+                            activeSession.globalStyleMap.cover
                           )}
                           className="w-full h-full object-contain bg-slate-50"
                         />
@@ -2636,8 +3003,7 @@ const App: React.FC = () => {
                             onClick={() =>
                               setLightboxImage(
                                 URL.createObjectURL(
-                                  activeSession.globalStyleMap?.cover ||
-                                    activeSession.globalStyleFiles?.[0]!
+                                    activeSession.globalStyleMap?.cover!
                                 )
                               )
                             }
@@ -2696,6 +3062,38 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+      )}
+
+      {/* Style Template Manager (Full View) */}
+      {viewMode === 'templates' && (
+        <div className="flex-1 bg-slate-50 overflow-hidden flex flex-col h-[calc(100vh-64px)]">
+           <StyleTemplateManager
+             isOpen={true} // Always open when in this view
+             onClose={() => setViewMode('workbench')} // Return to workbench on close
+             onApplyTemplate={(template) => {
+               handleApplyTemplate(template);
+             }}
+             templates={styleTemplates}
+             onUpdateTemplates={setStyleTemplates}
+             activeTemplateId={activeTemplateId}
+             favorites={favorites}
+             onApplyFavorite={handleApplyPresetRequest}
+             onDeleteFavorite={handleDeleteFavoriteRequest}
+             onToggleFavorite={handleToggleFavorite}
+             appSettings={appSettings}
+             onShowToast={showToast}
+           />
+        </div>
+      )}
+
+
+      {/* Onboarding Guide */}
+      <OnboardingGuide
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+      />
+    </div>
+    </ErrorBoundary>
     </div>
   );
 };

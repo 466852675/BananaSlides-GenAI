@@ -68,19 +68,19 @@ const LANGUAGES: { label: string; value: OutputLanguage }[] = [
 
 const DEFAULT_COMBO_CONFIG: CustomComboConfig = {
     text: {
-        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
         apiKey: '',
         model: 'glm-4.7'
     },
     image: {
-        baseUrl: 'https://generativelanguage.googleapis.com',
-        apiKey: '',
+        baseUrl: 'http://127.0.0.1:8045/v1',
+        apiKey: 'sk-4bc511924aa24b6c86cfe6283c2b7b0a',
         model: 'gemini-3-pro-image'
     },
     vision: {
-        baseUrl: 'https://api.siliconflow.cn/v1',
-        apiKey: '',
-        model: 'GLM-4.1V-9B-Thinking'
+        baseUrl: 'http://127.0.0.1:8045/v1',
+        apiKey: 'sk-4bc511924aa24b6c86cfe6283c2b7b0a',
+        model: 'gemini-3-flash'
     }
 };
 
