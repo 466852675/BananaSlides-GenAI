@@ -1,0 +1,73 @@
+// server/prisma/schema.prisma
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Project {
+  id           String   @id @default(uuid())
+  title        String
+  displayId    String?  // Human-readable ID like PID-240114-ABCD
+  status       String   @default("idle") // 'idle' | 'generating' | 'completed' | 'error'
+  isPinned     Boolean  @default(false)
+  
+  // JSON Blobs (Store complex config structures)
+  // Maps to Frontend: StyleConfig
+  globalConfig String   // JSON string
+  
+  // Maps to Frontend: GlobalStyleMap (URL Strings)
+  styleMap     String?  // JSON string
+  
+  items        Slide[]
+  
+  thumbnailUrl String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  snapshots    ProjectSnapshot[]
+}
+
+model ProjectSnapshot {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  version   Int      // Incremental version number for the project
+  summary   String?  // AI generated summary of changes
+  
+  data      String   // Full JSON payload of the project state
+  
+  createdAt DateTime @default(now())
+  
+  @@index([projectId])
+}
+
+model Slide {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  index           Int      // Sort order
+  pageType        String   // 'cover' | 'directory' | ...
+  contentType     String   // 'text' | 'image'
+  
+  title           String
+  content         String   // Markdown
+  brief           String?  // Brief description
+  
+  // Visual variants
+  variants        String   @default("[]") // JSON Array of URL strings
+  variantCount    Int      @default(2)    // Number of variants to generate
+  previewUrl      String?  // Currently selected variant URL
+  
+  // Original file reference (for traceability)
+  originalFileRef String?  // JSON string
+  
+  status          String   @default("idle")
+  createdAt       DateTime @default(now())
+}

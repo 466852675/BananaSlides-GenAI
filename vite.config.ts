@@ -9,6 +9,14 @@ export default defineConfig(({ mode }) => {
         port: 1000,
         host: '0.0.0.0',
         proxy: {
+          '/api': {
+            target: 'http://localhost:1111',
+            changeOrigin: true
+          },
+          '/uploads': {
+            target: 'http://localhost:1111',
+            changeOrigin: true
+          },
           '/mineru-proxy': {
             target: 'https://mineru.net',
             changeOrigin: true,
@@ -28,7 +36,7 @@ export default defineConfig(({ mode }) => {
       },
       resolve: {
         alias: {
-          '@': path.resolve(__dirname, '.'),
+          '@': path.resolve(__dirname, 'src'),
         }
       }
     };

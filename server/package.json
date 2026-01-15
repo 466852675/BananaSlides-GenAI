@@ -2,17 +2,18 @@
   "name": "server",
   "version": "1.0.0",
   "description": "",
-  "type": "module",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node index.ts",
-    "start": "node index.js",
+    "dev": "ts-node src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@prisma/client": "5.11.0",
     "adm-zip": "^0.5.16",
     "axios": "^1.13.2",
     "cors": "^2.8.5",
@@ -27,6 +28,7 @@
     "@types/multer": "^2.0.0",
     "@types/node": "^25.0.8",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "prisma": "5.11.0"
   }
 }

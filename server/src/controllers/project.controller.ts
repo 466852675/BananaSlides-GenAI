@@ -1,0 +1,166 @@
+import { Request, Response } from 'express';
+import { projectService } from '../services/project.service';
+
+// --- Helpers ---
+const safeJSONParse = (str: string | null | any) => {
+    if (!str) return null;
+    // If already an object or array (Prisma auto-parses JSON fields), return as-is
+    if (typeof str === 'object') return str;
+    // Otherwise parse the string
+    try {
+        return JSON.parse(str);
+    } catch (e) {
+        return null;
+    }
+};
+
+const safeJSONStringify = (obj: any) => {
+    if (obj === undefined || obj === null) return null;
+    if (typeof obj === 'string') return obj; // Already string?
+    return JSON.stringify(obj);
+};
+
+const transformProjectOut = (p: any) => {
+    if (!p) return null;
+    return {
+        ...p,
+        globalConfig: safeJSONParse(p.globalConfig) || {},
+        styleMap: safeJSONParse(p.styleMap),
+        items: p.items?.map((i: any) => ({
+            ...i,
+            variants: safeJSONParse(i.variants) || [],
+            originalFileRef: safeJSONParse(i.originalFileRef)
+        }))
+    };
+};
+
+// --- Controllers ---
+
+export const getProjects = async (req: Request, res: Response) => {
+    try {
+        const rawProjects = await projectService.findAll();
+        const projects = rawProjects.map(transformProjectOut);
+        res.json(projects);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const getProject = async (req: Request, res: Response) => {
+    try {
+        const rawProject = await projectService.findById(req.params.id as string);
+        if (!rawProject) {
+            res.status(404).json({ error: 'Project not found' });
+            return;
+        }
+        res.json(transformProjectOut(rawProject));
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const createProject = async (req: Request, res: Response) => {
+    try {
+        const { title, status, isPinned, globalConfig, styleMap, items, thumbnailUrl } = req.body;
+        
+        // Transform Input -> Prisma Format
+        const projectData: any = {
+            title,
+            status: status || 'idle', // Use provided status or default to idle
+            isPinned: isPinned || false,
+            thumbnailUrl,
+            globalConfig: safeJSONStringify(globalConfig) || "{}",
+            styleMap: safeJSONStringify(styleMap),
+            items: {
+                create: (items || []).map((item: any, idx: number) => ({
+                    index: idx,
+                    pageType: item.pageType,
+                    contentType: item.contentType,
+                    title: item.title || "Untitled",
+                    content: item.content || "",
+                    brief: item.brief || "",
+                    variants: safeJSONStringify(item.variants) || "[]",
+                    originalFileRef: safeJSONStringify(item.originalFileRef),
+                    status: item.status || "idle"
+                }))
+            }
+        };
+
+        const result = await projectService.create(projectData);
+        res.status(201).json(transformProjectOut(result));
+    } catch (error: any) {
+        console.error("Create Project Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const updateProject = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { title, globalConfig, styleMap, status, isPinned, items } = req.body;
+        
+        // This is a simplified update 
+        // Real-world might need 'upsert' for items, but Phase 1 focuses on top-level
+        // or full replacement.
+        
+        /* 
+           Ideally, for full sync:
+           delete all items? No that's expensive via Prisma without transaction.
+           For now, let's just update Top Level + Global Config
+        */
+        
+        const updateData: any = {};
+        if (title !== undefined) updateData.title = title;
+        if (status !== undefined) updateData.status = status;
+        if (isPinned !== undefined) updateData.isPinned = isPinned;
+        if (globalConfig !== undefined) updateData.globalConfig = safeJSONStringify(globalConfig);
+        if (styleMap !== undefined) updateData.styleMap = safeJSONStringify(styleMap);
+
+        // Special handling for Pinning:
+        // If ONLY 'isPinned' is being updated, we want to PRESERVE the original 'updatedAt'
+        // so that pinning/unpinning doesn't change the project's sort order (last active time).
+        const updateKeys = Object.keys(updateData);
+        if (updateKeys.length === 1 && updateKeys[0] === 'isPinned') {
+            const result = await projectService.setPinnedStatus(id as string, isPinned);
+            if (result) {
+                res.json(transformProjectOut(result));
+            } else {
+                res.status(404).json({ error: 'Project not found' });
+            }
+            return;
+        }
+
+        const result = await projectService.update(id as string, updateData);
+        res.json(transformProjectOut(result));
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const syncProjectSlides = async (req: Request, res: Response) => {
+    try {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const { slides } = req.body;
+
+        if (!Array.isArray(slides)) {
+            res.status(400).json({ error: 'slides must be an array' });
+            return;
+        }
+
+        const result = await projectService.syncSlides(id, slides);
+        res.json(transformProjectOut(result));
+    } catch (error: any) {
+        console.error('Sync Slides Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const deleteProject = async (req: Request, res: Response) => {
+    try {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        await projectService.delete(id);
+        res.json({ success: true });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
