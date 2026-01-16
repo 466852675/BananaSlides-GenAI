@@ -55,7 +55,7 @@ export interface StylePreset {
   createdAt: number;
 }
 
-export type ProjectStatus = 'idle' | 'generating' | 'paused' | 'completed' | 'error';
+export type ProjectStatus = 'idle' | 'in-progress' | 'generating' | 'paused' | 'completed' | 'error';
 
 export interface ProjectSession {
   id: string;

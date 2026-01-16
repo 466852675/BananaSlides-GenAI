@@ -11,7 +11,7 @@ interface StyleControlsProps {
 
 export const STYLE_PRESETS = ["极简科技", "商务严谨", "时尚杂志", "扁平插画", "复古风"];
 export const COLOR_PRESETS = ["经典蓝白", "黑金奢华", "活力橙灰", "莫兰迪色系", "极简黑白"];
-export const RATIO_PRESETS = ["16:9", "4:3", "16:10", "1:1"];
+export const RATIO_PRESETS = ["16:9", "4:3", "1:1"];
 
 export const StyleControls: React.FC<StyleControlsProps> = ({ config, onChange, readOnly = false }) => {
   
@@ -47,7 +47,7 @@ export const StyleControls: React.FC<StyleControlsProps> = ({ config, onChange, 
                 </div>
                 {!readOnly && (
                     <div className="flex flex-wrap gap-1.5 mb-2">
-                    {STYLE_PRESETS.slice(0, 4).map(style => (
+                    {STYLE_PRESETS.map(style => (
                         <button
                         key={style}
                         onClick={() => onChange('styleName', style)}
@@ -60,16 +60,32 @@ export const StyleControls: React.FC<StyleControlsProps> = ({ config, onChange, 
                         {style}
                         </button>
                     ))}
+                    <button
+                        onClick={() => onChange('styleName', '')}
+                        className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                            !STYLE_PRESETS.includes(config.styleName)
+                            ? 'bg-slate-800 text-white border-slate-800'
+                            : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                        }`}
+                    >
+                        自定义
+                    </button>
                     </div>
                 )}
-                <input
-                  type="text"
-                  value={config.styleName}
-                  onChange={(e) => onChange('styleName', e.target.value)}
-                  placeholder="输入风格描述..."
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all disabled:bg-slate-50 disabled:text-slate-500"
-                  disabled={readOnly}
-                />
+                {!STYLE_PRESETS.includes(config.styleName) && !readOnly && (
+                  <input
+                    type="text"
+                    value={config.styleName}
+                    onChange={(e) => onChange('styleName', e.target.value)}
+                    placeholder="支持手动输入自定义风格 (如: 极简线条科技风...)"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all"
+                  />
+                )}
+                {readOnly && (
+                  <div className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+                    {config.styleName || '未设置'}
+                  </div>
+                )}
               </div>
 
               {/* Ratio */}
@@ -125,9 +141,9 @@ export const StyleControls: React.FC<StyleControlsProps> = ({ config, onChange, 
                  {/* Always show input to allow refinement or custom entry */}
                  <input
                     type="text"
-                    value={config.colorPalette}
+                    value={COLOR_PRESETS.includes(config.colorPalette) ? '' : config.colorPalette}
                     onChange={(e) => onChange('colorPalette', e.target.value)}
-                    placeholder="输入自定义配色 (如: 红黑渐变, 莫兰迪蓝...)"
+                    placeholder="支持手动输入自定义配色 (如: 红黑渐变, 莫兰迪蓝...)"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all text-slate-600"
                     disabled={readOnly}
                  />

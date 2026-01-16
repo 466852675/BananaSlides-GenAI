@@ -70,11 +70,6 @@ const calculateThumbnail = (items: any[], styleMap: any): string | undefined => 
 // Transform DTO to Frontend Type
 // Note: We need to be careful with JSON parsing
 const transformProject = (dto: ProjectDTO): ProjectSession => {
-    console.log('[transformProject] Raw DTO:', dto);
-    console.log('[transformProject] DTO.items count:', dto.items?.length || 0);
-    console.log('[transformProject] DTO.globalConfig type:', typeof dto.globalConfig);
-    console.log('[transformProject] DTO.styleMap type:', typeof dto.styleMap);
-    
     // Prisma might auto-parse JSON fields, so check type first
     let globalConfig;
     if (typeof dto.globalConfig === 'object' && dto.globalConfig !== null) {
@@ -147,17 +142,26 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
     // Determine effective status
     let effectiveStatus = dto.status;
     
-    // 1. If any item is generating, the project is generating
-    if (transformedItems.some(i => i.status === 'generating')) {
+    // 1. If no items, the project is 'idle' (Not Started / 未开始)
+    if (transformedItems.length === 0) {
+        effectiveStatus = 'idle';
+    }
+    // 2. If any item has error status, the project is 'error' (生成失败)
+    else if (transformedItems.some(i => i.status === 'error')) {
+        effectiveStatus = 'error';
+    }
+    // 3. If any item is generating, the project is 'generating' (生成中)
+    else if (transformedItems.some(i => i.status === 'generating')) {
         effectiveStatus = 'generating';
     } 
-    // 2. If finished (all targets completed), mark as completed
-    else if (completedCount >= targetPageCount && targetPageCount > 0) {
+    // 4. If ALL items are completed (success), mark as 'completed' (已完成)
+    else if (transformedItems.length > 0 && transformedItems.every(i => i.status === 'success')) {
         effectiveStatus = 'completed';
     }
-    // 3. If no items, it's strictly 'idle' (Not Started)
-    // 4. If items exist but not generating and not completed, it corresponds to 'In Progress' 
-    //    (which technically maps to 'idle' or 'paused' in DB, handled by UI)
+    // 5. If has items but not all completed and not generating, it's 'in-progress' (进行中)
+    else if (transformedItems.length > 0) {
+        effectiveStatus = 'in-progress';
+    }
 
     return {
         id: dto.id,
@@ -181,14 +185,9 @@ export const useProjects = () => {
         queryKey: ['projects'],
         queryFn: async () => {
              try {
-                 console.log('[useProjects] Fetching projects from API...');
                  const dtos = await client.get<ProjectDTO[]>('/projects');
-                 console.log('[useProjects] Raw DTOs received:', dtos);
                  // @ts-ignore
-                 const projects = dtos.map(transformProject);
-                 console.log('[useProjects] Fetched projects count:', projects.length);
-                 console.log('[useProjects] Projects:', projects);
-                 return projects;
+                 return dtos.map(transformProject);
              } catch (error) {
                  console.error('[useProjects] Error fetching projects:', error);
                  throw error;
@@ -213,7 +212,6 @@ export const useCreateProject = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (data: Partial<ProjectSession>) => {
-            console.log('[useCreateProject] Mutation starting with data:', data);
             // Convert Frontend -> Backend DTO
             const payload = {
                 title: data.title || 'Untitled',
@@ -227,12 +225,9 @@ export const useCreateProject = () => {
             };
             // client.post returns data directly due to interceptor
             const result = await client.post('/projects', payload) as unknown as ProjectDTO;
-            console.log('[useCreateProject] Mutation result:', result);
             return result;
         },
         onSuccess: (data) => {
-            console.log('[useCreateProject] onSuccess called, invalidating projects query');
-            console.log('[useCreateProject] Created project data:', data);
             queryClient.invalidateQueries({ queryKey: ['projects'] });
         },
         onError: (error) => {
@@ -285,40 +280,28 @@ export const useSyncProjectSlides = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async ({ projectId, slides }: { projectId: string; slides: GeneratedSlide[] }) => {
-            console.log('[useSyncProjectSlides] Syncing', slides.length, 'slides for project', projectId);
-            const slidesDebug = slides.map(s => ({
-                id: s.id,
-                contentType: s.contentType,
-                previewUrl: s.previewUrl,
-                variants: s.variants,
-                originalFile: typeof s.originalFile === 'string' ? s.originalFile : 'File object'
-            }));
-            console.log('[useSyncProjectSlides] Slides data (JSON):', JSON.stringify(slidesDebug, null, 2));
             // Ensure all originalFiles are uploaded
             const processedSlides = await Promise.all(slides.map(async (s) => {
+                let originalFileUrl = s.originalFile;
+                let previewUrl = s.previewUrl;
+
                 if (s.originalFile instanceof File) {
-                    const url = await ensureUploaded(s.originalFile);
-                    // Also update previewUrl to the real URL, effectively replacing any temporary blob: URL
-                    return { ...s, originalFile: url, previewUrl: url };
+                    originalFileUrl = await ensureUploaded(s.originalFile);
+                    previewUrl = originalFileUrl;
                 }
-                return s;
+
+                return {
+                    ...s,
+                    originalFile: originalFileUrl,
+                    previewUrl: previewUrl,
+                    variants: JSON.stringify(s.variants)
+                };
             }));
 
             const response = await client.patch(`/projects/${projectId}/slides`, { slides: processedSlides }) as any;
-            console.log('[useSyncProjectSlides] Response:', response);
-            if (response.items) {
-                console.log('[useSyncProjectSlides] Response items (JSON):', JSON.stringify(response.items.map((item: any) => ({
-                    id: item.id,
-                    contentType: item.contentType,
-                    variants: item.variants,
-                    content: item.content
-                })), null, 2));
-            }
             return response;
         },
         onSuccess: (data: any, variables) => {
-            console.log('[useSyncProjectSlides] Sync successful, response data:', data);
-            console.log('[useSyncProjectSlides] Response has items:', data?.items?.length || 0);
             queryClient.invalidateQueries({ queryKey: ['projects'] });
             queryClient.invalidateQueries({ queryKey: ['project', variables.projectId] });
         },

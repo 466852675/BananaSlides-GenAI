@@ -3,12 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { Settings, Cpu, Image as ImageIcon, Globe, Save, RotateCcw, Server, FileText, Eye } from 'lucide-react';
 import { AppSettings, AIProvider, ImageResolution, OutputLanguage, CustomComboConfig } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useResetSettings } from '../api/settings';
 
 interface GlobalSettingsModalProps {
     isOpen: boolean;
     onClose: () => void;
     currentSettings: AppSettings;
     onSave: (settings: AppSettings) => void;
+    readOnly?: boolean;
 }
 
 const PROVIDERS: { label: string; value: AIProvider }[] = [
@@ -74,12 +76,12 @@ const DEFAULT_COMBO_CONFIG: CustomComboConfig = {
     },
     image: {
         baseUrl: 'http://127.0.0.1:8045/v1',
-        apiKey: 'sk-4bc511924aa24b6c86cfe6283c2b7b0a',
+        apiKey: '',
         model: 'gemini-3-pro-image'
     },
     vision: {
         baseUrl: 'http://127.0.0.1:8045/v1',
-        apiKey: 'sk-4bc511924aa24b6c86cfe6283c2b7b0a',
+        apiKey: '',
         model: 'gemini-3-flash'
     }
 };
@@ -106,15 +108,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
         resolution: '2048x2048'
     },
     performance: {
-        textConcurrency: undefined, // Unlimited by default
+        textConcurrency: 10, // Default to 10 for better performance
         imageConcurrency: undefined // Unlimited by default
     },
     language: 'zh'
 };
 
-export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen, onClose, currentSettings, onSave }) => {
+export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen, onClose, currentSettings, onSave, readOnly = false }) => {
     const [settings, setSettings] = useState<AppSettings>(currentSettings);
     const [confirmAction, setConfirmAction] = useState<{ type: 'save' | 'reset', isOpen: boolean }>({ type: 'save', isOpen: false });
+    const resetMutation = useResetSettings();
 
     // Sync when modal opens
     useEffect(() => {
@@ -148,16 +151,18 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
     const handleSaveClick = () => setConfirmAction({ type: 'save', isOpen: true });
 
     const performReset = () => {
-        setSettings(DEFAULT_SETTINGS);
-        setConfirmAction({ ...confirmAction, isOpen: false });
-        setTimeout(() => alert('✅ 全局配置已重置为默认值！'), 100);
+        resetMutation.mutate(undefined, {
+            onSuccess: () => {
+                setConfirmAction({ ...confirmAction, isOpen: false });
+                onClose();
+            }
+        });
     };
 
     const performSave = () => {
         onSave(settings);
         setConfirmAction({ ...confirmAction, isOpen: false });
         onClose();
-        setTimeout(() => alert('✅ 全局配置保存成功并已生效！'), 100);
     };
 
     const updateComboSettings = (type: keyof CustomComboConfig, field: keyof CustomComboConfig['text'], value: string) => {
@@ -198,7 +203,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                     </div>
 
                     {/* Body - Scrollable */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 p-6 space-y-6">
+                    <div className={`flex-1 overflow-y-auto custom-scrollbar bg-slate-50 p-6 space-y-6 ${readOnly ? 'pointer-events-none opacity-80' : ''}`}>
                         
                         {/* 1. Model Configuration */}
                         <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
@@ -544,18 +549,27 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
 
                     {/* Footer */}
                     <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-                        <button 
-                            onClick={handleResetClick}
-                            className="flex items-center gap-2 px-4 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 rounded-lg transition-colors text-sm font-medium"
-                        >
-                            <RotateCcw size={16} /> 重置默认
-                        </button>
-                        <button 
-                            onClick={handleSaveClick}
-                            className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg shadow-indigo-200 transition-all font-bold active:scale-95"
-                        >
-                            <Save size={18} /> 保存配置
-                        </button>
+                        {readOnly ? (
+                            <div className="flex items-center gap-2 text-slate-500 text-sm w-full justify-center">
+                                <Eye size={16} />
+                                <span>只读模式 - 预览历史版本配置</span>
+                            </div>
+                        ) : (
+                            <>
+                                <button 
+                                    onClick={handleResetClick}
+                                    className="flex items-center gap-2 px-4 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 rounded-lg transition-colors text-sm font-medium"
+                                >
+                                    <RotateCcw size={16} /> 重置默认
+                                </button>
+                                <button 
+                                    onClick={handleSaveClick}
+                                    className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg shadow-indigo-200 transition-all font-bold active:scale-95"
+                                >
+                                    <Save size={18} /> 保存配置
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

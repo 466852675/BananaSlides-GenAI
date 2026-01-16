@@ -16,12 +16,14 @@ import {
   ArrowLeft,
   Search
 } from 'lucide-react';
-import { StyleConfig, StyleTemplate, GlobalStyleMap, PageType, StylePreset, AppSettings } from '../types';
+import { StyleConfig, StyleTemplate, GlobalStyleMap, PageType, StylePreset, AppSettings, StoredResource } from '../types';
 import { STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from './StyleControls';
 import { ImageUploader } from './ImageUploader';
 import { SharedStyleCard, SharedStyleItem } from './SharedStyleCard';
 import { Home, LayoutList, BookOpen, Flag, Type, Wand2, Edit3, Loader2 } from 'lucide-react';
 import { smartRefine } from '../services/geminiService';
+import { useSaveTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/templates';
+import { useAddFavorite, useRemoveFavorite } from '../api/favorites';
 
 const PAGE_TYPES: { type: PageType; label: string }[] = [
   { type: 'cover', label: '封面页' },
@@ -35,15 +37,17 @@ interface StyleTemplateManagerProps {
   isOpen: boolean;
   templates: StyleTemplate[];
   onApplyTemplate: (template: StyleTemplate) => void;
-  onUpdateTemplates: (templates: StyleTemplate[]) => void;
+  onUpdateTemplates?: (templates: StyleTemplate[]) => void; // Deprecated
   onClose: () => void;
   activeTemplateId: string | null;
   favorites: StylePreset[];
   onApplyFavorite: (preset: StylePreset) => void;
-  onDeleteFavorite: (id: string) => void;
-  onToggleFavorite: (template: StyleTemplate) => void;
+  onDeleteFavorite?: (id: string) => void; // Deprecated
+  onToggleFavorite?: (template: StyleTemplate) => void; // Deprecated
   appSettings: AppSettings;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  initialEditingTemplateId?: string | null;
+  onClearEditingTemplateId?: () => void;
 }
 
 export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
@@ -58,13 +62,40 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   onDeleteFavorite,
   onToggleFavorite,
   appSettings,
-  onShowToast
+  onShowToast,
+  initialEditingTemplateId,
+  onClearEditingTemplateId
 }) => {
   const [view, setView] = useState<'gallery' | 'creator'>('gallery');
   const [activeTab, setActiveTab] = useState<'market' | 'favorites'>('market');
   const [editingTemplate, setEditingTemplate] = useState<StyleTemplate | null>(null);
   const [isOpeningInEditMode, setIsOpeningInEditMode] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
+
+  // API Hooks
+  const saveTemplateMutation = useSaveTemplate();
+  const updateTemplateMutation = useUpdateTemplate();
+  const deleteTemplateMutation = useDeleteTemplate();
+  const addFavoriteMutation = useAddFavorite();
+  const removeFavoriteMutation = useRemoveFavorite();
+
+  const handleToggleFavoriteInternal = (template: StyleTemplate) => {
+     const existing = favorites.find(f => f.id === template.id);
+     if (existing) {
+         removeFavoriteMutation.mutate(template.id, {
+             onSuccess: () => onShowToast('已取消收藏', 'info')
+         });
+     } else {
+         addFavoriteMutation.mutate({
+             name: template.name,
+             config: template.config,
+             styleMap: template.styleMap,
+             sampleImages: [] // server handles default? or pass?
+         }, {
+            onSuccess: () => onShowToast('已添加到收藏', 'success')
+         });
+     }
+  };
 
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -73,6 +104,27 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   const [filterPalette, setFilterPalette] = useState('');
   const [filterPageCount, setFilterPageCount] = useState('');
   const [filterTime, setFilterTime] = useState('');
+
+  // Sync initial editing ID from props
+  React.useEffect(() => {
+    if (isOpen && initialEditingTemplateId) {
+      const target = templates.find(t => t.id === initialEditingTemplateId) 
+                  || favorites.find(f => f.id === initialEditingTemplateId);
+      
+      if (target) {
+          // Ensure it's treated as a template for editing
+          const templateToEdit = { ...target, isCustom: true } as StyleTemplate;
+          setEditingTemplate(templateToEdit);
+          setView('creator');
+          setIsOpeningInEditMode(true);
+      }
+      
+      // Clear the prop from parent to avoid re-triggering
+      if (onClearEditingTemplateId) {
+          onClearEditingTemplateId();
+      }
+    }
+  }, [isOpen, initialEditingTemplateId, templates, favorites, onClearEditingTemplateId]);
 
   if (!isOpen) return null;
 
@@ -148,8 +200,12 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
 
 
   const handleDeleteTemplate = (id: string) => {
-    // In a real app, you might want a confirmation dialog here
-    onUpdateTemplates(templates.filter(t => t.id !== id));
+     if (window.confirm('确定要删除这个模板吗？')) {
+        deleteTemplateMutation.mutate(id, {
+            onSuccess: () => onShowToast('模板已删除', 'success'),
+            onError: () => onShowToast('删除失败', 'error')
+        });
+     }
   };
 
   return (
@@ -307,8 +363,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                                     item={template}
                                     variant="library"
                                     isActive={activeTemplateId === template.id}
-                                    isFavorite={isFav}
-                                    onToggleFavorite={() => onToggleFavorite(template)}
+                                    onToggleFavorite={() => handleToggleFavoriteInternal(template)}
                                     onDetail={() => handleEditTemplate(template, false)} 
                                     onEdit={() => handleEditTemplate(template, true)}
                                     onApply={() => onApplyTemplate(template)}
@@ -352,7 +407,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                                 variant="favorites"
                                 isActive={false} 
                                 isFavorite={true}
-                                onToggleFavorite={() => onDeleteFavorite(fav.id)}
+                                onToggleFavorite={() => removeFavoriteMutation.mutate(fav.id, { onSuccess: () => onShowToast('已取消收藏', 'info') })}
                                 onDetail={() => {
                                     const asTemplate: StyleTemplate = {
                                         ...fav,
@@ -368,7 +423,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                                     handleEditTemplate(asTemplate, true);
                                 }}
                                 onApply={() => onApplyFavorite(fav)}
-                                onDelete={() => onDeleteFavorite(fav.id)}
+                                onDelete={() => removeFavoriteMutation.mutate(fav.id, { onSuccess: () => onShowToast('已取消收藏', 'info') })}
                             />
                             </div>
                             ))}
@@ -382,13 +437,23 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
               <StyleEditor 
                 template={editingTemplate}
                 onSave={(updated) => {
-                  const exists = templates.some(t => t.id === updated.id);
-                  if (exists) {
-                    onUpdateTemplates(templates.map(t => t.id === updated.id ? updated : t));
+                  if (updated.id && templates.some(t => t.id === updated.id)) {
+                      updateTemplateMutation.mutate({ id: updated.id, updates: updated }, {
+                          onSuccess: () => {
+                              onShowToast('模板更新成功', 'success');
+                              setView('gallery');
+                          },
+                          onError: () => onShowToast('更新失败', 'error')
+                      });
                   } else {
-                    onUpdateTemplates([...templates, updated]);
+                      saveTemplateMutation.mutate(updated, {
+                          onSuccess: () => {
+                              onShowToast('模板保存成功', 'success');
+                              setView('gallery');
+                          },
+                          onError: () => onShowToast('保存失败', 'error')
+                      });
                   }
-                  setView('gallery');
                 }}
                 onCancel={() => setView('gallery')}
                 initialEditMode={isOpeningInEditMode || !templates.some(t => t.id === editingTemplate.id)}
@@ -493,7 +558,7 @@ const StyleEditor: React.FC<{
     }));
   };
 
-  const updateStyleMap = (type: PageType, file: File | null) => {
+  const updateStyleMap = (type: PageType, file: StoredResource | null) => {
       setLocalTemplate(prev => ({
           ...prev,
           styleMap: {
@@ -510,7 +575,7 @@ const StyleEditor: React.FC<{
       onShowToast('正在调用 AI 服务优化提示词...', 'info');
       try {
           // Pass appSettings to enable correct API configuration for AI
-          const refined = await smartRefine(localTemplate.config.requirements, 'requirement', appSettings);
+          const refined = await smartRefine(localTemplate.config.requirements, 'requirement');
           updateConfig('requirements', refined);
           onShowToast('AI 润色已完成，内容已更新', 'success');
       } catch (error: any) {
@@ -566,7 +631,7 @@ const StyleEditor: React.FC<{
                         <div className="h-24">
                             <ImageUploader 
                                 variant="style-ref"
-                                files={(localTemplate.styleMap?.[pt.type] && localTemplate.styleMap[pt.type] instanceof Blob) ? [localTemplate.styleMap[pt.type] as File] : []}
+                                files={localTemplate.styleMap?.[pt.type] ? [localTemplate.styleMap[pt.type] as any] : []}
                                 onFilesSelected={(files) => updateStyleMap(pt.type, files[0])}
                                 onRemoveFile={() => updateStyleMap(pt.type, null)}
                                 label="上传"

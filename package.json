@@ -12,16 +12,22 @@
     "@google/genai": "^1.35.0",
     "@playwright/test": "^1.57.0",
     "@tanstack/react-query": "^5.90.16",
+    "autoprefixer": "^10.4.23",
     "axios": "^1.13.2",
+    "clsx": "^2.1.1",
     "file-saver": "^2.0.5",
+    "framer-motion": "^12.26.2",
     "jspdf": "2.5.1",
     "jszip": "3.10.1",
     "lucide-react": "^0.562.0",
     "mammoth": "^1.11.0",
+    "postcss": "^8.5.6",
     "pptxgenjs": "3.12.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "react-markdown": "^10.1.0"
+    "react-markdown": "^10.1.0",
+    "tailwind-merge": "^3.4.0",
+    "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

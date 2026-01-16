@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, ClipboardEvent } from "react";
+import React, { useState, useRef, useEffect, useCallback, ClipboardEvent } from "react";
 import {
   Wand2,
   LayoutGrid,
@@ -66,7 +66,8 @@ import {
   PageType,
   GlobalStyleMap,
   AppSettings,
-  StoredResource
+  StoredResource,
+  StyleTemplate
 } from "./types";
 import {
   generateSlideVariant,
@@ -88,15 +89,20 @@ import {
 import { Dashboard } from "./components/Dashboard";
 import { OnboardingGuide } from "./components/OnboardingGuide";
 import { StyleTemplateManager } from "./components/StyleTemplateManager";
+import { CreateProjectModal } from "./components/CreateProjectModal";
 import { SharedStyleCard } from "./components/SharedStyleCard";
 import LandingPage from "./components/LandingPage";
-import { StyleTemplate, ProjectStatus } from "./types";
-import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from "./api/projects";
+import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from './api/projects';
+import { useTemplates, useSaveTemplate } from './api/templates';
+import { useFavorites, useAddFavorite, useRemoveFavorite } from './api/favorites';
+import { useAppSettings, useAppSettingsMasked, useUpdateAppSettings } from './api/settings';
 import { useQueryClient } from "@tanstack/react-query";
 import { HistorySidebar } from "./components/HistorySidebar";
 import { SnapshotPreviewBanner } from "./components/SnapshotPreviewBanner";
-import { ProjectSnapshot, useHistory } from "./api/history";
+import { client, uploadFile } from "./api/client";
+import { ProjectSnapshot, useHistory, useProjectSnapshots, useCreateSnapshot, useRestoreSnapshot, useForkSnapshot } from "./api/history";
 import { resolveResourceUrl } from "./utils/resource";
+import { StartProjectModal } from "./components/StartProjectModal";
 
 import { generateId } from "./utils";
 
@@ -267,60 +273,97 @@ const Modal: React.FC<ModalProps> = ({
 
 const App: React.FC = () => {
   const queryClient = useQueryClient();
+  
+  // Project Start & Batch Generation State
+  const [startProjectModalData, setStartProjectModalData] = useState<{
+    isOpen: boolean;
+    project: ProjectSession | null;
+    pendingItems: GeneratedSlide[];
+  }>({
+    isOpen: false,
+    project: null,
+    pendingItems: []
+  });
+  const [pendingAutoBatch, setPendingAutoBatch] = useState<string | null>(null);
+  
+
+  
+
+
   // --- State ---
   const [viewMode, setViewMode] = useState<
     "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates"
   >("landing");
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const handleCloseToast = useCallback(() => setToast(null), []);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Settings with Persistence
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
-    try {
-      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (saved) {
-        let parsed;
-        try { parsed = JSON.parse(saved); } catch { parsed = {}; }
-        if (parsed && typeof parsed === 'object') {
-             // Merge with DEFAULT_SETTINGS to ensure all fields exist (deep merge simulation)
-            return {
+  
+  // Real-time Settings from Backend
+  // Use MASKED settings for security. API Keys will appear as ••••
+  // The backend now handles merging these masked keys correctly on save.
+  const { data: serverSettings, isLoading: isSettingsLoading } = useAppSettingsMasked();
+  const updateSettingsMutation = useUpdateAppSettings();
+  const [isSettingsMigrated, setIsSettingsMigrated] = useState(false);
+
+  // App Settings State
+  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+
+  // Sync Server Settings to Local State & Auto-migrate
+  useEffect(() => {
+    // 1. Initial Migration: If we have LocalStorage but server is empty
+    if (!isSettingsLoading && !serverSettings && !isSettingsMigrated) {
+       const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+       if (saved) {
+           try {
+               const parsed = JSON.parse(saved);
+               if (parsed && typeof parsed === 'object') {
+                   console.log("[Settings Migration] Uploading local settings to backend database...");
+                   updateSettingsMutation.mutate(parsed);
+                   setIsSettingsMigrated(true);
+               }
+           } catch (e) {
+               console.warn("Migration failed", e);
+           }
+       }
+    }
+
+    // 2. Load from Server if available
+    if (serverSettings && typeof serverSettings === 'object') {
+        const merged = {
             ...DEFAULT_SETTINGS,
-            ...parsed,
+            ...serverSettings,
             ai: {
                 ...DEFAULT_SETTINGS.ai,
-                ...(parsed.ai || {}),
+                ...(serverSettings.ai || {}),
                 models: {
-                ...DEFAULT_SETTINGS.ai.models,
-                ...(parsed.ai?.models || {}),
+                    ...DEFAULT_SETTINGS.ai.models,
+                    ...(serverSettings.ai?.models || {}),
                 },
                 customCombo:
-                parsed.ai?.customCombo || DEFAULT_SETTINGS.ai.customCombo,
+                serverSettings.ai?.customCombo || DEFAULT_SETTINGS.ai.customCombo,
             },
             performance: {
                 ...DEFAULT_SETTINGS.performance,
-                ...(parsed.performance || {}),
+                ...(serverSettings.performance || {}),
             },
             imageGeneration: {
                 ...DEFAULT_SETTINGS.imageGeneration,
-                ...(parsed.imageGeneration || {}),
+                ...(serverSettings.imageGeneration || {}),
             },
             docParser: {
                 ...DEFAULT_SETTINGS.docParser,
-                ...(parsed.docParser || {}),
-                // Auto-migration: If the saved URL contains the old API version paths, strip them to match new backend logic
-                baseUrl: (parsed.docParser?.baseUrl?.includes('/api/v') || parsed.docParser?.baseUrl?.includes('/v1') || parsed.docParser?.baseUrl?.includes('/v4'))
+                ...(serverSettings.docParser || {}),
+                baseUrl: (serverSettings.docParser?.baseUrl?.includes('/api/v') || serverSettings.docParser?.baseUrl?.includes('/v1') || serverSettings.docParser?.baseUrl?.includes('/v4'))
                     ? DEFAULT_SETTINGS.docParser.baseUrl
-                    : (parsed.docParser?.baseUrl || DEFAULT_SETTINGS.docParser.baseUrl)
+                    : (serverSettings.docParser?.baseUrl || DEFAULT_SETTINGS.docParser.baseUrl)
             }
-            };
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to load settings from storage", e);
+        };
+        setAppSettings(merged);
     }
-    return DEFAULT_SETTINGS;
-  });
+  }, [serverSettings, isSettingsLoading]);
 
   // Data - Work Bench
   // Changed from File[] to Map
@@ -364,20 +407,9 @@ const App: React.FC = () => {
 
 
   // --- Effects ---
+
+  // --- Effects ---
   useEffect(() => {
-    // Legacy projects migration could happen here if needed, but we start fresh for now
-    // (Projects are managed by React Query)
-
-    const savedTemplates = localStorage.getItem(TEMPLATES_STORAGE_KEY);
-    if (savedTemplates) {
-         try {
-            const parsed = JSON.parse(savedTemplates);
-             if (Array.isArray(parsed)) {
-                setStyleTemplates(parsed);
-             }
-         } catch(e) { console.error("Failed to load templates", e) }
-    }
-
     // Listen for fullscreen change events (e.g. user presses Esc)
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -397,26 +429,81 @@ const App: React.FC = () => {
   };
 
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
-  const [styleTemplates, setStyleTemplates] = useState<StyleTemplate[]>(() => {
-    try {
-      const saved = localStorage.getItem(TEMPLATES_STORAGE_KEY);
-      if (saved) {
-          const parsed = JSON.parse(saved);
-          return Array.isArray(parsed) ? parsed : [];
-      }
-    } catch (e) {
-      console.warn("Failed to load templates", e);
-    }
-    return [];
-  });
+  // Replaced Local State with React Query
+  const { data: styleTemplates = [] } = useTemplates();
+  const { data: favorites = [] } = useFavorites();
+  
+  // Migration Hooks
+  const saveTemplateMutation = useSaveTemplate();
+  const addFavoriteMutation = useAddFavorite();
+  const removeFavoriteMutation = useRemoveFavorite();
 
-  // Track the currently active template ID (defaulting to the first system template or null)
+  // One-Time Migration Logic (LocalStorage -> SQLite)
+  useEffect(() => {
+     const migrateData = async () => {
+        // 1. Migrate Templates
+        const TEMPLATES_KEY = "bananaslides_templates_v1";
+        const localTemplates = localStorage.getItem(TEMPLATES_KEY);
+        if (localTemplates) {
+            try {
+                const parsed = JSON.parse(localTemplates);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    // We iterate and upload. Note: This creates a burst of requests.
+                    // For massive data, batching is better, but user likely has < 20 templates.
+                    for (const t of parsed) {
+                         // Only migrate if valid name
+                         if (t.name) {
+                             await saveTemplateMutation.mutateAsync({
+                                 name: t.name,
+                                 config: t.config,
+                                 styleMap: t.styleMap,
+                                 isCustom: true // Ensure marked as custom
+                             });
+                         }
+                    }
+                    localStorage.removeItem(TEMPLATES_KEY);
+                    setToast({ id: 'mig-tmpl', message: '已成功将您的“自定义模板”迁移至数据库', type: 'success' });
+                }
+            } catch (e) { console.error("Template Migration Failed", e); }
+        }
+
+        // 2. Migrate Favorites
+        const FAVORITES_KEY = "bananaslides_favorites_v1";
+        const localFavorites = localStorage.getItem(FAVORITES_KEY);
+        if (localFavorites) {
+             try {
+                 const parsed = JSON.parse(localFavorites);
+                 if (Array.isArray(parsed) && parsed.length > 0) {
+                     for (const f of parsed) {
+                         if (f.name) {
+                             await addFavoriteMutation.mutateAsync({
+                                 name: f.name,
+                                 config: f.config,
+                                 styleMap: f.styleMap,
+                                 sampleImages: f.sampleImages || []
+                             });
+                         }
+                     }
+                     localStorage.removeItem(FAVORITES_KEY);
+                     setToast({ id: 'mig-fav', message: '已成功将您的“收藏夹”迁移至数据库', type: 'success' });
+                 }
+             } catch (e) { console.error("Favorite Migration Failed", e); }
+        }
+     };
+
+     // Run migration once on mount (with slight delay to let app load)
+     const timer = setTimeout(migrateData, 1000);
+     return () => clearTimeout(timer);
+  }, []); // Run once
+
+  // Track the currently active template ID
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(() => {
      return localStorage.getItem("bananaslides_active_template_id_v1") || null;
   });
-  
-  // Persist active template ID
+
+  // Persist active template ID (Keep in LocalStorage as UI state)
   useEffect(() => {
      if (activeTemplateId) {
          localStorage.setItem("bananaslides_active_template_id_v1", activeTemplateId);
@@ -435,14 +522,54 @@ const App: React.FC = () => {
   const currentProject = projects.find(p => p.id === currentProjectId);
   const activeSession = currentProject; // Alias for backward compatibility and header logic
 
-  // Sync Workbench State with Current Project
+  // Track previous project ID to avoid overwriting unsaved changes
+  const prevProjectIdRef = useRef<string | null>(null);
+
+
+  // --- Notification Polling (Global) ---
   useEffect(() => {
-    if (currentProject) {
-      setConfig(currentProject.globalConfig);
-      setItems(currentProject.items);
-      if (currentProject.globalStyleMap) setStyleMap(currentProject.globalStyleMap);
+     const pollInterval = setInterval(async () => {
+         try {
+              // Use centralized axios client for proxy compatibility
+              client.get('/notifications/poll')
+                  .then((notifications: any) => {
+                      if (Array.isArray(notifications) && notifications.length > 0) {
+                          notifications.forEach(note => {
+                              // Show Toast
+                              setToast({ 
+                                  id: note.id, 
+                                  message: note.message, 
+                                  type: 'success' 
+                              });
+                              
+                              // Refresh History if open
+                              if (note.type === 'snapshot_summary') {
+                                  queryClient.invalidateQueries({ queryKey: ['snapshots'] });
+                              }
+                          });
+                      }
+                  })
+                  .catch(err => console.error("Poll error (silent):", err));
+         } catch (e) {
+             // Ignore
+         }
+     }, 3000); // Poll every 3 seconds
+
+     return () => clearInterval(pollInterval);
+  }, [queryClient, setViewMode]);
+
+  // Sync Workbench State with Current Project (only when actually switching projects)
+  useEffect(() => {
+    // Only sync when switching to a different project, not on every render
+    if (currentProjectId && currentProjectId !== prevProjectIdRef.current) {
+      if (currentProject) {
+        setConfig(currentProject.globalConfig);
+        setItems(currentProject.items);
+        if (currentProject.globalStyleMap) setStyleMap(currentProject.globalStyleMap);
+      }
+      prevProjectIdRef.current = currentProjectId;
     }
-  }, [currentProjectId]);
+  }, [currentProjectId, currentProject]);
 
   // Refs for Auto-Save
   const itemsRef = useRef(items);
@@ -479,21 +606,8 @@ const App: React.FC = () => {
 
   // Data - Favorites (Presets)
   // Data - Favorites (Presets)
-  const FAVORITES_STORAGE_KEY = "bananaslides_favorites_v1";
-  const [favorites, setFavorites] = useState<StylePreset[]>(() => {
-    try {
-      const saved = localStorage.getItem(FAVORITES_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      console.error("Failed to load favorites", e);
-      return [];
-    }
-  });
-
-  // Persist favorites
-  useEffect(() => {
-    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
-  }, [favorites]);
+  // Data - Favorites (Replaced with React Query)
+  // Logic moved to migration effect above
 
   // UI State
   const [isProcessing, setIsProcessing] = useState(false);
@@ -550,6 +664,7 @@ const App: React.FC = () => {
 
   // --- History Mode State ---
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
   const [previewSnapshot, setPreviewSnapshot] = useState<ProjectSnapshot | null>(null);
   const isPreviewMode = !!previewSnapshot;
   const { restoreSnapshot } = useHistory();
@@ -585,20 +700,118 @@ const App: React.FC = () => {
   };
 
   const handleRestoreCurrentSnapshot = async () => {
-      if (!previewSnapshot) return;
-      if (!confirm(`确定要恢复到版本 v${previewSnapshot.version} 吗？\n当前未保存的修改将会丢失。`)) return;
+      if (!previewSnapshot || !currentProjectId) return;
+      if (!confirm(`确定要恢复到版本 v${previewSnapshot.version} 吗？\n当前项目中未保存的修改将会被覆盖。`)) return;
       
       const loadingId = Date.now().toString();
       setToast({ id: loadingId, message: "正在恢复版本...", type: "info" });
       
       try {
-          await restoreSnapshot(previewSnapshot.id);
+          // Parse snapshot data
+          const snapshotData = JSON.parse(previewSnapshot.data);
+          const { globalConfig, styleMap: snapshotStyleMap, items: snapshotItems } = snapshotData;
+          
+          // Update frontend state with snapshot data
+          if (globalConfig) setConfig(globalConfig);
+          if (snapshotStyleMap) setStyleMap(snapshotStyleMap);
+          if (snapshotItems) setItems(snapshotItems);
+          
+          // Persist to backend - update current project with snapshot data
+          await updateProjectMutation.mutateAsync({
+              id: currentProjectId,
+              data: {
+                  globalConfig: globalConfig || config,
+                  globalStyleMap: snapshotStyleMap || {},
+              }
+          });
+          
+          // Sync slides to current project
+          if (snapshotItems && snapshotItems.length > 0) {
+              await syncSlidesMutation.mutateAsync({
+                  projectId: currentProjectId,
+                  slides: snapshotItems
+              });
+          }
+          
           await queryClient.invalidateQueries({ queryKey: ['projects'] }); 
           
           setToast({ id: Date.now().toString(), message: `已恢复到版本 v${previewSnapshot.version}`, type: "success" });
           setPreviewSnapshot(null); // Exit preview
       } catch (e) {
+          console.error("Restore snapshot failed:", e);
           setToast({ id: Date.now().toString(), message: "恢复失败", type: "error" });
+      }
+  };
+
+  const handleForkSnapshot = async () => {
+      if (!previewSnapshot) return;
+      if (!confirm(`确定要将版本 v${previewSnapshot.version} 另存为新项目吗？\n这将创建一个包含该历史版本所有数据的全新项目。`)) return;
+      
+      const loadingId = Date.now().toString();
+      setToast({ id: loadingId, message: "正在创建新项目...", type: "info" });
+      
+      try {
+        // Parse snapshot data
+          const snapshotData = JSON.parse(previewSnapshot.data);
+          // FIX: styleMap key in ProjectSession is 'globalStyleMap'
+          const { title: snapshotTitle, globalConfig, globalStyleMap: snapshotStyleMap, items: snapshotItems } = snapshotData;
+          
+          // Get project name. PRIORITY: Snapshot Title > Project Title > Cover Page Title > Default
+          const coverPageTitle = snapshotItems?.[0]?.title;
+          const originalTitle = currentProject?.title || globalConfig?.styleName || "项目";
+          // Use snapshot title if available, otherwise original title, otherwise cover page title
+          const baseTitle = snapshotTitle || originalTitle || coverPageTitle;
+          
+          // Use V1.X format where X is the snapshot version, with 【复制】 prefix
+          // FIX: Logic to avoid duplicate names (e.g. V1.1, V1.1.1, V1.1.2)
+          const baseVersionTitle = `【复制】${baseTitle} V1.${previewSnapshot.version}`;
+          let newTitle = baseVersionTitle;
+          
+          // Check for duplicates and increment suffix
+          // Check exact match first
+          if (projects.some(p => p.title === newTitle)) {
+             let counter = 1;
+             // Try .1, .2, .3 suffix
+             while (projects.some(p => p.title === `${baseVersionTitle}.${counter}`)) {
+                 counter++;
+             }
+             newTitle = `${baseVersionTitle}.${counter}`;
+          }
+          
+          const newProject = await createProjectMutation.mutateAsync({
+              title: newTitle,
+              status: 'idle',
+              globalConfig: globalConfig || { ...config },
+              globalStyleMap: snapshotStyleMap || {},
+              isPinned: false
+          });
+          
+          // Generate new IDs for forked items to avoid unique constraint conflicts
+          const forkedItems = snapshotItems?.map((item: any) => ({
+              ...item,
+              id: Math.random().toString(36).substring(2, 11) // Generate new unique ID
+          })) || [];
+          
+          // If there are items, sync them to the new project
+          if (forkedItems.length > 0) {
+              await syncSlidesMutation.mutateAsync({
+                  projectId: newProject.id,
+                  slides: forkedItems
+              });
+          }
+          
+          // Switch to the new project
+          setCurrentProjectId(newProject.id);
+          setConfig(globalConfig || config);
+          setStyleMap(snapshotStyleMap || {});
+          setItems(forkedItems);
+          setPreviewSnapshot(null); // Exit preview
+          setViewMode('workbench');
+          
+          showToast(`已创建新项目: ${newTitle}`, "success");
+      } catch (e) {
+          console.error("Fork snapshot failed:", e);
+          showToast("创建项目失败", "error");
       }
   };
 
@@ -618,7 +831,6 @@ const App: React.FC = () => {
     if (!currentProjectId || isPreviewMode) return;
     
     const timer = setTimeout(() => {
-      console.log('[Auto-save] Saving config for project', currentProjectId);
       updateProjectMutation.mutate({
         id: currentProjectId,
         data: { globalConfig: config }
@@ -633,8 +845,6 @@ const App: React.FC = () => {
     if (!currentProjectId || isPreviewMode) return;
     
     const timer = setTimeout(() => {
-      console.log('[Auto-save] Saving styleMap for project', currentProjectId);
-      console.log('[Auto-save] StyleMap content:', JSON.stringify(styleMap, null, 2));
       updateProjectMutation.mutate({
         id: currentProjectId,
         data: { globalStyleMap: styleMap }
@@ -648,12 +858,28 @@ const App: React.FC = () => {
   // --- Auto-Save Interval (Duplicate removed) ---
   // The primary auto-save is handled by the useEffect near line 1700 using mutations.
 
+  // Auto-save items changes (for delete/add operations)
+  // CRITICAL: Must use syncSlidesMutation, NOT updateProjectMutation
+  // updateProjectMutation doesn't support items update (see projects.ts line 281-283)
+  useEffect(() => {
+    if (!currentProjectId || isPreviewMode) return;
+    
+    const timer = setTimeout(() => {
+      syncSlidesMutation.mutate({
+        projectId: currentProjectId,
+        slides: items
+      });
+    }, 1000); // Debounce 1 second
+
+    return () => clearTimeout(timer);
+  }, [items, currentProjectId, syncSlidesMutation, isPreviewMode]);
+
   // --- Helpers ---
 
 
-  const showToast = (message: string, type: ToastMessage["type"] = "info") => {
+  const showToast = useCallback((message: string, type: ToastMessage["type"] = "info") => {
     setToast({ id: Date.now().toString(), message, type });
-  };
+  }, []);
 
   const getProviderName = (task: "text" | "image" | "vision") => {
     if (
@@ -720,8 +946,9 @@ const App: React.FC = () => {
   const validateAddPage = (typeToAdd: PageType = "content"): boolean => {
     // 1. Check Total
     if (items.length >= config.targetPageCount) {
-      alert(
-        `无法添加：当前页面数量 (${items.length}) 已达到全局设定的上限 (${config.targetPageCount})。\n请先在全局设置中增加页面数量。`
+      showToast(
+        `无法添加：当前页面数量 (${items.length}) 已达到全局设定的上限 (${config.targetPageCount})。请先在全局设置中增加页面数量。`,
+        'error'
       );
       return false;
     }
@@ -748,15 +975,19 @@ const App: React.FC = () => {
 
   const handleSaveSettings = (newSettings: AppSettings) => {
     setAppSettings(newSettings);
+    // Double save: LocalStorage for instant local boot, Backend for persistence
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+    updateSettingsMutation.mutate(newSettings);
+    showToast("全局设置已保存并同步至云端数据库", "success");
   };
 
   // --- Outline / Topic Logic ---
   const openOutlineGenerator = (initialText: string = "") => {
     // 1. Check Total Limit before opening
     if (items.length >= config.targetPageCount) {
-      alert(
-        `当前页面已满 (${items.length}/${config.targetPageCount})，请先清理页面或增加全局页面数量上限。`
+      showToast(
+        `当前页面已满 (${items.length}/${config.targetPageCount})，请先清理页面或增加全局页面数量上限。`,
+        'error'
       );
       return;
     }
@@ -772,7 +1003,7 @@ const App: React.FC = () => {
 
     // Check limit
     if (items.length >= config.targetPageCount) {
-      alert(`当前页面已满，无法导入。`);
+      showToast(`当前页面已满，无法导入。`, 'error');
       e.target.value = "";
       return;
     }
@@ -796,7 +1027,6 @@ const App: React.FC = () => {
           reader.onerror = () => reject(reader.error);
           reader.readAsText(file, 'UTF-8');
         });
-        console.log('[Pre-Read] Text file read successfully, length:', preReadTextContent.length);
       } catch (readError) {
         console.error('[Pre-Read] Failed to read text file:', readError);
       }
@@ -807,7 +1037,6 @@ const App: React.FC = () => {
     if (isWord) {
       try {
         preReadWordBuffer = await file.arrayBuffer();
-        console.log('[Pre-Read] Word file buffer read, size:', preReadWordBuffer.byteLength);
       } catch (readError) {
         console.error('[Pre-Read] Failed to read Word file:', readError);
       }
@@ -855,7 +1084,12 @@ const App: React.FC = () => {
         text = result.value || '';
       } else {
         // For PDF and other files, use the standard extraction
-        text = await extractTextFromFile(file, appSettings);
+        const result = await extractTextFromFile(file);
+        text = result.text;
+        
+        if (result.isFallback) {
+             showToast("MinerU 解析暂不可用，已自动切换至视觉模型为您服务。", "info");
+        }
       }
       
       openOutlineGenerator(text);
@@ -864,7 +1098,7 @@ const App: React.FC = () => {
       console.error("File read error", err);
       showToast(errorMsg, "error");
       const msg = err instanceof Error ? err.message : "读取文件失败，请重试或直接复制内容。";
-      alert(msg);
+      showToast(msg, 'error');
     } finally {
       setIsReadingFile(false);
       e.target.value = "";
@@ -872,9 +1106,6 @@ const App: React.FC = () => {
   };
 
   const handleOutlineImport = (slides: GeneratedSlide[]) => {
-    console.log('[handleOutlineImport] Called with', slides.length, 'slides');
-    console.log('[handleOutlineImport] currentProjectId:', currentProjectIdRef.current);
-    console.log('[handleOutlineImport] Current items count:', items.length);
     
     // Check if importing causes overflow
     if (items.length + slides.length > config.targetPageCount) {
@@ -893,7 +1124,6 @@ const App: React.FC = () => {
               }
               return slide;
           });
-          console.log('[handleOutlineImport] Syncing', slidesToSync.length, 'slides (limited)');
           syncSlidesMutation.mutate({
               projectId: currentProjectIdRef.current,
               slides: slidesToSync
@@ -920,7 +1150,6 @@ const App: React.FC = () => {
               }
               return slide;
           });
-          console.log('[handleOutlineImport] Syncing', slidesToSync.length, 'slides');
           syncSlidesMutation.mutate({
               projectId: currentProjectIdRef.current,
               slides: slidesToSync
@@ -974,7 +1203,7 @@ const App: React.FC = () => {
 
   const handleDuplicatePage = (id: string) => {
     if (items.length >= config.targetPageCount) {
-      alert("无法复制：已达到最大页数限制。");
+      showToast("无法复制：已达到最大页数限制。", 'error');
       return;
     }
     const itemToClone = items.find((i) => i.id === id);
@@ -1075,8 +1304,7 @@ const App: React.FC = () => {
     try {
       const refined = await smartRefine(
         config.requirements,
-        "requirement",
-        appSettings
+        "requirement"
       );
       handleConfigChange("requirements", refined);
       showToast("设计要求修饰成功", "success");
@@ -1091,7 +1319,7 @@ const App: React.FC = () => {
   const handleRefineSlideContent = async (text: string): Promise<string> => {
     if (!text.trim()) return text;
     try {
-      const refined = await smartRefine(text, "content", appSettings);
+      const refined = await smartRefine(text, "content");
       showToast("内容修饰成功", "success");
       return refined;
     } catch (error) {
@@ -1153,33 +1381,55 @@ const App: React.FC = () => {
     );
   };
 
-  const confirmImageTasks = () => {
+  const confirmImageTasks = async () => {
     if (tempImageFiles.length === 0) return;
 
     const availableSlots = config.targetPageCount - items.length;
     if (availableSlots < tempImageFiles.length) {
-      alert(
-        `无法全部添加：选择了 ${tempImageFiles.length} 张图片，但剩余空位只有 ${availableSlots} 个。请先调整全局页数。`
+      showToast(
+        `无法全部添加：选择了 ${tempImageFiles.length} 张图片，但剩余空位只有 ${availableSlots} 个。请先调整全局页数。`,
+        'error'
       );
       return;
     }
 
+    // Show loading state implicitly by keeping modal open or could add local state
+    // For now, we wait for uploads. 
+    // Ideally we should show a spinner on the button, but `tempImageFiles` is cleared after.
+    
     let currentCount = items.length;
-    const newItems: GeneratedSlide[] = tempImageFiles.map((file) => {
+    
+    const newItems = await Promise.all(tempImageFiles.map(async (file) => {
       const type = getNextPageType(currentCount);
       currentCount++;
+      
+      let previewUrl = resolveResourceUrl(file); 
+      
+      // Only upload if it IS a file object (not a string url)
+      if (file instanceof File) {
+          try {
+              const uploadedUrl = await uploadFile(file);
+              if (uploadedUrl) previewUrl = uploadedUrl;
+          } catch (e) {
+              console.error("Manual upload failed", e);
+          }
+      } else if (typeof file === 'string') {
+          // It's already a path/url
+          previewUrl = file;
+      }
+
       return {
         id: generateId(),
-        contentType: "image",
+        contentType: "image" as const,
         pageType: type,
         originalFile: file,
-        previewUrl: resolveResourceUrl(file),
-        variants: [],
+        previewUrl: previewUrl,
+        variants: [previewUrl],
         variantCount: 2,
-        status: "idle",
+        status: "idle" as const,
         createdAt: Date.now(),
       };
-    });
+    }));
 
     setItems((prev) => [...prev, ...newItems]);
     // Update methods
@@ -1221,111 +1471,72 @@ const App: React.FC = () => {
     );
   };
 
-  // 1. Save Preset Logic
+  // 1. Save Preset / Template Logic
   const openSavePresetModal = () => {
     setPresetNameInput(
       `${config.styleName || "新风格"} ${new Date().toLocaleDateString()}`
     );
-    setSaveToFavorites(true);
-    setSaveToLibrary(true);
+    setSaveToLibrary(true); // Default: Add to Library
+    setSaveToFavorites(false); // Default: Do not add to favorites
     setIsSavePresetModalOpen(true);
   };
 
   const confirmSavePreset = () => {
     if (!presetNameInput.trim()) return;
-    showConfirm("确认保存预设", "确定保存当前配置（含页面规划）吗？", async () => {
-      // 上传单个图片到服务器
-      const uploadStyleImage = async (file: File): Promise<string> => {
-        const formData = new FormData();
-        formData.append('file', file);
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`图片上传失败: ${errText}`);
-        }
-        const { url } = await res.json();
-        return url;
-      };
+    
+    // Check if at least one option is selected
+    if (!saveToLibrary && !saveToFavorites) {
+        showToast("请至少选择一项保存位置", "error");
+        return;
+    }
 
-      // 序列化 styleMap，将 File 对象转为服务器 URL
-      const serializeStyleMap = async (map: GlobalStyleMap): Promise<GlobalStyleMap> => {
-        const result: GlobalStyleMap = { cover: null, directory: null, transition: null, content: null, end: null, custom: null };
-        for (const [type, value] of Object.entries(map)) {
+    showConfirm("确认保存", "确定保存当前配置为模版吗？", async () => {
+      try {
+        setToast({ id: "save-preset", message: "正在保存...", type: "loading" });
+
+        // Helper: Upload single image
+        const uploadStyleImage = async (file: File): Promise<string> => {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch('/api/upload', { method: 'POST', body: formData });
+          if (!res.ok) throw new Error(`图片上传失败: ${res.statusText}`);
+          const { url } = await res.json();
+          return url;
+        };
+
+        // Helper: Serialize styleMap
+        const serializedStyleMap: GlobalStyleMap = { ...styleMap };
+        for (const [type, value] of Object.entries(styleMap)) {
           if (value instanceof File) {
-            try {
-              result[type as PageType] = await uploadStyleImage(value);
-            } catch (err) {
-              console.error(`上传 ${type} 图片失败:`, err);
-              throw err;
-            }
-          } else {
-            result[type as PageType] = value;
+            serializedStyleMap[type as PageType] = await uploadStyleImage(value);
           }
         }
-        return result;
-      };
 
-      try {
-        showToast("正在上传图片并保存...", "info");
-        
-        // 序列化 styleMap
-        const serializedStyleMap = await serializeStyleMap(styleMap);
+        if (saveToFavorites) {
+          await addFavoriteMutation.mutateAsync({
+            name: presetNameInput,
+            config,
+            styleMap: serializedStyleMap,
+            sampleImages: []
+          });
+        }
 
-        // Smart Sample Collection: Sort by type priority (Cover > Directory > ...)
-        const typePriority: Record<string, number> = {
-          cover: 0,
-          directory: 1,
-          transition: 2,
-          content: 3,
-          end: 4,
-          custom: 5,
-        };
-        const sortedItems = items
-          .filter((i) => i.status === "success" && i.variants.length > 0)
-          .sort(
-            (a, b) =>
-              (typePriority[a.pageType] || 9) - (typePriority[b.pageType] || 9)
-          );
+        if (saveToLibrary) {
+          await saveTemplateMutation.mutateAsync({
+            name: presetNameInput,
+            config,
+            styleMap: serializedStyleMap,
+            isCustom: true
+          });
+        }
 
-        const samples = sortedItems.slice(0, 4).map((i) => i.variants[0]);
-
-        const newPreset: StylePreset = {
-          id: generateId(),
-          name: presetNameInput,
-          config: { ...config },
-          styleMap: serializedStyleMap,
-          styleFile: null, // Deprecated
-          sampleImages: samples,
-          createdAt: Date.now(),
-        };
-
-        // Sync to Style Templates Library
-        const newTemplate: StyleTemplate = {
-          id: `style_${newPreset.id}`,
-          name: newPreset.name,
-          config: { ...newPreset.config },
-          styleMap: { ...newPreset.styleMap },
-          isCustom: true,
-          createdAt: newPreset.createdAt
-        };
-
-        setFavorites((prev) => saveToFavorites ? [...prev, newPreset] : prev);
-        setStyleTemplates((prev) => saveToLibrary ? [...prev, newTemplate] : prev);
-        
         setIsSavePresetModalOpen(false);
         setIsPresetSaved(true);
-        
-        const targetMsg = saveToFavorites && saveToLibrary 
-          ? "风格已同步至收藏夹与模板库" 
-          : saveToFavorites 
-            ? "风格已保存至我的收藏夹" 
-            : "风格已保存至模板库";
-            
-        showToast(targetMsg, "success");
+        showToast("保存成功", "success");
         closeConfirm();
       } catch (err: any) {
         console.error("保存预设失败:", err);
-        showToast(`保存失败: ${err.message || '未知错误'}`, "error");
+        showToast(`保存失败: ${err.message || "未知错误"}`, "error");
         closeConfirm();
       }
     });
@@ -1364,31 +1575,32 @@ const App: React.FC = () => {
   };
 
   const handleToggleFavorite = (template: StyleTemplate) => {
-    setFavorites((prev) => {
-      const exists = prev.some((p) => p.id === template.id);
-      if (exists) {
-        showToast("已取消收藏", "success");
-        return prev.filter((p) => p.id !== template.id);
-      } else {
+    const isFav = favorites.some((f) => f.id === template.id);
+    if (isFav) {
+        removeFavoriteMutation.mutate(template.id);
+         showToast("已取消收藏", "success");
+    } else {
+        // Create StylePreset from Template
         const newPreset: StylePreset = {
-          id: template.id,
-          name: template.name || template.config.styleName,
-          config: template.config,
-          styleMap: template.styleMap,
-          createdAt: Date.now(),
+            id: template.id,
+            name: template.name || template.config.styleName,
+            config: template.config,
+            styleMap: template.styleMap || { cover: null, directory: null, transition: null, content: null, end: null, custom: null },
+            createdAt: Date.now(),
+            sampleImages: []
         };
+        // For adding favorite, actually the backend expects just the ID if it's linking, 
+        // OR the full object if it's a new favorite.
+        // Based on `useAddFavorite`, it takes `Omit<FavoriteDTO, 'id' | 'createdAt'>`.
+        // So we pass the data.
+        addFavoriteMutation.mutate({
+            name: newPreset.name,
+            config: newPreset.config,
+            styleMap: newPreset.styleMap,
+            sampleImages: newPreset.sampleImages
+        });
         showToast("已添加至收藏夹", "success");
-        return [...prev, newPreset];
-      }
-    });
-  };
-
-  const handleUpdatePreset = (updatedPreset: StylePreset) => {
-    setFavorites((prev) =>
-      prev.map((p) => (p.id === updatedPreset.id ? updatedPreset : p))
-    );
-    alert("预设更新成功");
-    setSelectedPresetForDetail(null);
+    }
   };
 
   const handleDeleteFavoriteRequest = (id: string) => {
@@ -1396,7 +1608,7 @@ const App: React.FC = () => {
       "删除预设",
       "确定删除吗？",
       () => {
-        setFavorites((prev) => prev.filter((f) => f.id !== id));
+        removeFavoriteMutation.mutate(id);
         if (selectedPresetForDetail?.id === id)
           setSelectedPresetForDetail(null);
         closeConfirm();
@@ -1404,6 +1616,8 @@ const App: React.FC = () => {
       "danger"
     );
   };
+
+
 
   // Manual save if needed (like after generating)
   const syncCurrentProject = () => {
@@ -1465,7 +1679,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (currentProjectId && items.length > 0) {
         const timer = setTimeout(() => {
-            console.log('[AutoSave] Syncing slides content to DB...');
             syncSlidesMutation.mutate({
                 projectId: currentProjectId,
                 slides: items
@@ -1517,7 +1730,7 @@ const App: React.FC = () => {
             config,
             label,
             item.title,
-            appSettings,
+            // appSettings removed
             item.contentType // Pass 'text' or 'image'
           )
         );
@@ -1554,6 +1767,8 @@ const App: React.FC = () => {
       throw error; // Re-throw to be caught by batch handler
     }
   };
+
+
 
   const handleGenerateBatch = async () => {
     const itemsToProcess = items.filter(
@@ -1607,7 +1822,6 @@ const App: React.FC = () => {
     
     // Sync all generated slides to database
     if (currentProjectId && generatedResults.length > 0) {
-        console.log('[handleGenerateBatch] Syncing slides to database...');
         setItems((currentItems) => {
             // Create a map of generated results for quick lookup
             const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
@@ -1633,16 +1847,6 @@ const App: React.FC = () => {
             });
             
             
-            console.log('[handleGenerateBatch] Slides to sync:', slidesToSync.length);
-            slidesToSync.forEach((slide, index) => {
-              console.log(`[handleGenerateBatch] Slide ${index}:`, {
-                id: slide.id,
-                pageType: slide.pageType,
-                previewUrl: slide.previewUrl ? `${slide.previewUrl.substring(0, 50)}...` : 'null',
-                variantsCount: slide.variants?.length || 0,
-                hasVariants: !!slide.variants && slide.variants.length > 0
-              });
-            });
             syncSlidesMutation.mutate({
                 projectId: currentProjectId,
                 slides: slidesToSync
@@ -1865,10 +2069,10 @@ const App: React.FC = () => {
           return;
         }
       }
-      alert("剪贴板中没有图片");
+      showToast("剪贴板中没有图片", 'error');
     } catch (e) {
       console.error(e);
-      alert("无法读取剪贴板，请尝试 Ctrl+V");
+      showToast("无法读取剪贴板，请尝试 Ctrl+V", 'error');
     }
   };
 
@@ -1889,11 +2093,11 @@ const App: React.FC = () => {
       if (newFiles.length > 0) {
         setTempImageFiles((prev) => [...prev, ...newFiles]);
       } else {
-        alert("剪贴板中没有图片");
+        showToast("剪贴板中没有图片", 'error');
       }
     } catch (e) {
       console.error(e);
-      alert("无法读取剪贴板，请尝试 Ctrl+V");
+      showToast("无法读取剪贴板，请尝试 Ctrl+V", 'error');
     }
   };
 
@@ -1924,6 +2128,7 @@ const App: React.FC = () => {
         if (currentProjectId === id) {
           setCurrentProjectId(null);
           setViewMode("history");
+          setIsHistoryOpen(false); // Ensure history sidebar closes
         }
         closeConfirm();
       },
@@ -1947,75 +2152,80 @@ const App: React.FC = () => {
   };
 
   // --- PROJECT ACTIONS ---
-  const handleCreateProject = async (titleInput: any = "未命名项目") => {
-    // Detect if input is an event (common when binding directly to onClick)
-    const title = (typeof titleInput === 'string' && titleInput.length > 0) 
-      ? titleInput 
-      : "未命名项目";
+  // --- PROJECT ACTIONS ---
+  const handleOpenCreateProjectModal = () => {
+    setIsCreateProjectModalOpen(true);
+  };
 
-    const styleName = (config.styleName && config.styleName !== "未命名项目") ? config.styleName : "";
+  const doCreateProject = async (title: string) => {
+    if (!title) return; 
+    
+    // Default Style Configuration
+    const defaultConfig: StyleConfig = {
+      styleName: "极简科技",
+      colorPalette: "经典蓝白",
+      requirements: "",
+      aspectRatio: "16:9",
+      targetPageCount: 10,
+      pageStructure: {
+        cover: 1, 
+        directory: 1, 
+        transition: 2, 
+        content: 5, 
+        end: 1
+      }
+    };
 
-    console.log('[handleCreateProject] Creating project with title:', title);
     try {
-        const newProject = await createProjectMutation.mutateAsync({
-            title,
-            status: 'idle',
-            globalConfig: { ...config, styleName },
-            globalStyleMap: { ...styleMap },
-            isPinned: false
-        });
-        
-        console.log('[handleCreateProject] Project created successfully:', newProject);
-        console.log('[handleCreateProject] Project ID:', newProject.id);
-        
-        setCurrentProjectId(newProject.id);
-        // Reset items for new project (config and styleMap already set from creation)
-        setItems([]);
-        setViewMode('workbench');
-        showToast("项目创建成功", "success");
+      const newProject = await createProjectMutation.mutateAsync({
+        title,
+        status: 'idle',
+        globalConfig: defaultConfig,
+        globalStyleMap: {
+          cover: null,
+          directory: null,
+          transition: null,
+          content: null,
+          end: null,
+          custom: null
+        }, 
+        isPinned: false
+      });
+
+      
+      setCurrentProjectId(newProject.id);
+      setConfig(defaultConfig); 
+      setStyleMap({
+          cover: null,
+          directory: null,
+          transition: null,
+          content: null,
+          end: null,
+          custom: null
+      }); 
+      
+      // Clear Items
+      setItems([]);
+      
+      setViewMode('workbench');
+      showToast(`已创建新项目: ${title}`, "success");
     } catch (e) {
-        console.error("[handleCreateProject] Failed to create project:", e);
-        showToast("创建项目失败", "error");
+      console.error("[doCreateProject] Failed to create project:", e);
+      showToast("创建项目失败", "error");
     }
   };
 
   const handleOpenProject = (id: string) => {
-    console.log('[handleOpenProject] Opening project:', id);
     const project = projects.find(p => p.id === id);
-    if (!project) {
-      console.log('[handleOpenProject] Project not found!');
-      return;
-    }
+    if (!project) return;
 
-    console.log('[handleOpenProject] Project found:', project);
-    console.log('[handleOpenProject] Project items count:', project.items?.length || 0);
-    console.log('[handleOpenProject] Project globalConfig:', project.globalConfig);
-    console.log('[handleOpenProject] Project globalStyleMap:', JSON.stringify(project.globalStyleMap, null, 2));
-
-    // Defense: Sanitize items to remove invalid File objects from JSON restore
-    const sanitizedItems = (Array.isArray(project.items) ? project.items : [])
-        .filter(item => item && typeof item === 'object')
-        .map(item => ({
-        ...item,
-        originalFile: (item.originalFile instanceof Blob || typeof item.originalFile === 'string') ? item.originalFile : null,
-        variantCount: item.variantCount || 2 // Ensure variantCount has a default value
-    }));
-
-    console.log('[handleOpenProject] Sanitized items count:', sanitizedItems.length);
-    console.log('[handleOpenProject] Sanitized items:', sanitizedItems);
-    sanitizedItems.forEach((item, index) => {
-      console.log(`[handleOpenProject] Item ${index}:`, {
-        id: item.id,
-        pageType: item.pageType,
-        textContent: item.textContent ? `${item.textContent.substring(0, 50)}...` : 'null',
-        previewUrl: item.previewUrl ? `${item.previewUrl.substring(0, 50)}...` : 'null',
-        variantsCount: item.variants?.length || 0,
-        variants: item.variants,
-        status: item.status,
-        hasVariants: !!item.variants && item.variants.length > 0
-      });
+    const sanitizedItems = project.items.map(item => {
+        // Ensure variants array exists and contains previewUrl if it's an image
+        if (item.contentType === 'image' && item.previewUrl && !item.variants.includes(item.previewUrl)) {
+            return { ...item, variants: [item.previewUrl, ...item.variants] };
+        }
+        return item;
     });
-
     setItems(sanitizedItems);
     setConfig(project.globalConfig);
     
@@ -2058,17 +2268,25 @@ const App: React.FC = () => {
   };
 
   const handleDeleteProject = (id: string) => {
-    deleteProjectMutation.mutate(id);
-    if (currentProjectId === id) setCurrentProjectId(null);
-    showToast("项目已删除", "success");
+    showConfirm(
+      "删除项目",
+      "确定要永久删除此项目吗？此操作不可恢复。",
+      () => {
+        deleteProjectMutation.mutate(id);
+        if (currentProjectId === id) {
+            setCurrentProjectId(null);
+            setIsHistoryOpen(false); // Ensure history sidebar closes if open
+        }
+        showToast("项目已删除", "success");
+        closeConfirm();
+      },
+      "danger"
+    );
   };
 
   const handleTogglePin = (id: string) => {
-    console.log('[handleTogglePin] Called with id:', id);
     const project = projects.find(p => p.id === id);
-    console.log('[handleTogglePin] Found project:', project?.id, 'isPinned:', project?.isPinned);
     if (project) {
-        console.log('[handleTogglePin] Calling updateProjectMutation with isPinned:', !project.isPinned);
         updateProjectMutation.mutate({ id, data: { isPinned: !project.isPinned } });
     }
   };
@@ -2103,28 +2321,11 @@ const App: React.FC = () => {
     }));
   };
 
-  // Sync: Cover Content -> Project Title (Reverse)
+  // Sync: Cover Content -> Project Title (Reverse) - REMOVED per user request
+  // Project title is now independent from cover page content.
   useEffect(() => {
-    if (!currentProjectId || (viewMode !== 'workbench' && viewMode !== 'history-detail')) return;
-    
-    const coverPage = items.find(i => i.pageType === 'cover');
-    const activeProj = projects.find(p => p.id === currentProjectId);
-    
-    // Determine the "source" title from the cover page - prefer 'title' (cards input) over 'textContent' (markdown)
-    const coverTitle = coverPage?.title || coverPage?.textContent || '';
-    
-    if (coverPage && activeProj && coverTitle && coverTitle.trim() !== activeProj.title) {
-        const timer = setTimeout(() => {
-             updateProjectMutation.mutate({ 
-                id: currentProjectId, 
-                data: { title: coverTitle.trim() } 
-            });
-             // Also sync localTitle to keep header in sync immediately
-             setLocalTitle(coverTitle.trim());
-        }, 1000);
-        return () => clearTimeout(timer);
-    }
-  }, [items, currentProjectId, projects, viewMode]);
+     // Logic removed to separate project title from cover page
+  }, []);
   const [localTitle, setLocalTitle] = useState("");
 
   // Sync active project title to local state when project changes
@@ -2182,24 +2383,14 @@ const App: React.FC = () => {
              });
              // TEMPORARY: Detailed items saving logic is complex. 
              // We'll rely on globalConfig updates for now and implementing items sync is Phase 2.1
-             // Actually, I should check if I implemented items save in backend.
-             // If not, I can store items in specific 'content' field if available?
-             // Or update 'items' field in Project model if I added it as JSON?
-             // Checking Schema... Project model has `slides Slide[]`.
-             // So I need to update slides.
-             // Refactoring this loop to use mutation is correct, but the payload needs work.
          }
-         console.log("项目自动保存已触发 (3分钟间隔) - Backend Sync Pending");
       }
     }, 180000); // 3 minutes
 
     return () => clearInterval(interval);
   }, []);
 
-  // Global persistence for everything
-  useEffect(() => {
-    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
-  }, [projects]);
+
 
   useEffect(() => {
     localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(styleTemplates));
@@ -2230,6 +2421,55 @@ const App: React.FC = () => {
 
   const isFull = items.length >= config.targetPageCount;
 
+  const handleStartProjectRequest = (projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+  
+    const validItems = project.items.filter(i => i.title || i.textContent || i.originalFile || i.previewUrl);
+    
+    if (validItems.length === 0) {
+      showToast("项目没有有效的待生成任务", "info");
+      return;
+    }
+  
+    const pendingItems = validItems.filter(i => i.status !== 'success');
+    
+    if (pendingItems.length === 0) {
+      handleOpenProject(projectId);
+      return;
+    }
+  
+    setStartProjectModalData({
+      isOpen: true,
+      project,
+      pendingItems
+    });
+  };
+
+  const handleConfirmBatchStart = () => {
+    const { project } = startProjectModalData;
+    if (project) {
+        handleOpenProject(project.id);
+        setPendingAutoBatch(project.id); // Trigger auto batch in useEffect
+    }
+    setStartProjectModalData(prev => ({ ...prev, isOpen: false }));
+  };
+
+  // Auto-trigger batch generation when project opens with pending flag
+  useEffect(() => {
+    if (pendingAutoBatch && currentProjectId === pendingAutoBatch) {
+      if (items.length > 0) { // Wait for items to load
+         // Small delay to ensure state is ready
+         const timer = setTimeout(() => {
+             handleGenerateBatch();
+             setPendingAutoBatch(null); // Clear flag
+         }, 500);
+         return () => clearTimeout(timer);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAutoBatch, currentProjectId, items]);
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans">
       {/* Global Confirmation Dialog */}
@@ -2243,7 +2483,7 @@ const App: React.FC = () => {
       />
 
       {/* Toast Notification */}
-      <Toast toast={toast} onClose={() => setToast(null)} />
+      <Toast toast={toast} onClose={handleCloseToast} />
 
       {/* Global Settings Modal */}
       <GlobalSettingsModal
@@ -2251,6 +2491,7 @@ const App: React.FC = () => {
         onClose={() => setIsGlobalSettingsOpen(false)}
         currentSettings={appSettings}
         onSave={handleSaveSettings}
+        readOnly={!!previewSnapshot}
       />
 
       {/* Snapshot Preview Banner */}
@@ -2259,6 +2500,7 @@ const App: React.FC = () => {
              <SnapshotPreviewBanner 
                 snapshot={previewSnapshot}
                 onRestore={handleRestoreCurrentSnapshot}
+                onFork={handleForkSnapshot}
                 onExit={handleExitPreview}
              />
         </div>
@@ -2269,9 +2511,22 @@ const App: React.FC = () => {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         currentProject={currentProject || null}
+        liveProjectData={currentProject ? {
+          ...currentProject,
+          items,  // Real-time items with variants (images)
+          globalConfig: config,
+          globalStyleMap: styleMap
+        } : null}
         settings={appSettings}
         onPreview={handleEnterPreview}
         showToast={showToast}
+      />
+
+      {/* Create Project Modal */}
+      <CreateProjectModal
+        isOpen={isCreateProjectModalOpen}
+        onClose={() => setIsCreateProjectModalOpen(false)}
+        onCreate={doCreateProject}
       />
 
       {/* Outline Generator Modal - Pass Config and KEY for reset */}
@@ -2401,7 +2656,7 @@ const App: React.FC = () => {
       <Modal
         isOpen={isSavePresetModalOpen}
         onClose={() => setIsSavePresetModalOpen(false)}
-        title="保存风格预设"
+        title="保存为模版"
         footer={
           <div className="flex gap-2 w-full justify-end">
             <button
@@ -2432,40 +2687,40 @@ const App: React.FC = () => {
             type="text"
             value={presetNameInput}
             onChange={(e) => setPresetNameInput(e.target.value)}
-            className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-200 focus:outline-none"
-            placeholder="例如：科技蓝商务风格 10P"
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            placeholder="例如：科技感蓝色商务风"
             autoFocus
           />
           
-          <div className="pt-2 space-y-3">
-            <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
-              <input 
-                type="checkbox" 
-                checked={saveToFavorites}
-                onChange={(e) => setSaveToFavorites(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
-              />
-              <div className="flex-1">
-                <span className="text-sm font-bold text-slate-700 block">保存到我的收藏夹</span>
-                <span className="text-[10px] text-slate-400">仅限当前项目级快速访问</span>
-              </div>
-              <Heart size={16} className={saveToFavorites ? "text-rose-500" : "text-slate-300"} />
-            </label>
+          <div className="flex flex-col gap-3 mt-4">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={saveToLibrary}
+                    onChange={(e) => setSaveToLibrary(e.target.checked)}
+                    className="w-4 h-4 text-rose-500 rounded border-slate-300 focus:ring-rose-200"
+                  />
+                  <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-700">添加至模版库 (推荐)</span>
+                      <span className="text-xs text-slate-400">将配置保存为可复用的模版，方便后续调用</span>
+                  </div>
+              </label>
 
-            <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
-              <input 
-                type="checkbox" 
-                checked={saveToLibrary}
-                onChange={(e) => setSaveToLibrary(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
-              />
-              <div className="flex-1">
-                <span className="text-sm font-bold text-slate-700 block">保存到风格模板库</span>
-                <span className="text-[10px] text-slate-400">跨项目全局复用素材</span>
-              </div>
-              <BookTemplate size={16} className={saveToLibrary ? "text-indigo-500" : "text-slate-300"} />
-            </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input 
+                    type="checkbox" 
+                    checked={saveToFavorites}
+                    onChange={(e) => setSaveToFavorites(e.target.checked)}
+                    className="w-4 h-4 text-indigo-500 rounded border-slate-300 focus:ring-indigo-200"
+                  />
+                  <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-700">收藏至我的收藏</span>
+                      <span className="text-xs text-slate-400">同时添加到个人收藏夹中</span>
+                  </div>
+              </label>
           </div>
+          
+
           
           {(!saveToFavorites && !saveToLibrary) && (
             <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2 text-xs text-amber-700">
@@ -2570,14 +2825,22 @@ const App: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {filteredFavorites.map((fav) => (
-                <SharedStyleCard 
-                  key={fav.id}
-                  item={fav}
-                  onDetail={() => setSelectedPresetForDetail(fav)}
-                  onApply={() => handleApplyPresetRequest(fav)}
-                  onDelete={() => handleDeleteFavoriteRequest(fav.id)}
-                  variant="favorites"
-                />
+                <div key={fav.id} className="h-[325px] w-full relative">
+                  <div className="absolute inset-0 origin-top-left" style={{ transform: 'scale(0.85)', width: '117.65%', height: '117.65%' }}>
+                    <SharedStyleCard 
+                      item={fav}
+                      onDetail={() => setSelectedPresetForDetail(fav)}
+                      onApply={() => handleApplyPresetRequest(fav)}
+                      onDelete={() => handleDeleteFavoriteRequest(fav.id)}
+                      onEdit={() => {
+                        setIsFavoritesModalOpen(false);
+                        setEditingTemplateId(fav.id);
+                        setViewMode('templates');
+                      }}
+                      variant="favorites"
+                    />
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -2760,18 +3023,12 @@ const App: React.FC = () => {
     <ErrorBoundary>
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans selection:bg-rose-100 selection:text-rose-600 flex flex-col overflow-x-hidden">
     
-      {/* Toast Notification */}
-      {toast && (
-        <Toast
-          toast={toast}
-          onClose={() => setToast(null)}
-        />
-      )}
+
 
       {/* --- HEADER --- */}
       {viewMode !== 'landing' && (
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 h-16 shrink-0 shadow-sm">
-          <div className="max-w-[1480px] mx-auto flex items-center justify-between relative">
+          <div className="max-w-[1480px] mx-auto flex items-center justify-between relative h-full px-6">
           
           {/* LEFT SECTION: Logo + Context Navigation */}
           <div className="flex items-center gap-6 z-10 w-[300px]">
@@ -2796,7 +3053,10 @@ const App: React.FC = () => {
                  
                  <div className="flex items-center gap-3">
                    <button
-                    onClick={() => setViewMode(viewMode === 'history-detail' ? 'history' : 'dashboard')}
+                    onClick={() => {
+                        setViewMode(viewMode === 'history-detail' ? 'history' : 'dashboard');
+                        setIsHistoryOpen(false);
+                    }}
                     className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all text-xs font-bold whitespace-nowrap"
                    >
                      <div className="bg-white p-1 rounded-lg shadow-sm">
@@ -2921,11 +3181,12 @@ const App: React.FC = () => {
             {viewMode === "dashboard" && (
               <Dashboard
                 projects={projects}
-                onCreateProject={handleCreateProject}
+                onCreateProject={handleOpenCreateProjectModal}
                 onOpenProject={handleOpenProject}
                 onTogglePause={handleTogglePause}
                 onDeleteProject={handleDeleteProject}
                 onTogglePin={handleTogglePin}
+                onStartProject={handleStartProjectRequest}
               />
             )}
 
@@ -2939,13 +3200,21 @@ const App: React.FC = () => {
               {/* --- Moved Save Preset & Favorites Buttons Here --- */}
               <div className="absolute top-4 right-6 flex items-center gap-3 z-10">
                 <button
+                   onClick={openSavePresetModal}
+                   disabled={isPresetSaved}
+                   className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all font-medium shadow-sm ${
+                     isPresetSaved
+                       ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
+                       : "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 placeholder-opacity-100" // placeholder-opacity used to ensure class existence? No just use safe fallback
+                   } ${!isPresetSaved ? "hover:scale-105 active:scale-95" : ""}`}
+                   title={isPresetSaved ? "已保存为模版" : "保存当前配置为模版"}
+                >
+                   {isPresetSaved ? <CheckCircle2 size={14} /> : <Save size={14} />} {isPresetSaved ? "已保存" : "保存模版"}
+                </button>
+
+                <button
                   onClick={() => setViewMode('templates')}
-                  disabled={isPresetSaved}
-                  className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm transition-all font-medium ${
-                    isPresetSaved
-                      ? "bg-green-50 text-green-600 border-green-200 cursor-default"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"
-                  }`}
+                  className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm transition-all font-medium bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200`}
                 >
                   <BookTemplate size={14} /> 模版库
                 </button>
@@ -3017,7 +3286,8 @@ const App: React.FC = () => {
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 pointer-events-none">
                             <button
                               onClick={openStyleModal}
-                              className="pointer-events-auto flex flex-col items-center justify-center gap-1 bg-white hover:bg-rose-50 text-rose-600 w-24 h-12 rounded-lg shadow-lg transition-all"
+                              disabled={!!previewSnapshot}
+                              className={`pointer-events-auto flex flex-col items-center justify-center gap-1 bg-white hover:bg-rose-50 text-rose-600 w-24 h-12 rounded-lg shadow-lg transition-all ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >
                               <span className="text-xs font-bold flex items-center gap-1">
                                 <Upload size={14} /> 管理参考图
@@ -3085,7 +3355,7 @@ const App: React.FC = () => {
                     <StyleControls
                       config={config}
                       onChange={handleConfigChange}
-                      readOnly={false}
+                      readOnly={!!previewSnapshot}
                     />
                   </div>
                 </div>
@@ -3102,13 +3372,14 @@ const App: React.FC = () => {
                       onChange={(e) =>
                         handleConfigChange("requirements", e.target.value)
                       }
-                      placeholder={`在此输入详细的排版、字体或布局要求...`}
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px]"
+                      placeholder={`例如：封面使用极简科技风格，主色调为深蓝与白色，标题使用无衬线字体，正文排版清晰，强调商务专业感...`}
+                      disabled={!!previewSnapshot}
+                      className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px] ${previewSnapshot ? 'opacity-70 cursor-not-allowed' : ''}`}
                     />
                     <button
                       onClick={handleRefineRequirements}
                       disabled={
-                        isRefiningRequirements || !(config.requirements || '').trim()
+                        !!previewSnapshot || isRefiningRequirements || !(config.requirements || '').trim()
                       }
                       className={`absolute bottom-3 right-3 p-1.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-all shadow-sm
                                         ${
@@ -3150,13 +3421,15 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-3">
                     <button
                       onClick={handleAddTextPage}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap"
+                      disabled={!!previewSnapshot}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <Plus size={14} /> 添加文本
                     </button>
                     <button
                       onClick={openImageTaskModal}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap"
+                      disabled={!!previewSnapshot}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <Plus size={14} /> 添加图片
                     </button>
@@ -3164,13 +3437,14 @@ const App: React.FC = () => {
 
                     <button
                       onClick={() => openOutlineGenerator()}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap"
+                      disabled={!!previewSnapshot}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <Sparkles size={14} /> 一句话生成
                     </button>
                     <button
                       onClick={() => outlineFileInputRef.current?.click()}
-                      disabled={isReadingFile}
+                      disabled={!!previewSnapshot || isReadingFile}
                       title="支持的格式: PDF, Word (.doc/.docx), Markdown (.md), 文本 (.txt), JSON"
                       className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm disabled:opacity-50 whitespace-nowrap"
                     >
@@ -3192,7 +3466,7 @@ const App: React.FC = () => {
 
                     <button
                       onClick={handleGenerateBatch}
-                      disabled={items.length === 0 || isProcessing}
+                      disabled={!!previewSnapshot || items.length === 0 || isProcessing}
                       className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition-all transform active:scale-95 whitespace-nowrap ${
                         items.length === 0 || isProcessing
                           ? "bg-rose-300 cursor-not-allowed"
@@ -3258,7 +3532,8 @@ const App: React.FC = () => {
                   <div className="h-6 w-px bg-slate-200 mx-1"></div>
                   <button
                     onClick={clearWorkbench}
-                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    disabled={!!previewSnapshot}
+                    className={`p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
                     title="清空列表"
                   >
                     <Trash2 size={18} />
@@ -3299,6 +3574,7 @@ const App: React.FC = () => {
                         onDuplicate={() => handleDuplicatePage(item.id)}
                         onViewImage={(url) => setLightboxImage(url)}
                         onRefineContent={handleRefineSlideContent}
+                        readOnly={!!previewSnapshot}
                       />
                     ))}
 
@@ -3687,12 +3963,11 @@ const App: React.FC = () => {
                handleApplyTemplate(template);
              }}
              templates={styleTemplates}
-             onUpdateTemplates={setStyleTemplates}
              activeTemplateId={activeTemplateId}
+             initialEditingTemplateId={editingTemplateId}
+             onClearEditingTemplateId={() => setEditingTemplateId(null)}
              favorites={favorites}
              onApplyFavorite={handleApplyPresetRequest}
-             onDeleteFavorite={handleDeleteFavoriteRequest}
-             onToggleFavorite={handleToggleFavorite}
              appSettings={appSettings}
              onShowToast={showToast}
            />
@@ -3708,9 +3983,24 @@ const App: React.FC = () => {
         />
       )}
     </div>
+
+      <StartProjectModal
+        isOpen={startProjectModalData.isOpen}
+        onClose={() => setStartProjectModalData(prev => ({ ...prev, isOpen: false }))}
+        project={startProjectModalData.project}
+        pendingItems={startProjectModalData.pendingItems}
+        onConfirmBatch={handleConfirmBatchStart}
+        onOpenProject={() => {
+            if (startProjectModalData.project) {
+                handleOpenProject(startProjectModalData.project.id);
+            }
+            setStartProjectModalData(prev => ({ ...prev, isOpen: false }));
+        }}
+      />
     </ErrorBoundary>
+
     </div>
   );
-};
+}
 
 export default App;

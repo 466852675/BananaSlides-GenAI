@@ -1,14 +1,15 @@
 import React from 'react';
 import { ProjectSnapshot } from '../api/history';
-import { RotateCcw, X } from 'lucide-react';
+import { RotateCcw, X, Copy } from 'lucide-react';
 
 interface SnapshotPreviewBannerProps {
     snapshot: ProjectSnapshot;
     onRestore: () => void;
+    onFork: () => void;
     onExit: () => void;
 }
 
-export const SnapshotPreviewBanner: React.FC<SnapshotPreviewBannerProps> = ({ snapshot, onRestore, onExit }) => {
+export const SnapshotPreviewBanner: React.FC<SnapshotPreviewBannerProps> = ({ snapshot, onRestore, onFork, onExit }) => {
     
     return (
         <div className="bg-indigo-600 text-white px-6 py-3 shadow-md flex items-center justify-between z-[60] relative">
@@ -28,13 +29,12 @@ export const SnapshotPreviewBanner: React.FC<SnapshotPreviewBannerProps> = ({ sn
                 >
                     <RotateCcw className="w-4 h-4" /> 恢复此版本
                 </button>
-                {/* 
                 <button 
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-700/50 text-white border border-indigo-500 rounded-md text-sm hover:bg-indigo-700 transition-colors"
+                    onClick={onFork}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-700/50 text-white border border-indigo-400 rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors"
                 >
                     <Copy className="w-4 h-4" /> 另存为新项目
                 </button>
-                */}
                 <div className="w-px h-6 bg-indigo-400 mx-1" />
                 <button 
                     onClick={onExit}

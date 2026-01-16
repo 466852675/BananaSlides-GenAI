@@ -8,6 +8,8 @@ import {
   MoreHorizontal,
   Eye,
   Check,
+  Clock,
+  Edit3,
 } from "lucide-react";
 import { StyleTemplate, StylePreset, StyleConfig } from "../types";
 
@@ -147,7 +149,18 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
               {item.config.aspectRatio}
             </span>
             <span className="bg-slate-100 px-1.5 py-0.5 rounded">
-              {item.config.colorPalette}
+            </span>
+            <div className="w-px h-3 bg-slate-200"></div>
+            <span className="flex items-center gap-1">
+               <Clock size={10} /> {new Date(item.createdAt).toLocaleString('zh-CN', { 
+                  year: 'numeric', 
+                  month: '2-digit', 
+                  day: '2-digit', 
+                  hour: '2-digit', 
+                  minute: '2-digit', 
+                  second: '2-digit',
+                  hour12: false 
+               }).replace(/\//g, '-')}
             </span>
           </div>
         </div>
@@ -193,7 +206,7 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
 
         {/* Actions - Pushed to bottom */}
         <div className="absolute bottom-3 left-3 right-3 pt-2 bg-white border-t border-slate-100 flex flex-col gap-2">
-          {/* Row 1: Secondary Actions */}
+          {/* Row: Detail, Edit, Apply, Delete */}
           <div className="flex gap-2">
             {onDetail && (
               <button
@@ -201,9 +214,10 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
                   e.stopPropagation();
                   onDetail(item);
                 }}
-                className="flex-1 flex justify-center items-center py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                className="px-3 flex justify-center items-center py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                title="查看详情"
               >
-                详情
+                <Eye size={16} />
               </button>
             )}
 
@@ -213,15 +227,13 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
                   e.stopPropagation();
                   onEdit(item);
                 }}
-                className="flex-1 flex justify-center items-center py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                className="px-3 flex justify-center items-center py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                title="编辑"
               >
-                编辑
+                <Edit3 size={16} />
               </button>
             )}
-          </div>
 
-          {/* Row 2: Primary Action & Delete */}
-          <div className="flex gap-2">
             {onApply && (
               <button
                 onClick={(e) => {
@@ -252,6 +264,7 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
                   onDelete(item.id);
                 }}
                 className="w-10 flex justify-center items-center border border-slate-200 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-all"
+                title="删除"
               >
                 <Trash2 size={16} />
               </button>

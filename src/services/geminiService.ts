@@ -14,90 +14,89 @@ const ensureUploaded = async (resource: StoredResource): Promise<string> => {
 
 // --- Exports ---
 
-export const smartRefine = async (text: string, type: 'requirement' | 'content', settings?: AppSettings): Promise<string> => {
+export const smartRefine = async (text: string, type: 'requirement' | 'content'): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', {
             text,
-            type,
-            settings
+            type
         });
-        return response.data || text;
+        return response.data.data || text;
     } catch (error) {
         console.error("Smart Refine Error:", error);
         throw error;
     }
 };
 
-export const refinePrompt = async (rawText: string, settings?: AppSettings): Promise<string> => {
+export const refinePrompt = async (rawText: string): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', { 
              text: rawText,
              type: 'requirement', // Reuse requirement type for prompt refinement
-             settings
         });
-        return response.data || rawText;
+        return response.data.data || rawText;
     } catch (error) {
         console.error("Refine Prompt Error:", error);
         return rawText;
     }
 };
 
-export const extractTextFromFile = async (file: File, settings?: AppSettings): Promise<string> => {
+export const extractTextFromFile = async (file: File): Promise<{ text: string, isFallback: boolean, provider?: string }> => {
     try {
         // 1. Upload first
         const resourcePath = await uploadFile(file);
         
         // 2. Call AI Extract
-        const response = await client.post<{ success: boolean, data: string }>('/ai/extract-text', {
+        const response = await client.post<{ success: boolean, data: string, meta?: { isFallback: boolean, provider: string } }>('/ai/extract-text', {
             resourcePath,
-            fileType: file.type,
-            settings
+            fileType: file.type
         });
-        return response.data;
+        
+        return {
+            text: response.data.data,
+            isFallback: response.data.meta?.isFallback || false,
+            provider: response.data.meta?.provider
+        };
     } catch (error) {
         console.error("Extract Text Error:", error);
         throw error;
     }
 };
 
-export const generateOutline = async (topic: string, configStyle?: StyleConfig, settings?: AppSettings): Promise<OutlineItem[]> => {
+export const generateOutline = async (topic: string, configStyle?: StyleConfig): Promise<OutlineItem[]> => {
     try {
         const response = await client.post<{ success: boolean, data: OutlineItem[] }>('/ai/generate-outline', {
             topic,
-            configStyle,
-            settings
+            configStyle
         });
-        return response.data;
+        return response.data.data;
     } catch (error) {
         console.error("Generate Outline Error:", error);
         throw error;
     }
 };
 
-export const generateSingleOutlineItem = async (topic: string, index: number, total: number, settings?: AppSettings): Promise<{title: string, brief: string}> => {
+export const generateSingleOutlineItem = async (topic: string, index: number, total: number): Promise<{title: string, brief: string}> => {
      try {
         const response = await client.post<{ success: boolean, data: {title: string, brief: string} }>('/ai/generate-single-outline-item', {
             topic,
             index,
-            total,
-            settings
+            total
         });
-        return response.data;
+        return response.data.data;
     } catch (error) {
         console.error("Generate Single Item Error:", error);
         throw error;
     }
 };
 
-export const generateSlideDetail = async (title: string, brief: string, topicContext: string, settings?: AppSettings): Promise<string> => {
+export const generateSlideDetail = async (title: string, brief: string, topicContext: string): Promise<string> => {
      try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/generate-slide-detail', {
             title,
             brief,
-            topicContext,
-            settings
+            topicContext
         });
-        return response.data;
+        return response.data.data;
     } catch (error) {
         console.error("Generate Slide Detail Error:", error);
         throw error;
@@ -110,7 +109,6 @@ export const generateSlideVariant = async (
   configStyle: StyleConfig,
   variantLabel: string,
   title?: string,
-  settings?: AppSettings,
   contentType: 'text' | 'image' = 'text' 
 ): Promise<string> => {
     try {
@@ -124,10 +122,9 @@ export const generateSlideVariant = async (
             configStyle,
             variantLabel,
             title,
-            settings,
             contentType
         });
-        return response.data;
+        return response.data.data;
     } catch (error) {
          console.error("Generate Variant Error:", error);
          throw error;

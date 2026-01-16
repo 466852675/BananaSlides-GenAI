@@ -4,7 +4,27 @@ import { AppSettings, ProjectSession } from '../types';
 
 const prisma = new PrismaClient();
 
+// --- Memory Queue for Notifications ---
+export const notificationQueue: Array<{
+    id: string;
+    type: 'snapshot_summary';
+    projectId: string;
+    snapshotId: string;
+    message: string;
+    timestamp: number;
+}> = [];
+
 export class SnapshotService {
+    
+    // Static poll method to match route usage, or instance method if we use instance
+    // To minimize breakage, we use static for utility access or global instance pattern
+    // But since the route uses `SnapshotService.pollNotifications`, let's make it static.
+    static pollNotifications() {
+        if (notificationQueue.length === 0) return [];
+        const alerts = [...notificationQueue];
+        notificationQueue.length = 0; // Clear queue
+        return alerts;
+    }
 
     // Helper: Calculate meaningful diff context
     private calculateDiff(oldData: any, newData: any): string {
@@ -28,18 +48,57 @@ export class SnapshotService {
                 changes.push(`Slide count changed: ${oldItems.length} -> ${newItems.length}`);
             }
 
-            // Check title changes (limit to 3 examples)
-            let titleChanges = 0;
-            for (let i = 0; i < Math.min(oldItems.length, newItems.length); i++) {
-                if (oldItems[i].title !== newItems[i].title) {
-                    titleChanges++;
-                    if (titleChanges <= 3) {
-                         changes.push(`Slide ${i+1} title changed: "${oldItems[i].title}" -> "${newItems[i].title}"`);
-                    }
+            // Deep compare items (up to a limit to avoid huge prompts)
+            let itemChanges = 0;
+            const limit = Math.max(oldItems.length, newItems.length);
+            
+            for (let i = 0; i < limit; i++) {
+                const oldItem = oldItems[i];
+                const newItem = newItems[i];
+                
+                if (!oldItem && newItem) {
+                    itemChanges++; // Added
+                    continue;
                 }
-            }
-            if (titleChanges > 3) changes.push(`...and ${titleChanges - 3} other title changes`);
+                if (oldItem && !newItem) {
+                    itemChanges++; // Removed
+                    continue;
+                }
 
+                // Check key fields
+                let changed = false;
+                if (oldItem.title !== newItem.title) {
+                    changes.push(`Slide ${i+1} title: "${oldItem.title}" -> "${newItem.title}"`);
+                    changed = true;
+                }
+                // Check content length or rough content match
+                // We use simplified check for content to avoid huge diff strings
+                const oldContent = oldItem.content || oldItem.textContent || "";
+                const newContent = newItem.content || newItem.textContent || "";
+                
+                if (oldContent !== newContent && !changed) { // Only log if title didn't change (avoid double log)
+                   if (Math.abs(oldContent.length - newContent.length) > 5) { // Ignore minor whitespace
+                       changes.push(`Slide ${i+1} content modified`);
+                       changed = true;
+                   } else if (oldContent.trim() !== newContent.trim()) {
+                       changes.push(`Slide ${i+1} content tweaked`);
+                       changed = true;
+                   }
+                }
+
+                 if (oldItem.pageType !== newItem.pageType && !changed) {
+                    changes.push(`Slide ${i+1} type: ${oldItem.pageType} -> ${newItem.pageType}`);
+                    changed = true;
+                }
+
+                if (changed) itemChanges++;
+                
+                // Cap details in prompt
+                if (changes.length > 5) break; 
+            }
+
+            if (changes.length > 5) changes.push(`...and more changes.`);
+            
             if (changes.length === 0) return "No significant changes detected (Routine Save).";
             return changes.join(". ");
         } catch (e) {
@@ -65,19 +124,24 @@ export class SnapshotService {
              }
         }
 
-        // 3. Generate AI Summary
-        console.log(`[SnapshotService] Generating summary for diff: ${diffContext}`);
-        let summary = "Routine Save";
-        try {
-            summary = await AIService.generateSnapshotSummary(diffContext, settings);
-        } catch (e) {
-            console.error("Failed to generate AI summary", e);
-            summary = "手动保存记录";
+        // 3. Determine Summary Strategy
+        let summary = "常规保存";
+        let shouldGenerateAsync = false;
+
+        const ROUTINE_MSG = "No significant changes detected (Routine Save).";
+
+        if (diffContext === ROUTINE_MSG) {
+            summary = "常规保存"; // Skip AI for trivial changes
+            console.log("[SnapshotService] Trivial diff, skipping AI summary.");
+        } else {
+            // [MODIFIED] Show immediate diff + AI pending status
+            summary = `${diffContext}\n\n🤖 AI 正在智能摘要，请耐心等待...`; 
+            shouldGenerateAsync = true;
         }
 
-        // 4. Save
+        // 4. Create Snapshot immediately
         const version = (latest?.version || 0) + 1;
-        return prisma.projectSnapshot.create({
+        const snapshot = await prisma.projectSnapshot.create({
             data: {
                 projectId,
                 version,
@@ -85,6 +149,47 @@ export class SnapshotService {
                 data: JSON.stringify(data)
             }
         });
+
+        // 5. Async Background Update
+        if (shouldGenerateAsync) {
+            // Fire and forget - do not await
+            (async () => {
+                try {
+                    console.log(`[SnapshotService] Starting async summary generation for Snapshot ${snapshot.id}...`);
+                    const aiSummary = await AIService.generateSnapshotSummary(diffContext, settings);
+                    
+                    await prisma.projectSnapshot.update({
+                        where: { id: snapshot.id },
+                        data: { summary: aiSummary }
+                    });
+                    console.log(`[SnapshotService] Updated Snapshot ${snapshot.id} with summary: "${aiSummary}"`);
+
+                    // Push to notification queue
+                    notificationQueue.push({
+                        id: Date.now().toString(),
+                        type: 'snapshot_summary',
+                        projectId,
+                        snapshotId: snapshot.id,
+                        message: `AI 智能摘要已生成: ${aiSummary.substring(0, 100)}${aiSummary.length > 100 ? '...' : ''}`,
+                        timestamp: Date.now()
+                    });
+
+                } catch (e) {
+                    console.error(`[SnapshotService] Async summary generation failed for ${snapshot.id}`, e);
+                    // Update status to indicate failure but keep record
+                    try {
+                        await prisma.projectSnapshot.update({
+                            where: { id: snapshot.id },
+                            data: { summary: "手动保存 (摘要生成失败)" }
+                        });
+                    } catch (updateErr) {
+                         console.error(`[SnapshotService] Failed to update error status for ${snapshot.id}`, updateErr);
+                    }
+                }
+            })();
+        }
+
+        return snapshot;
     }
 
     async findAll(projectId: string) {

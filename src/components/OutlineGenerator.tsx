@@ -218,6 +218,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
     };
 
     const handleDeleteOutlineItem = (id: string) => {
+        if (!confirm('确定要删除此大纲项吗？')) return;
         setOutlineItems(prev => prev.filter(item => item.id !== id).map((item, idx) => ({ ...item, index: idx + 1 })));
     };
 
@@ -319,7 +320,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         const pendingItems = outlineItems; 
         
         // Use concurrency from settings, default to 5 for API rate limit safety
-        const CONCURRENCY = appSettings.performance.textConcurrency || 5;
+        const CONCURRENCY = appSettings.performance.textConcurrency || 10;
         const activePromises = new Set<Promise<void>>();
         let failureCount = 0;
 

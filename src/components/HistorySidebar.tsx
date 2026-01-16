@@ -8,13 +8,14 @@ interface HistorySidebarProps {
     isOpen: boolean;
     onClose: () => void;
     currentProject: ProjectSession | null;
+    liveProjectData: ProjectSession | null; // Real-time data including items with variants
     settings: AppSettings;
     onPreview: (snapshot: ProjectSnapshot) => void;
     showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export const HistorySidebar: React.FC<HistorySidebarProps> = ({ 
-    isOpen, onClose, currentProject, settings, onPreview, showToast 
+    isOpen, onClose, currentProject, liveProjectData, settings, onPreview, showToast 
 }) => {
     const { createSnapshot, listSnapshots, getSnapshot, deleteSnapshot } = useHistory();
     const queryClient = useQueryClient();
@@ -27,8 +28,10 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
     const saveMutation = useMutation({
         mutationFn: async () => {
-             if (!currentProject) return;
-             return createSnapshot(currentProject.id, currentProject, settings);
+             if (!currentProject || !liveProjectData) return;
+             // console.log('[HistorySidebar] Saving snapshot...');
+             // Use liveProjectData which contains real-time items with variants (images)
+             return createSnapshot(currentProject.id, liveProjectData, settings);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['snapshots'] });
@@ -52,9 +55,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         if(btn) btn.innerText = "读取中...";
         
         try {
-            console.log(`[HistorySidebar] Fetching snapshot: ${snapshotId}`);
             const fullSnapshot = await getSnapshot(snapshotId);
-            console.log(`[HistorySidebar] Snapshot loaded successfully:`, fullSnapshot);
             onPreview(fullSnapshot);
             onClose(); 
         } catch(e: any) {
@@ -130,7 +131,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                                  </div>
                              </div>
                              
-                             <p className="text-sm text-zinc-700 font-medium leading-relaxed mb-3">
+                             <p className="text-sm text-zinc-700 font-medium leading-relaxed mb-3 whitespace-pre-wrap">
                                  {snap.summary || "常规保存"}
                              </p>
                              

@@ -23,7 +23,7 @@ export const Toast: React.FC<ToastProps> = ({ toast, onClose }) => {
             }, 5000);
             return () => clearTimeout(timer);
         }
-    }, [toast?.id, toast?.type, onClose]); // Use specific properties to prevent unwanted resets
+    }, [toast, onClose]); // Depend on entire toast object to ensure timer resets on any change
 
     if (!toast) return null;
 

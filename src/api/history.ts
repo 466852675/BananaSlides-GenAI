@@ -1,3 +1,4 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { client } from './client';
 import { ProjectSession, AppSettings } from '../types';
 
@@ -43,4 +44,52 @@ export const useHistory = () => {
         restoreSnapshot,
         deleteSnapshot
     };
+};
+
+export const useProjectSnapshots = (projectId: string) => {
+    return useQuery({
+        queryKey: ['snapshots', projectId],
+        queryFn: async () => {
+            const res = await client.get<ProjectSnapshot[]>(`/projects/${projectId}/snapshots`);
+            return res as unknown as ProjectSnapshot[];
+        },
+        enabled: !!projectId
+    });
+};
+
+export const useCreateSnapshot = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ projectId, projectData, settings }: { projectId: string; projectData: ProjectSession; settings: AppSettings }) => {
+             return client.post<ProjectSnapshot>(`/projects/${projectId}/snapshots`, { projectData, settings });
+        },
+        onSuccess: (_, variables) => {
+             queryClient.invalidateQueries({ queryKey: ['snapshots', variables.projectId] });
+        }
+    });
+};
+
+export const useRestoreSnapshot = () => {
+     const queryClient = useQueryClient();
+     return useMutation({
+        mutationFn: async (snapshotId: string) => {
+             return client.post(`/snapshots/${snapshotId}/restore`, {});
+        },
+        onSuccess: () => {
+             queryClient.invalidateQueries({ queryKey: ['projects'] });
+             queryClient.invalidateQueries({ queryKey: ['project'] });
+        }
+     });
+};
+
+export const useForkSnapshot = () => {
+     const queryClient = useQueryClient();
+     return useMutation({
+        mutationFn: async (snapshotId: string) => {
+             return client.post(`/snapshots/${snapshotId}/fork`, {});
+        },
+        onSuccess: () => {
+             queryClient.invalidateQueries({ queryKey: ['projects'] });
+        }
+     });
 };

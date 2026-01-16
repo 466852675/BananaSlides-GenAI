@@ -4,6 +4,9 @@ import { AppSettings, ModelConnection, StoredResource, DocParserConfig, StyleCon
 import { resourceToBase64, readResourceBuffer } from "../utils/file";
 import mammoth from 'mammoth';
 import axios from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
+import { AssetService } from './asset.service';
 
 // --- Default Configuration ---
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || "";
@@ -41,10 +44,10 @@ const createGoogleClient = (config: ModelConnection) => {
 };
 
 const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image' | 'vision'): ModelConnection => {
-    console.log(`[getTaskConfig] Task: ${task}, Provider: ${settings?.ai?.provider || 'default'}`);
+    // console.log(`[getTaskConfig] Task: ${task}, Provider: ${settings?.ai?.provider || 'default'}`);
     
     if (!settings) {
-        console.log(`[getTaskConfig] No settings provided, using defaults`);
+        // console.log(`[getTaskConfig] No settings provided, using defaults`);
         return {
             apiKey: DEFAULT_GEMINI_KEY,
             baseUrl: 'https://generativelanguage.googleapis.com',
@@ -54,9 +57,9 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
 
     let connection: ModelConnection;
 
-    // Priority 1: Use customCombo if it has configuration for this task
-    if (settings.ai.customCombo && settings.ai.customCombo[task] && settings.ai.customCombo[task].model) {
-        console.log(`[getTaskConfig] Using CustomCombo for ${task}:`, JSON.stringify(settings.ai.customCombo[task], null, 2));
+    // Priority 1: Use customCombo if it has configuration for this task AND provider is CustomCombo
+    if (settings.ai.provider === 'CustomCombo' && settings.ai.customCombo && settings.ai.customCombo[task] && settings.ai.customCombo[task].model) {
+        // console.log(`[getTaskConfig] Using CustomCombo for ${task}:`, JSON.stringify(settings.ai.customCombo[task], null, 2));
         connection = { ...settings.ai.customCombo[task] };
         if (!connection.apiKey) connection.apiKey = settings.ai.apiKey;
         if (!connection.baseUrl) connection.baseUrl = settings.ai.baseUrl;
@@ -77,7 +80,7 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
         connection.model = 'gemini-3-pro-image';
     }
 
-    console.log(`[getTaskConfig] Final config: baseUrl=${connection.baseUrl}, model=${connection.model}, hasApiKey=${!!connection.apiKey}`);
+    // console.log(`[getTaskConfig] Final config: baseUrl=${connection.baseUrl}, model=${connection.model}, hasApiKey=${!!connection.apiKey}`);
     return connection;
 };
 
@@ -156,9 +159,12 @@ async function callOpenAICompatible(
     } catch (error: any) {
         const errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
         const statusCode = error.response?.status || 'unknown';
-        console.error(`[OpenAI Compatible] API Call failed to ${url} [Status: ${statusCode}]:`, errMsg);
-        console.error(`[OpenAI Compatible] Full error response:`, JSON.stringify(error.response?.data || {}, null, 2));
-        throw new Error(`API Request Failed: ${errMsg}`);
+        console.error(`[OpenAI Compatible] API Call failed to ${url} [Status: ${statusCode}]`);
+        console.error(`[OpenAI Compatible] Error Message: ${errMsg}`);
+        if (error.response?.data) {
+            console.error(`[OpenAI Compatible] Full error response:`, JSON.stringify(error.response.data, null, 2));
+        }
+        throw new Error(`API Request Failed: ${errMsg} (Status: ${statusCode})`);
     }
 }
 
@@ -197,7 +203,7 @@ async function callOpenAIImageGeneration(
     console.log(`[OpenAI Image] Calling: ${url}, Model: ${config.model}, Size: ${size}`);
 
     try {
-        const response = await axios.post(url, body, { headers, timeout: 180000 });
+        const response = await axios.post(url, body, { headers, timeout: 600000 });
         const data = response.data?.data?.[0];
         
         if (data?.b64_json) {
@@ -213,9 +219,12 @@ async function callOpenAIImageGeneration(
     } catch (error: any) {
         const errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
         const statusCode = error.response?.status || 'unknown';
-        console.error(`[OpenAI Image] API Call failed to ${url} [Status: ${statusCode}]:`, errMsg);
-        console.error(`[OpenAI Image] Full error response:`, JSON.stringify(error.response?.data || {}, null, 2));
-        throw new Error(`Image Generation Failed: ${errMsg}`);
+        console.error(`[OpenAI Image] API Call failed to ${url} [Status: ${statusCode}]`);
+        console.error(`[OpenAI Image] Error Message: ${errMsg}`);
+        if (error.response?.data) {
+            console.error(`[OpenAI Image] Full error response:`, JSON.stringify(error.response.data, null, 2));
+        }
+        throw new Error(`Image Generation Failed: ${errMsg} (Status: ${statusCode})`);
     }
 }
 
@@ -272,36 +281,56 @@ export const AIService = {
         }
     },
 
-    async extractTextFromFile(resourcePath: string, fileType: string, settings?: AppSettings): Promise<string> {
-        // Handle PDF via MinerU if configured
-        if (fileType === 'application/pdf' && settings?.docParser?.apiKey) {
-             // We'd call MinerU here similarly to frontend, but usually MinerU is handled via middleware proxy. 
-             // If backend-to-backend, we implement it directly.
-             // For now, let's replicate logic or assume MinerU is an external service we call.
-             // Implementation omitted for brevity, assuming existing flow or direct text extraction fallback.
+    async extractTextFromFile(resourcePath: string, fileType: string, settings?: AppSettings): Promise<{ content: string, fallback?: boolean, provider?: string }> {
+        // Handle PDF via MinerU with Fallback
+        if (fileType === 'application/pdf') {
+             const mineruKey = settings?.docParser?.apiKey;
+             
+             if (mineruKey) {
+                 try {
+                     const { MinerUService } = await import('./mineru.service');
+                     
+                     console.log('[AIService] Attempting MinerU PDF Parsing...');
+                     const markdown = await MinerUService.parseFile(resourcePath, {
+                         apiKey: mineruKey,
+                         baseUrl: settings?.docParser?.baseUrl || 'https://mineru.openxlab.org.cn',
+                         provider: 'MinerU'
+                     });
+                     
+                     console.log('[AIService] MinerU Success.');
+                     return { content: markdown, provider: 'MinerU' };
+                     
+                 } catch (mineruError: any) {
+                     console.warn(`[AIService] MinerU Failed (Falling back to Vision): ${mineruError.message}`);
+                     // Proceed to Vision Model logic below, but mark as fallback
+                     // We continue execution...
+                 }
+             } else {
+                 console.log('[AIService] MinerU API Key missing. Skipping to Vision Model.');
+             }
         }
 
         const config = getTaskConfig(settings, 'vision');
 
         // Simple Text
         if (fileType === 'text/plain' || resourcePath.endsWith('.md') || resourcePath.endsWith('.txt')) {
-             // Read directly
-             // We need to implement readTextResource in utils
-             // For now assume buffer read and toString
              const buffer = await readResourceBuffer(resourcePath);
-             return buffer.toString('utf-8');
+             return { content: buffer.toString('utf-8'), provider: 'Local' };
         }
 
         // Word
         if (resourcePath.endsWith('.docx') || fileType.includes('word')) {
             const buffer = await readResourceBuffer(resourcePath);
             const result = await mammoth.extractRawText({ buffer });
-            if (result.value.trim()) return result.value;
+            if (result.value.trim()) return { content: result.value, provider: 'Local' };
         }
 
         // AI Vision
         const base64 = await resourceToBase64(resourcePath);
         
+        // Determine whether this was a fallback from PDF
+        const isFallback = (fileType === 'application/pdf');
+
         if (shouldUseGeminiNative(config, settings)) {
             const ai = createGoogleClient(config);
             const contents = [
@@ -312,7 +341,11 @@ export const AIService = {
                 model: config.model,
                 contents: { parts: contents } as any
             });
-            return response.text?.trim() || "";
+            return { 
+                content: response.text?.trim() || "", 
+                fallback: isFallback,
+                provider: 'Gemini Vision'
+            };
         } else {
             // OpenAI Vision
              const messages = [
@@ -324,7 +357,12 @@ export const AIService = {
                      ]
                  }
              ];
-             return await callOpenAICompatible(config, messages);
+             const text = await callOpenAICompatible(config, messages);
+             return { 
+                 content: text, 
+                 fallback: isFallback, 
+                 provider: 'OpenAI Vision' 
+            };
         }
     },
 
@@ -516,8 +554,14 @@ export const AIService = {
                  }
              }
 
-             if (!imageBase64) return ""; // Fail gracefully or throw
-             return `data:image/png;base64,${imageBase64}`;
+              if (!imageBase64) return ""; 
+              
+              // Save to local file system instead of returning Base64
+              const base64WithPrefix = `data:image/png;base64,${imageBase64}`;
+              const savedUrl = await AssetService.save(base64WithPrefix, 'png');
+              console.log(`[generateSlideVariant] Saved Gemini image to: ${savedUrl}`);
+              
+              return savedUrl;
         } else {
             // OpenAI Image Gen (for local proxies and OpenAI-compatible APIs)
             // Construct text prompt for image generation
@@ -532,7 +576,13 @@ export const AIService = {
             imagePrompt += `Aspect ratio: ${targetRatio}. High quality, modern design, suitable for presentation.`;
             
             console.log(`[generateSlideVariant] Using OpenAI Image API with prompt length: ${imagePrompt.length}`);
-            return await callOpenAIImageGeneration(config, imagePrompt, targetRatio);
+            const base64Result = await callOpenAIImageGeneration(config, imagePrompt, targetRatio);
+            
+            // Save to local file system
+            const savedUrl = await AssetService.save(base64Result, 'png');
+            console.log(`[generateSlideVariant] Saved OpenAI image to: ${savedUrl}`);
+            
+            return savedUrl;
         }
     }
 };

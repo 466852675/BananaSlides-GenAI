@@ -29,8 +29,7 @@ export const exportToZip = async (items: GeneratedSlide[], filename: string = 's
     const validItems = items.filter(item => item.status === 'success' && item.variants.length > 0);
     
     if (validItems.length === 0) {
-        alert("没有可导出的已完成页面。");
-        return;
+        throw new Error("没有可导出的已完成页面。");
     }
 
     validItems.forEach((item, index) => {
@@ -52,8 +51,7 @@ export const exportToPdf = (items: GeneratedSlide[], filename: string = 'present
     const validItems = items.filter(item => item.status === 'success' && item.variants.length > 0);
 
     if (validItems.length === 0) {
-        alert("没有可导出的已完成页面。");
-        return;
+        throw new Error("没有可导出的已完成页面。");
     }
 
     // Default A4 landscape roughly, or 16:9 ratio
@@ -81,8 +79,7 @@ export const exportToPptx = async (items: GeneratedSlide[], filename: string = '
     const validItems = items.filter(item => item.status === 'success' && item.variants.length > 0);
 
     if (validItems.length === 0) {
-        alert("没有可导出的已完成页面。");
-        return;
+        throw new Error("没有可导出的已完成页面。");
     }
 
     const pptx = new PptxGenJS();

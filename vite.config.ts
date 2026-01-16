@@ -10,11 +10,11 @@ export default defineConfig(({ mode }) => {
         host: '0.0.0.0',
         proxy: {
           '/api': {
-            target: 'http://localhost:1111',
+            target: 'http://127.0.0.1:1111',
             changeOrigin: true
           },
           '/uploads': {
-            target: 'http://localhost:1111',
+            target: 'http://127.0.0.1:1111',
             changeOrigin: true
           },
           '/mineru-proxy': {

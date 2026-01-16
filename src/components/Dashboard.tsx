@@ -29,6 +29,7 @@ interface DashboardProps {
   onTogglePause: (id: string) => void;
   onDeleteProject: (id: string) => void;
   onTogglePin: (id: string) => void;
+  onStartProject: (id: string) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -37,12 +38,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenProject,
   onTogglePause,
   onDeleteProject,
-  onTogglePin
+  onTogglePin,
+  onStartProject
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   const [methodFilter, setMethodFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'createdAt' | 'lastModified' | 'progress'>('lastModified');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'lastModified' | 'progress'>('createdAt');
   const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
 
   // --- Helpers ---
@@ -67,9 +69,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // --- Project Stats ---
     const totalProjects = projects.length;
     const todayProjects = projects.filter(p => p.createdAt >= todayTimestamp).length;
+    
+    // Status counts
     const generatingProjects = projects.filter(p => p.status === 'generating').length;
     const pausedProjects = projects.filter(p => p.status === 'paused').length;
+    const inProgressProjects = projects.filter(p => p.status === 'in-progress').length;
+    const idleProjects = projects.filter(p => p.status === 'idle').length;
     const completedProjects = projects.filter(p => p.status === 'completed').length;
+    
+    // Derived Groupings
+    // "Ongoing" in Dashboard should logically include anything that is NOT completed and NOT error
+    // But to be precise with the UI label "In Progress" (进行中), we usually mean active + paused + idle (todo)
+    const activeProjectsCount = generatingProjects + pausedProjects + inProgressProjects + idleProjects;
+    
     const projectCompletionRate = totalProjects > 0 ? Math.round((completedProjects / totalProjects) * 100) : 0;
 
     // --- Page Stats ---
@@ -88,6 +100,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const sortedByModified = [...projects].sort((a, b) => b.lastModified - a.lastModified);
     const lastEditedProject = sortedByModified[0] || null;
 
+    // --- Efficiency Stats ---
+    let avgPageTime = 2.5; // Default fallback
+    if (completedProjects > 0) {
+        const completedList = projects.filter(p => p.status === 'completed');
+        const totalDurationMs = completedList.reduce((acc, p) => acc + (p.lastModified - p.createdAt), 0);
+        const totalCompletedPages = completedList.reduce((acc, p) => acc + p.items.length, 0);
+        if (totalCompletedPages > 0) {
+            // Minutes per page
+            avgPageTime = parseFloat(((totalDurationMs / 1000 / 60) / totalCompletedPages).toFixed(1));
+        }
+    }
+
     return {
       // Project
       totalProjects,
@@ -95,6 +119,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       generatingProjects,
       pausedProjects,
       completedProjects,
+      activeProjectsCount, // New
       projectCompletionRate,
       // Page
       totalPages,
@@ -102,6 +127,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       generatingPages,
       successPages,
       pageCompletionRate,
+      // Efficiency
+      avgPageTime,
       // Quick Resume
       lastEditedProject
     };
@@ -177,12 +204,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <Zap size={20} className={stats.generatingProjects > 0 ? "animate-pulse" : ""} />
               </div>
               <div className="flex flex-col">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">进行中</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">待处理 / 进行中</span>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-xl font-black text-amber-500">{stats.generatingProjects + stats.pausedProjects}</span>
+                  <span className="text-xl font-black text-amber-500">{stats.activeProjectsCount}</span>
                   <span className="text-[10px] font-bold text-slate-400">份 /</span>
-                  <span className="text-lg font-black text-amber-400">{stats.generatingPages}</span>
-                  <span className="text-[10px] font-bold text-slate-400">页</span>
+                  {/* For pages, we show "Pending" pages (Total - Success) to indicate work remaining */}
+                  <span className="text-lg font-black text-amber-400">
+                    {stats.totalPages - stats.successPages}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400">页待生成</span>
                 </div>
               </div>
             </div>
@@ -210,7 +240,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="flex flex-col text-right">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">平均页面耗时</span>
                 <div className="flex items-baseline justify-end gap-1">
-                  <span className="text-xl font-black text-slate-700 tracking-tighter">2.5</span>
+                  <span className="text-xl font-black text-slate-700 tracking-tighter">{stats.avgPageTime || '--'}</span>
                   <span className="text-[10px] font-bold text-slate-400 font-mono">min</span>
                 </div>
               </div>
@@ -227,23 +257,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-blue-50/50 to-transparent z-10" />
           
           <div className="whitespace-nowrap animate-marquee flex items-center gap-12 text-sm font-bold text-blue-600">
-            {stats.generatingProjects + stats.pausedProjects > 0 ? (
+            {projects.length > 0 ? (
               (() => {
-                const latestOngoing = projects
-                  .filter(p => p.status === 'generating' || p.status === 'paused')
-                  .sort((a, b) => b.lastModified - a.lastModified)[0];
+                // Priority: Generating/Paused > Latest Modified
+                const activeProjects = projects.filter(p => p.status === 'generating' || p.status === 'paused');
+                const latestProject = activeProjects.length > 0
+                  ? activeProjects.sort((a, b) => b.lastModified - a.lastModified)[0]
+                  : [...projects].sort((a, b) => b.lastModified - a.lastModified)[0];
+                
+                const isOngoing = latestProject.status === 'generating' || latestProject.status === 'paused';
                 
                 return (
                   <button 
-                    onClick={() => onOpenProject(latestOngoing.id)}
+                    onClick={() => onOpenProject(latestProject.id)}
                     className="flex items-center gap-2 px-6 hover:text-rose-500 transition-colors cursor-pointer group"
                   >
                     <span className="relative flex h-2.5 w-2.5">
-                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${latestOngoing.status === 'generating' ? 'bg-blue-400' : 'bg-slate-400'}`}></span>
-                      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${latestOngoing.status === 'generating' ? 'bg-blue-500' : 'bg-slate-500'}`}></span>
+                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${latestProject.status === 'generating' ? 'bg-blue-400' : 'bg-slate-400'}`}></span>
+                      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${latestProject.status === 'generating' ? 'bg-blue-500' : 'bg-slate-500'}`}></span>
                     </span>
                     <span className="group-hover:underline underline-offset-4 decoration-rose-400/30">
-                      ⚡ 正在进行中：<span className="text-blue-700">{latestOngoing.title || '未命名项目'}</span> —— 点击此处快速[继续编辑]
+                      {isOngoing ? "⚡ 正在进行中：" : "🕒 最近更新："}
+                      <span className="text-blue-700">{latestProject.title || '未命名项目'}</span> 
+                      —— 点击此处快速{isOngoing ? "[继续编辑]" : "[查看详情]"}
                     </span>
                   </button>
                 );
@@ -289,8 +325,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 md:pb-0">
             <Filter size={16} className="text-slate-400 shrink-0" />
             <FilterChip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>全部</FilterChip>
-            <FilterChip active={statusFilter === 'generating'} onClick={() => setStatusFilter('generating')}>进行中</FilterChip>
-            <FilterChip active={statusFilter === 'paused'} onClick={() => setStatusFilter('paused')}>已暂停</FilterChip>
+            <FilterChip active={statusFilter === 'idle'} onClick={() => setStatusFilter('idle')}>未开始</FilterChip>
+            <FilterChip active={statusFilter === 'in-progress'} onClick={() => setStatusFilter('in-progress')}>进行中</FilterChip>
+            <FilterChip active={statusFilter === 'generating'} onClick={() => setStatusFilter('generating')}>生成中</FilterChip>
+            <FilterChip active={statusFilter === 'error'} onClick={() => setStatusFilter('error')}>生成失败</FilterChip>
             
             <div className="h-4 w-px bg-slate-200 mx-2" />
             
@@ -335,6 +373,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   onTogglePause={() => onTogglePause(project.id)}
                   onDelete={() => onDeleteProject(project.id)}
                   onTogglePin={() => onTogglePin(project.id)}
+                  onStartProject={() => onStartProject(project.id)}
                   timeAgo={timeAgo}
                 />
               ))}
@@ -413,8 +452,17 @@ const ProjectCard: React.FC<{
   onTogglePause: () => void;
   onDelete: () => void;
   onTogglePin: () => void;
+  onStartProject: () => void;
   timeAgo: (t: number) => string;
-}> = ({ project, onOpen, onTogglePause, onDelete, onTogglePin, timeAgo }) => {
+}> = ({ project, onOpen, onTogglePause, onDelete, onTogglePin, onStartProject, timeAgo }) => {
+  // Check if start button should be enabled
+  const canStart = useMemo(() => {
+    if (!project.items || project.items.length === 0) return false;
+    return project.items.some(i => i.title || i.textContent || i.originalFile || i.previewUrl);
+  }, [project.items]);
+
+  const isGenerating = project.status === 'generating';
+
   return (
     <div className={`bg-white rounded-3xl overflow-hidden border transition-all group relative ${
       project.isPinned ? 'border-blue-200 shadow-md ring-1 ring-blue-50' : 'border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100'
@@ -451,15 +499,15 @@ const ProjectCard: React.FC<{
             <div className="flex items-center gap-2">
               <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight ${
                 project.status === 'generating' ? 'bg-blue-50 text-blue-600 animate-pulse' :
-                project.status === 'paused' ? 'bg-amber-50 text-amber-600' :
+                project.status === 'in-progress' ? 'bg-indigo-50 text-indigo-600' :
+                project.status === 'error' ? 'bg-rose-50 text-rose-600' :
                 project.status === 'completed' ? 'bg-emerald-50 text-emerald-600' :
-                (project.items && project.items.length > 0) ? 'bg-indigo-50 text-indigo-600' : 
                 'bg-slate-50 text-slate-500'
               }`}>
                 {project.status === 'generating' ? '生成中' :
-                 project.status === 'paused' ? '已暂停' :
-                 project.status === 'completed' ? '已完成' :
-                 (project.items && project.items.length > 0) ? '进行中' : '未开始'}
+                 project.status === 'in-progress' ? '进行中' :
+                 project.status === 'error' ? '生成失败' :
+                 project.status === 'completed' ? '已完成' : '未开始'}
               </span>
               <span className="text-[10px] text-slate-400 font-medium">
                 样式: {project.globalConfig?.styleName || project.styleTemplateId || '自定义'}
@@ -542,12 +590,26 @@ const ProjectCard: React.FC<{
         </div>
         <div className="flex items-center gap-1">
           <button 
-            onClick={(e) => { e.stopPropagation(); onTogglePause(); }}
+            type="button"
+            onClick={(e) => { 
+                e.stopPropagation(); 
+                if (isGenerating) {
+                    onTogglePause();
+                } else if (canStart) {
+                    onStartProject();
+                }
+            }}
+            disabled={!isGenerating && !canStart}
             className={`p-1.5 rounded-lg transition-all ${
-              project.status === 'generating' ? 'hover:bg-amber-100 text-amber-600' : 'hover:bg-blue-100 text-blue-600'
+              !isGenerating && !canStart 
+                  ? 'text-slate-300 cursor-not-allowed bg-slate-50' 
+                  : isGenerating 
+                      ? 'hover:bg-amber-100 text-amber-600 bg-amber-50' 
+                      : 'hover:bg-blue-100 text-blue-600 bg-blue-50'
             }`}
+            title={isGenerating ? "暂停生成" : canStart ? "启动生成" : "暂无待成任务"}
           >
-            {project.status === 'generating' ? <Pause size={16} /> : <Play size={16} />}
+            {isGenerating ? <Pause size={16} /> : <Play size={16} />}
           </button>
           <button 
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
@@ -557,10 +619,10 @@ const ProjectCard: React.FC<{
           </button>
           <button 
             onClick={onOpen}
-            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200 transition-all ml-1"
+            className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:pr-3 transition-all ml-1 group"
           >
-            <ArrowRight size={18} />
-             <span className="text-[10px] font-bold ml-1">查看项目详情</span>
+             <span className="text-[10px] font-bold">进入项目</span>
+            <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
           </button>
         </div>
       </div>

@@ -33,8 +33,6 @@ export const uploadFile = async (file: File): Promise<string> => {
         },
     }) as unknown as any;
     
-    console.log('[uploadFile] Backend response:', result);
-    
     // Handle new format: { url: "..." }
     if (result && typeof result.url === 'string') {
         return result.url;
