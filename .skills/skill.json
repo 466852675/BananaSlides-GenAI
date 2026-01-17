@@ -1,0 +1,62 @@
+{
+  "name": "一键启动服务",
+  "description": "快速启动 BananaSlides 前后端服务,包括后端服务器(端口1111)和前端应用(端口1000)",
+  "version": "1.0.0",
+  "author": "BananaSlides Team",
+  "category": "开发工具",
+  "icon": "🚀",
+  "steps": [
+    {
+      "id": "start_backend",
+      "name": "启动后端服务",
+      "description": "在 server 目录下启动后端开发服务器",
+      "command": "cd server && npm run dev",
+      "cwd": "${PROJECT_ROOT}",
+      "blocking": false,
+      "wait_ms_before_async": 3000,
+      "terminal": "backend",
+      "icon": "🔧",
+      "show_output": true
+    },
+    {
+      "id": "start_frontend",
+      "name": "启动前端应用",
+      "description": "启动前端开发服务器",
+      "command": "npm run dev",
+      "cwd": "${PROJECT_ROOT}",
+      "blocking": false,
+      "terminal": "frontend",
+      "icon": "🎨",
+      "show_output": true
+    }
+  ],
+  "success_message": "服务启动成功!\n\n后端服务: http://localhost:1111\n前端应用: http://localhost:1000\n\n提示: 首次运行前请执行 init_db.bat 初始化数据库",
+  "prerequisites": [
+    {
+      "name": "安装后端依赖",
+      "command": "cd server && npm install",
+      "cwd": "${PROJECT_ROOT}",
+      "description": "安装后端依赖包",
+      "icon": "📦"
+    },
+    {
+      "name": "安装前端依赖",
+      "command": "npm install",
+      "cwd": "${PROJECT_ROOT}",
+      "description": "安装前端依赖包",
+      "icon": "📦"
+    },
+    {
+      "name": "初始化数据库",
+      "command": "init_db.bat",
+      "cwd": "${PROJECT_ROOT}",
+      "description": "初始化数据库(仅首次运行)",
+      "icon": "🗄️",
+      "optional": true
+    }
+  ],
+  "environment": {
+    "backend_port": 1111,
+    "frontend_port": 1000
+  }
+}

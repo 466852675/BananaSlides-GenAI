@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  Rocket, 
-  Clock, 
-  BarChart3, 
-  Zap, 
-  Search, 
-  Filter, 
-  ArrowUpDown, 
-  Pin, 
+import {
+  Rocket,
+  Clock,
+  BarChart3,
+  Zap,
+  Search,
+  Filter,
+  ArrowUpDown,
+  Pin,
   MoreVertical,
   Play,
   Pause,
@@ -30,6 +30,24 @@ interface DashboardProps {
   onDeleteProject: (id: string) => void;
   onTogglePin: (id: string) => void;
   onStartProject: (id: string) => void;
+  // Lifted Search State
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  // Lifted Filter States (Optional for now, but good to add for consistency)
+  statusFilter?: ProjectStatus | 'all';
+  setStatusFilter?: (status: ProjectStatus | 'all') => void;
+  progressFilter?: string; // Placeholder if needed
+  setProgressFilter?: (val: string) => void;
+  timeTypeFilter?: "lastModified" | "createdAt" | "priority";
+  setTimeTypeFilter?: (val: "lastModified" | "createdAt" | "priority") => void;
+  startDateFilter?: string;
+  setStartDateFilter?: (val: string) => void;
+  endDateFilter?: string;
+  setEndDateFilter?: (val: string) => void;
+  timeFilter?: string;
+  setTimeFilter?: (val: string) => void;
+  sortBy?: 'createdAt' | 'lastModified' | 'progress';
+  setSortBy?: (val: 'createdAt' | 'lastModified' | 'progress') => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -39,10 +57,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onTogglePause,
   onDeleteProject,
   onTogglePin,
-  onStartProject
+  onStartProject,
+  searchQuery,
+  setSearchQuery,
+  // Filters could be destructured here if implemented
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
+  // const [searchQuery, setSearchQuery] = useState(''); // Removed internal state
+  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all'); // Keeping internal for now unless passed
   const [methodFilter, setMethodFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'createdAt' | 'lastModified' | 'progress'>('createdAt');
   const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
@@ -69,19 +90,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // --- Project Stats ---
     const totalProjects = projects.length;
     const todayProjects = projects.filter(p => p.createdAt >= todayTimestamp).length;
-    
+
     // Status counts
     const generatingProjects = projects.filter(p => p.status === 'generating').length;
     const pausedProjects = projects.filter(p => p.status === 'paused').length;
     const inProgressProjects = projects.filter(p => p.status === 'in-progress').length;
     const idleProjects = projects.filter(p => p.status === 'idle').length;
     const completedProjects = projects.filter(p => p.status === 'completed').length;
-    
+
     // Derived Groupings
     // "Ongoing" in Dashboard should logically include anything that is NOT completed and NOT error
     // But to be precise with the UI label "In Progress" (进行中), we usually mean active + paused + idle (todo)
     const activeProjectsCount = generatingProjects + pausedProjects + inProgressProjects + idleProjects;
-    
+
     const projectCompletionRate = totalProjects > 0 ? Math.round((completedProjects / totalProjects) * 100) : 0;
 
     // --- Page Stats ---
@@ -103,13 +124,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // --- Efficiency Stats ---
     let avgPageTime = 2.5; // Default fallback
     if (completedProjects > 0) {
-        const completedList = projects.filter(p => p.status === 'completed');
-        const totalDurationMs = completedList.reduce((acc, p) => acc + (p.lastModified - p.createdAt), 0);
-        const totalCompletedPages = completedList.reduce((acc, p) => acc + p.items.length, 0);
-        if (totalCompletedPages > 0) {
-            // Minutes per page
-            avgPageTime = parseFloat(((totalDurationMs / 1000 / 60) / totalCompletedPages).toFixed(1));
-        }
+      const completedList = projects.filter(p => p.status === 'completed');
+      const totalDurationMs = completedList.reduce((acc, p) => acc + (p.lastModified - p.createdAt), 0);
+      const totalCompletedPages = completedList.reduce((acc, p) => acc + p.items.length, 0);
+      if (totalCompletedPages > 0) {
+        // Minutes per page
+        avgPageTime = parseFloat(((totalDurationMs / 1000 / 60) / totalCompletedPages).toFixed(1));
+      }
     }
 
     return {
@@ -138,8 +159,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const filteredProjects = useMemo(() => {
     return projects
       .filter(p => {
-        const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                             (p.styleTemplateId || '').toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (p.styleTemplateId || '').toLowerCase().includes(searchQuery.toLowerCase());
         const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
         const matchesMethod = methodFilter === 'all' || (p.methods && p.methods.includes(methodFilter));
         return matchesSearch && matchesStatus && matchesMethod;
@@ -148,7 +169,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         // Pin priority
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
-        
+
         // Secondary sort
         if (sortBy === 'progress') return b.progress - a.progress;
         return b[sortBy] - a[sortBy];
@@ -158,7 +179,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   return (
     <div className="flex-1 bg-[#f8fafc] overflow-y-hidden">
       <div className="max-w-full mx-auto px-6 py-0 space-y-6">
-        
+
         {/* --- Advanced Dimension Analytics Bar --- */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
           <div className="flex items-center justify-between gap-6 overflow-x-auto no-scrollbar">
@@ -255,7 +276,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="relative h-10 bg-blue-50/50 rounded-2xl border border-blue-100/50 overflow-hidden flex items-center shadow-[inset_0_2px_4px_rgba(59,130,246,0.02)]">
           <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-blue-50/50 to-transparent z-10" />
           <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-blue-50/50 to-transparent z-10" />
-          
+
           <div className="whitespace-nowrap animate-marquee flex items-center gap-12 text-sm font-bold text-blue-600">
             {projects.length > 0 ? (
               (() => {
@@ -264,11 +285,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 const latestProject = activeProjects.length > 0
                   ? activeProjects.sort((a, b) => b.lastModified - a.lastModified)[0]
                   : [...projects].sort((a, b) => b.lastModified - a.lastModified)[0];
-                
+
                 const isOngoing = latestProject.status === 'generating' || latestProject.status === 'paused';
-                
+
                 return (
-                  <button 
+                  <button
                     onClick={() => onOpenProject(latestProject.id)}
                     className="flex items-center gap-2 px-6 hover:text-rose-500 transition-colors cursor-pointer group"
                   >
@@ -278,7 +299,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </span>
                     <span className="group-hover:underline underline-offset-4 decoration-rose-400/30">
                       {isOngoing ? "⚡ 正在进行中：" : "🕒 最近更新："}
-                      <span className="text-blue-700">{latestProject.title || '未命名项目'}</span> 
+                      <span className="text-blue-700">{latestProject.title || '未命名项目'}</span>
                       —— 点击此处快速{isOngoing ? "[继续编辑]" : "[查看详情]"}
                     </span>
                   </button>
@@ -292,7 +313,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             )}
           </div>
 
-          <style dangerouslySetInnerHTML={{ __html: `
+          <style dangerouslySetInnerHTML={{
+            __html: `
             @keyframes marquee {
               0% { transform: translateX(100%); }
               100% { transform: translateX(-100%); }
@@ -313,7 +335,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap items-center gap-4">
           <div className="relative flex-1 min-w-[300px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
+            <input
               type="text"
               placeholder="搜索项目标题或风格模板..."
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all"
@@ -329,9 +351,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <FilterChip active={statusFilter === 'in-progress'} onClick={() => setStatusFilter('in-progress')}>进行中</FilterChip>
             <FilterChip active={statusFilter === 'generating'} onClick={() => setStatusFilter('generating')}>生成中</FilterChip>
             <FilterChip active={statusFilter === 'error'} onClick={() => setStatusFilter('error')}>生成失败</FilterChip>
-            
+
             <div className="h-4 w-px bg-slate-200 mx-2" />
-            
+
             <FilterChip active={methodFilter === 'all'} onClick={() => setMethodFilter('all')}>所有方式</FilterChip>
             <FilterChip active={methodFilter === 'text'} onClick={() => setMethodFilter('text')}>📝 文本</FilterChip>
             <FilterChip active={methodFilter === 'image'} onClick={() => setMethodFilter('image')}>🖼️ 图片</FilterChip>
@@ -341,7 +363,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="h-8 w-px bg-slate-100 hidden md:block" />
 
           <div className="flex items-center gap-3 shrink-0">
-            <select 
+            <select
               className="text-sm bg-slate-50 border-none rounded-xl py-2 pl-3 pr-8 focus:ring-2 focus:ring-blue-500/20"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
@@ -350,7 +372,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <option value="createdAt">创建时间</option>
               <option value="progress">完成进度</option>
             </select>
-            <button 
+            <button
               onClick={onCreateProject}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-blue-500/20 active:scale-95"
             >
@@ -366,7 +388,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* Non-Completed Projects Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProjects.filter(p => p.status !== 'completed').map(project => (
-                <ProjectCard 
+                <ProjectCard
                   key={project.id}
                   project={project}
                   onOpen={() => onOpenProject(project.id)}
@@ -403,7 +425,7 @@ const StatCard: React.FC<{
     {sparkline && (
       <div className="absolute bottom-0 left-0 right-0 h-12 opacity-10 group-hover:opacity-20 transition-opacity">
         <svg viewBox="0 0 100 40" className="w-full h-full preserve-3d" preserveAspectRatio="none">
-          <path 
+          <path
             d={`M 0 40 ${sparkline.map((v, i) => `L ${(i / (sparkline.length - 1)) * 100} ${40 - v}`).join(' ')} L 100 40 Z`}
             fill="currentColor"
             className={trendUp !== false ? 'text-emerald-500' : 'text-blue-500'}
@@ -417,9 +439,8 @@ const StatCard: React.FC<{
         {icon}
       </div>
       {trend && (
-        <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-          trendUp ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'
-        }`}>
+        <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${trendUp ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'
+          }`}>
           {trend}
         </span>
       )}
@@ -436,11 +457,10 @@ const StatCard: React.FC<{
 );
 
 const FilterChip: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
-  <button 
+  <button
     onClick={onClick}
-    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
-      active ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200' : 'text-slate-500 hover:bg-slate-100'
-    }`}
+    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${active ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200' : 'text-slate-500 hover:bg-slate-100'
+      }`}
   >
     {children}
   </button>
@@ -464,15 +484,13 @@ const ProjectCard: React.FC<{
   const isGenerating = project.status === 'generating';
 
   return (
-    <div className={`bg-white rounded-3xl overflow-hidden border transition-all group relative ${
-      project.isPinned ? 'border-blue-200 shadow-md ring-1 ring-blue-50' : 'border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100'
-    }`}>
+    <div className={`bg-white rounded-3xl overflow-hidden border transition-all group relative ${project.isPinned ? 'border-blue-200 shadow-md ring-1 ring-blue-50' : 'border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100'
+      }`}>
       {/* Pin Icon */}
-      <button 
+      <button
         onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
-        className={`absolute top-4 right-4 p-2 rounded-full transition-all z-10 ${
-          project.isPinned ? 'bg-blue-500 text-white shadow-lg' : 'bg-white/80 backdrop-blur text-slate-400 opacity-0 group-hover:opacity-100 hover:text-blue-500'
-        }`}
+        className={`absolute top-4 right-4 p-2 rounded-full transition-all z-10 ${project.isPinned ? 'bg-blue-500 text-white shadow-lg' : 'bg-white/80 backdrop-blur text-slate-400 opacity-0 group-hover:opacity-100 hover:text-blue-500'
+          }`}
       >
         <Pin size={16} fill={project.isPinned ? 'currentColor' : 'none'} className={project.isPinned ? '' : 'rotate-45'} />
       </button>
@@ -489,25 +507,24 @@ const ProjectCard: React.FC<{
           </div>
           <div className="flex-1 min-w-0 pr-6">
             <div className="flex items-center gap-2 mb-1">
-                 {project.displayId && (
-                     <span className="text-[9px] font-mono text-slate-400 bg-slate-100 px-1 rounded border border-slate-200">
-                         {project.displayId}
-                     </span>
-                 )}
+              {project.displayId && (
+                <span className="text-[9px] font-mono text-slate-400 bg-slate-100 px-1 rounded border border-slate-200">
+                  {project.displayId}
+                </span>
+              )}
             </div>
             <h5 className="font-bold text-slate-800 truncate mb-1">{project.title}</h5>
             <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight ${
-                project.status === 'generating' ? 'bg-blue-50 text-blue-600 animate-pulse' :
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight ${project.status === 'generating' ? 'bg-blue-50 text-blue-600 animate-pulse' :
                 project.status === 'in-progress' ? 'bg-indigo-50 text-indigo-600' :
-                project.status === 'error' ? 'bg-rose-50 text-rose-600' :
-                project.status === 'completed' ? 'bg-emerald-50 text-emerald-600' :
-                'bg-slate-50 text-slate-500'
-              }`}>
+                  project.status === 'error' ? 'bg-rose-50 text-rose-600' :
+                    project.status === 'completed' ? 'bg-emerald-50 text-emerald-600' :
+                      'bg-slate-50 text-slate-500'
+                }`}>
                 {project.status === 'generating' ? '生成中' :
-                 project.status === 'in-progress' ? '进行中' :
-                 project.status === 'error' ? '生成失败' :
-                 project.status === 'completed' ? '已完成' : '未开始'}
+                  project.status === 'in-progress' ? '进行中' :
+                    project.status === 'error' ? '生成失败' :
+                      project.status === 'completed' ? '已完成' : '未开始'}
               </span>
               <span className="text-[10px] text-slate-400 font-medium">
                 样式: {project.globalConfig?.styleName || project.styleTemplateId || '自定义'}
@@ -518,22 +535,22 @@ const ProjectCard: React.FC<{
 
         {/* Status Breakdown Indicators (Design Proposal Detail) */}
         <div className="flex gap-3 mb-3 px-1">
-           <div className="flex items-center gap-1">
-             <div className={`w-1.5 h-1.5 rounded-full ${project.items.some(i => i.pageType === 'cover') ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-             <span className="text-[9px] font-bold text-slate-400 uppercase">封面</span>
-           </div>
-           <div className="flex items-center gap-1">
-             <div className={`w-1.5 h-1.5 rounded-full ${project.items.some(i => i.pageType === 'directory') ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-             <span className="text-[9px] font-bold text-slate-400 uppercase">目录</span>
-           </div>
-           <div className="flex items-center gap-1">
-             <div className={`w-1.5 h-1.5 rounded-full ${project.items.filter(i => i.pageType === 'content').length > 0 ? 'bg-blue-400' : 'bg-slate-200'}`} />
-             <span className="text-[9px] font-bold text-slate-400 uppercase">正文</span>
-           </div>
-           <div className="flex items-center gap-1">
-             <div className={`w-1.5 h-1.5 rounded-full ${project.items.some(i => i.pageType === 'end') ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-             <span className="text-[9px] font-bold text-slate-400 uppercase">总结</span>
-           </div>
+          <div className="flex items-center gap-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${project.items.some(i => i.pageType === 'cover') ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+            <span className="text-[9px] font-bold text-slate-400 uppercase">封面</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${project.items.some(i => i.pageType === 'directory') ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+            <span className="text-[9px] font-bold text-slate-400 uppercase">目录</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${project.items.filter(i => i.pageType === 'content').length > 0 ? 'bg-blue-400' : 'bg-slate-200'}`} />
+            <span className="text-[9px] font-bold text-slate-400 uppercase">正文</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className={`w-1.5 h-1.5 rounded-full ${project.items.some(i => i.pageType === 'end') ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+            <span className="text-[9px] font-bold text-slate-400 uppercase">总结</span>
+          </div>
         </div>
 
         {/* Progress Section */}
@@ -542,16 +559,15 @@ const ProjectCard: React.FC<{
             <span className="text-[11px] font-bold text-slate-500">
               <span className="text-slate-700">{project.items.filter(i => i.status === 'success').length}</span>
               <span className="text-slate-300 mx-1">/</span>
-              {project.items.length} 
+              {project.items.length}
               <span className="text-slate-400 ml-1 font-normal">({project.globalConfig?.targetPageCount || 10} P)</span>
             </span>
             <span className="text-xs font-black text-blue-600">{project.progress}%</span>
           </div>
           <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-            <div 
-              className={`h-full transition-all duration-700 ${
-                project.status === 'error' ? 'bg-rose-500' : 'bg-blue-500'
-              }`}
+            <div
+              className={`h-full transition-all duration-700 ${project.status === 'error' ? 'bg-rose-500' : 'bg-blue-500'
+                }`}
               style={{ width: `${project.progress}%` }}
             />
           </div>
@@ -579,49 +595,48 @@ const ProjectCard: React.FC<{
       {/* Footer / Actions */}
       <div className="px-5 py-3 bg-slate-50/50 border-t border-slate-50 flex items-center justify-between">
         <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1.5 text-slate-500" title="最后活跃时间">
-              <Clock size={11} />
-              <span className="text-[10px] font-bold">{timeAgo(project.lastModified)}</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-400" title="项目创建时间">
-              <Calendar size={11} />
-              <span className="text-[10px] font-medium">{new Date(project.createdAt).toLocaleDateString()}</span>
-            </div>
+          <div className="flex items-center gap-1.5 text-slate-500" title="最后活跃时间">
+            <Clock size={11} />
+            <span className="text-[10px] font-bold">{timeAgo(project.lastModified)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-slate-400" title="项目创建时间">
+            <Calendar size={11} />
+            <span className="text-[10px] font-medium">{new Date(project.createdAt).toLocaleDateString()}</span>
+          </div>
         </div>
         <div className="flex items-center gap-1">
-          <button 
+          <button
             type="button"
-            onClick={(e) => { 
-                e.stopPropagation(); 
-                if (isGenerating) {
-                    onTogglePause();
-                } else if (canStart) {
-                    onStartProject();
-                }
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isGenerating) {
+                onTogglePause();
+              } else if (canStart) {
+                onStartProject();
+              }
             }}
             disabled={!isGenerating && !canStart}
-            className={`p-1.5 rounded-lg transition-all ${
-              !isGenerating && !canStart 
-                  ? 'text-slate-300 cursor-not-allowed bg-slate-50' 
-                  : isGenerating 
-                      ? 'hover:bg-amber-100 text-amber-600 bg-amber-50' 
-                      : 'hover:bg-blue-100 text-blue-600 bg-blue-50'
-            }`}
+            className={`p-1.5 rounded-lg transition-all ${!isGenerating && !canStart
+              ? 'text-slate-300 cursor-not-allowed bg-slate-50'
+              : isGenerating
+                ? 'hover:bg-amber-100 text-amber-600 bg-amber-50'
+                : 'hover:bg-blue-100 text-blue-600 bg-blue-50'
+              }`}
             title={isGenerating ? "暂停生成" : canStart ? "启动生成" : "暂无待成任务"}
           >
             {isGenerating ? <Pause size={16} /> : <Play size={16} />}
           </button>
-          <button 
+          <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-all"
           >
             <Trash2 size={16} />
           </button>
-          <button 
+          <button
             onClick={onOpen}
             className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:pr-3 transition-all ml-1 group"
           >
-             <span className="text-[10px] font-bold">进入项目</span>
+            <span className="text-[10px] font-bold">进入项目</span>
             <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" />
           </button>
         </div>
@@ -639,7 +654,7 @@ const EmptyState: React.FC<{ onCreate: () => void }> = ({ onCreate }) => (
       <h4 className="text-xl font-bold text-slate-800">开启您的第一个 PPT 创作之旅</h4>
       <p className="text-slate-500 text-sm">点击下方按钮创建一个新项目，系统将为您提供全自动化的智能生成体验。</p>
     </div>
-    <button 
+    <button
       onClick={onCreate}
       className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-bold shadow-xl shadow-blue-500/20 hover:scale-105 transition-all"
     >

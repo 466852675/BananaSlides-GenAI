@@ -16,6 +16,7 @@ export interface StyleConfig {
   aspectRatio: string;
   // New: Page Planning
   targetPageCount: number;
+  defaultVariantCount: number;
   pageStructure: PageStructure;
 }
 
@@ -50,8 +51,8 @@ export interface StylePreset {
   config: StyleConfig;
   styleMap?: GlobalStyleMap; // Updated to store map
   /** @deprecated use styleMap */
-  styleFile?: StoredResource | null; 
-  sampleImages?: string[]; 
+  styleFile?: StoredResource | null;
+  sampleImages?: string[];
   createdAt: number;
 }
 
@@ -81,16 +82,22 @@ export interface StyleTemplate {
   styleMap?: GlobalStyleMap;
   isCustom: boolean; // System vs User
   createdAt: number;
+  // Extended Metadata
+  isOfficial?: boolean;
+  isRecommended?: boolean;
+  usageCount?: number;
+  favoriteCount?: number;
+  recommendCount?: number;
 }
 
 export interface OutlineItem {
-    id: string;
-    index: number;
-    title: string;
-    brief: string;
-    fullContent?: string;
-    pageType: PageType; // New: Sync with generated slide type
-    status: 'idle' | 'generating' | 'success' | 'error';
+  id: string;
+  index: number;
+  title: string;
+  brief: string;
+  fullContent?: string;
+  pageType: PageType; // New: Sync with generated slide type
+  status: 'idle' | 'generating' | 'success' | 'error';
 }
 
 // --- New Settings Types ---
@@ -100,42 +107,42 @@ export type ImageResolution = '1024x1024' | '2048x2048' | '4096x4096';
 export type OutputLanguage = 'zh' | 'ja' | 'en' | 'auto';
 
 export interface ModelConnection {
-    baseUrl: string;
-    apiKey: string;
-    model: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
 }
 
 export interface CustomComboConfig {
-    text: ModelConnection;
-    image: ModelConnection;
-    vision: ModelConnection;
+  text: ModelConnection;
+  image: ModelConnection;
+  vision: ModelConnection;
 }
 
 export interface DocParserConfig {
-    provider: 'MinerU' | 'None';
-    baseUrl: string;
-    apiKey: string;
+  provider: 'MinerU' | 'None';
+  baseUrl: string;
+  apiKey: string;
 }
 
 export interface AppSettings {
-    ai: {
-        provider: AIProvider;
-        baseUrl: string;
-        apiKey: string;
-        models: {
-            text: string;
-            image: string;
-            vision: string;
-        };
-        customCombo?: CustomComboConfig;
+  ai: {
+    provider: AIProvider;
+    baseUrl: string;
+    apiKey: string;
+    models: {
+      text: string;
+      image: string;
+      vision: string;
     };
-    docParser: DocParserConfig; // New Field
-    imageGeneration: {
-        resolution: ImageResolution;
-    };
-    performance: {
-        textConcurrency?: number; // Optional/Unlimited
-        imageConcurrency?: number; // Optional/Unlimited
-    };
-    language: OutputLanguage;
+    customCombo?: CustomComboConfig;
+  };
+  docParser: DocParserConfig; // New Field
+  imageGeneration: {
+    resolution: ImageResolution;
+  };
+  performance: {
+    textConcurrency?: number; // Optional/Unlimited
+    imageConcurrency?: number; // Optional/Unlimited
+  };
+  language: OutputLanguage;
 }

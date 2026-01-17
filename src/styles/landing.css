@@ -1,0 +1,127 @@
+/* Landing Page Specific Styles */
+
+:root {
+  --lp-primary: #2563eb;
+  --lp-background: #ffffff;
+  --lp-section-bg: #fafafa;
+  --lp-dark-card: #0a0a1a;
+  --lp-text-main: #020817;
+  --lp-text-muted: #64748b;
+  --lp-border: rgba(229, 229, 234, 0.8);
+}
+
+.noise-bg {
+  position: relative;
+}
+
+.noise-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  z-index: 1;
+}
+
+/* Nav Capsule Animation */
+.nav-capsule {
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Apple-style ease */
+  width: 100%;
+}
+
+.nav-capsule.scrolled {
+  top: 1.25rem;
+  /* 20px */
+  max-width: 64rem;
+  /* max-w-5xl */
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 10px 40px -10px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.02),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+  padding-block: 0.5rem;
+  /* Compact padding */
+}
+
+/* 覆盖 glass-header，不再需要单独的它，功能合并入 nav-capsule.scrolled */
+.glass-header {
+  /* Deprecated/Merged */
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1.5rem;
+}
+
+.bento-card {
+  background: var(--lp-background);
+  border: 1px solid var(--lp-border);
+  border-radius: 1.5rem;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.bento-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  border-color: rgba(37, 99, 235, 0.2);
+}
+
+.bento-card.dark {
+  background: var(--lp-dark-card);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.scroll-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary-color), #f43f5e);
+  transform-origin: 0%;
+  z-index: 1000;
+}
+
+.pricing-toggle-bg {
+  background: #f1f5f9;
+  border-radius: 9999px;
+  padding: 4px;
+  display: flex;
+  gap: 4px;
+}
+
+.pricing-toggle-item {
+  padding: 6px 16px;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.pricing-toggle-item.active {
+  background: white;
+  color: var(--lp-primary);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+/* Custom Scrollbar */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

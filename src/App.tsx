@@ -44,11 +44,15 @@ import {
   CornerDownRight,
   Settings,
   BookTemplate,
-  Maximize,
+  Menu,
+  Presentation,
+  Maximize2,
   Minimize,
   Download,
   FileDown,
-  Presentation,
+  ArrowDownNarrowWide,
+  ArrowUpNarrowWide,
+  RotateCcw,
 } from "lucide-react";
 import { ImageUploader } from "./components/ImageUploader";
 import {
@@ -67,13 +71,15 @@ import {
   GlobalStyleMap,
   AppSettings,
   StoredResource,
-  StyleTemplate
+  StyleTemplate,
+  ProjectStatus
 } from "./types";
 import {
   generateSlideVariant,
   extractTextFromFile,
   smartRefine,
 } from "./services/geminiService";
+
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { OutlineGenerator } from "./components/OutlineGenerator";
 import {
@@ -140,10 +146,10 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
   handleReset = () => {
     try {
-        localStorage.clear();
-        window.location.reload();
+      localStorage.clear();
+      window.location.reload();
     } catch (e) {
-        window.location.href = '/';
+      window.location.href = '/';
     }
   };
 
@@ -152,34 +158,34 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       return (
         <div className="fixed inset-0 flex flex-col items-center justify-center p-8 bg-slate-50 text-center">
           <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-slate-200">
-             <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                 <AlertCircle size={32} />
-             </div>
-             <h2 className="text-2xl font-bold text-slate-800 mb-2">程序遇到了一点问题</h2>
-             <p className="text-slate-500 mb-6 text-sm">
-               检测到未捕获的异常，可能是由于本地缓存数据与新版本不兼容导致的。
-             </p>
-             <div className="bg-slate-50 p-4 rounded-lg mb-6 text-left overflow-auto max-h-32">
-                 <code className="text-xs text-slate-600 font-mono break-all leading-relaxed">
-                     {this.state.error?.message || "Unknown Error"}
-                 </code>
-             </div>
-             
-             <div className="flex flex-col gap-3">
-                 <button
-                   onClick={() => window.location.reload()}
-                   className="w-full py-3 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all"
-                 >
-                   尝试刷新页面
-                 </button>
-                 <button
-                   onClick={this.handleReset}
-                   className="w-full py-3 px-4 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-500/20 transition-all flex items-center justify-center gap-2"
-                 >
-                   <Trash2 size={18} />
-                   清除缓存并重置
-                 </button>
-             </div>
+            <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertCircle size={32} />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">程序遇到了一点问题</h2>
+            <p className="text-slate-500 mb-6 text-sm">
+              检测到未捕获的异常，可能是由于本地缓存数据与新版本不兼容导致的。
+            </p>
+            <div className="bg-slate-50 p-4 rounded-lg mb-6 text-left overflow-auto max-h-32">
+              <code className="text-xs text-slate-600 font-mono break-all leading-relaxed">
+                {this.state.error?.message || "Unknown Error"}
+              </code>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="w-full py-3 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all"
+              >
+                尝试刷新页面
+              </button>
+              <button
+                onClick={this.handleReset}
+                className="w-full py-3 px-4 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl shadow-lg shadow-rose-500/20 transition-all flex items-center justify-center gap-2"
+              >
+                <Trash2 size={18} />
+                清除缓存并重置
+              </button>
+            </div>
           </div>
           <p className="mt-8 text-xs text-slate-400">BananaSlides Gen-AI Error Protection</p>
         </div>
@@ -273,7 +279,7 @@ const Modal: React.FC<ModalProps> = ({
 
 const App: React.FC = () => {
   const queryClient = useQueryClient();
-  
+
   // Project Start & Batch Generation State
   const [startProjectModalData, setStartProjectModalData] = useState<{
     isOpen: boolean;
@@ -285,22 +291,25 @@ const App: React.FC = () => {
     pendingItems: []
   });
   const [pendingAutoBatch, setPendingAutoBatch] = useState<string | null>(null);
-  
 
-  
+
+
 
 
   // --- State ---
   const [viewMode, setViewMode] = useState<
     "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates"
-  >("landing");
+  >(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('project') ? 'workbench' : 'landing';
+  });
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const handleCloseToast = useCallback(() => setToast(null), []);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Settings with Persistence
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
-  
+
   // Real-time Settings from Backend
   // Use MASKED settings for security. API Keys will appear as ••••
   // The backend now handles merging these masked keys correctly on save.
@@ -315,53 +324,53 @@ const App: React.FC = () => {
   useEffect(() => {
     // 1. Initial Migration: If we have LocalStorage but server is empty
     if (!isSettingsLoading && !serverSettings && !isSettingsMigrated) {
-       const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
-       if (saved) {
-           try {
-               const parsed = JSON.parse(saved);
-               if (parsed && typeof parsed === 'object') {
-                   console.log("[Settings Migration] Uploading local settings to backend database...");
-                   updateSettingsMutation.mutate(parsed);
-                   setIsSettingsMigrated(true);
-               }
-           } catch (e) {
-               console.warn("Migration failed", e);
-           }
-       }
+      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            console.log("[Settings Migration] Uploading local settings to backend database...");
+            updateSettingsMutation.mutate(parsed);
+            setIsSettingsMigrated(true);
+          }
+        } catch (e) {
+          console.warn("Migration failed", e);
+        }
+      }
     }
 
     // 2. Load from Server if available
     if (serverSettings && typeof serverSettings === 'object') {
-        const merged = {
-            ...DEFAULT_SETTINGS,
-            ...serverSettings,
-            ai: {
-                ...DEFAULT_SETTINGS.ai,
-                ...(serverSettings.ai || {}),
-                models: {
-                    ...DEFAULT_SETTINGS.ai.models,
-                    ...(serverSettings.ai?.models || {}),
-                },
-                customCombo:
-                serverSettings.ai?.customCombo || DEFAULT_SETTINGS.ai.customCombo,
-            },
-            performance: {
-                ...DEFAULT_SETTINGS.performance,
-                ...(serverSettings.performance || {}),
-            },
-            imageGeneration: {
-                ...DEFAULT_SETTINGS.imageGeneration,
-                ...(serverSettings.imageGeneration || {}),
-            },
-            docParser: {
-                ...DEFAULT_SETTINGS.docParser,
-                ...(serverSettings.docParser || {}),
-                baseUrl: (serverSettings.docParser?.baseUrl?.includes('/api/v') || serverSettings.docParser?.baseUrl?.includes('/v1') || serverSettings.docParser?.baseUrl?.includes('/v4'))
-                    ? DEFAULT_SETTINGS.docParser.baseUrl
-                    : (serverSettings.docParser?.baseUrl || DEFAULT_SETTINGS.docParser.baseUrl)
-            }
-        };
-        setAppSettings(merged);
+      const merged = {
+        ...DEFAULT_SETTINGS,
+        ...serverSettings,
+        ai: {
+          ...DEFAULT_SETTINGS.ai,
+          ...(serverSettings.ai || {}),
+          models: {
+            ...DEFAULT_SETTINGS.ai.models,
+            ...(serverSettings.ai?.models || {}),
+          },
+          customCombo:
+            serverSettings.ai?.customCombo || DEFAULT_SETTINGS.ai.customCombo,
+        },
+        performance: {
+          ...DEFAULT_SETTINGS.performance,
+          ...(serverSettings.performance || {}),
+        },
+        imageGeneration: {
+          ...DEFAULT_SETTINGS.imageGeneration,
+          ...(serverSettings.imageGeneration || {}),
+        },
+        docParser: {
+          ...DEFAULT_SETTINGS.docParser,
+          ...(serverSettings.docParser || {}),
+          baseUrl: (serverSettings.docParser?.baseUrl?.includes('/api/v') || serverSettings.docParser?.baseUrl?.includes('/v1') || serverSettings.docParser?.baseUrl?.includes('/v4'))
+            ? DEFAULT_SETTINGS.docParser.baseUrl
+            : (serverSettings.docParser?.baseUrl || DEFAULT_SETTINGS.docParser.baseUrl)
+        }
+      };
+      setAppSettings(merged);
     }
   }, [serverSettings, isSettingsLoading]);
 
@@ -383,6 +392,7 @@ const App: React.FC = () => {
     colorPalette: "",
     requirements: "",
     aspectRatio: "16:9",
+    defaultVariantCount: 1, // Default 1 variant per slide
     targetPageCount: 10, // Default 10
     pageStructure: {
       cover: 1,
@@ -397,6 +407,8 @@ const App: React.FC = () => {
   const [saveToLibrary, setSaveToLibrary] = useState(true);
 
   const [items, setItems] = useState<GeneratedSlide[]>([]);
+  const [hasUserInteraction, setHasUserInteraction] = useState(false); // 标记用户是否进行了操作
+
 
   // Multi-Project State (Replaced with React Query)
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects();
@@ -428,13 +440,16 @@ const App: React.FC = () => {
     }
   };
 
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('project') || null;
+  });
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   // Replaced Local State with React Query
   const { data: styleTemplates = [] } = useTemplates();
   const { data: favorites = [] } = useFavorites();
-  
+
   // Migration Hooks
   const saveTemplateMutation = useSaveTemplate();
   const addFavoriteMutation = useAddFavorite();
@@ -442,74 +457,90 @@ const App: React.FC = () => {
 
   // One-Time Migration Logic (LocalStorage -> SQLite)
   useEffect(() => {
-     const migrateData = async () => {
-        // 1. Migrate Templates
-        const TEMPLATES_KEY = "bananaslides_templates_v1";
-        const localTemplates = localStorage.getItem(TEMPLATES_KEY);
-        if (localTemplates) {
-            try {
-                const parsed = JSON.parse(localTemplates);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    // We iterate and upload. Note: This creates a burst of requests.
-                    // For massive data, batching is better, but user likely has < 20 templates.
-                    for (const t of parsed) {
-                         // Only migrate if valid name
-                         if (t.name) {
-                             await saveTemplateMutation.mutateAsync({
-                                 name: t.name,
-                                 config: t.config,
-                                 styleMap: t.styleMap,
-                                 isCustom: true // Ensure marked as custom
-                             });
-                         }
-                    }
-                    localStorage.removeItem(TEMPLATES_KEY);
-                    setToast({ id: 'mig-tmpl', message: '已成功将您的“自定义模板”迁移至数据库', type: 'success' });
-                }
-            } catch (e) { console.error("Template Migration Failed", e); }
-        }
+    const migrateData = async () => {
+      // 1. Migrate Templates
+      const TEMPLATES_KEY = "bananaslides_templates_v1";
+      const localTemplates = localStorage.getItem(TEMPLATES_KEY);
+      if (localTemplates) {
+        try {
+          const parsed = JSON.parse(localTemplates);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            // We iterate and upload. Note: This creates a burst of requests.
+            // For massive data, batching is better, but user likely has < 20 templates.
+            for (const t of parsed) {
+              // Only migrate if valid name
+              if (t.name) {
+                await saveTemplateMutation.mutateAsync({
+                  name: t.name,
+                  config: t.config,
+                  styleMap: t.styleMap,
+                  isCustom: true // Ensure marked as custom
+                });
+              }
+            }
+            localStorage.removeItem(TEMPLATES_KEY);
+            setToast({ id: 'mig-tmpl', message: '已成功将您的“自定义模板”迁移至数据库', type: 'success' });
+          }
+        } catch (e) { console.error("Template Migration Failed", e); }
+      }
 
-        // 2. Migrate Favorites
-        const FAVORITES_KEY = "bananaslides_favorites_v1";
-        const localFavorites = localStorage.getItem(FAVORITES_KEY);
-        if (localFavorites) {
-             try {
-                 const parsed = JSON.parse(localFavorites);
-                 if (Array.isArray(parsed) && parsed.length > 0) {
-                     for (const f of parsed) {
-                         if (f.name) {
-                             await addFavoriteMutation.mutateAsync({
-                                 name: f.name,
-                                 config: f.config,
-                                 styleMap: f.styleMap,
-                                 sampleImages: f.sampleImages || []
-                             });
-                         }
-                     }
-                     localStorage.removeItem(FAVORITES_KEY);
-                     setToast({ id: 'mig-fav', message: '已成功将您的“收藏夹”迁移至数据库', type: 'success' });
-                 }
-             } catch (e) { console.error("Favorite Migration Failed", e); }
-        }
-     };
+      // 2. Migrate Favorites
+      const FAVORITES_KEY = "bananaslides_favorites_v1";
+      const localFavorites = localStorage.getItem(FAVORITES_KEY);
+      if (localFavorites) {
+        try {
+          const parsed = JSON.parse(localFavorites);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            for (const f of parsed) {
+              if (f.name) {
+                await addFavoriteMutation.mutateAsync({
+                  name: f.name,
+                  config: f.config,
+                  styleMap: f.styleMap,
+                  sampleImages: f.sampleImages || []
+                });
+              }
+            }
+            localStorage.removeItem(FAVORITES_KEY);
+            setToast({ id: 'mig-fav', message: '已成功将您的“收藏夹”迁移至数据库', type: 'success' });
+          }
+        } catch (e) { console.error("Favorite Migration Failed", e); }
+      }
+    };
 
-     // Run migration once on mount (with slight delay to let app load)
-     const timer = setTimeout(migrateData, 1000);
-     return () => clearTimeout(timer);
+    // Run migration once on mount (with slight delay to let app load)
+    const timer = setTimeout(migrateData, 1000);
+    return () => clearTimeout(timer);
   }, []); // Run once
+
+  // Clean up legacy storage to prevent QuotaExceededError
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("bananaslides_templates_v1")) {
+        console.log('[Cleanup] Removing legacy templates from localStorage...');
+        localStorage.removeItem("bananaslides_templates_v1");
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }, []);
 
   // Track the currently active template ID
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(() => {
-     return localStorage.getItem("bananaslides_active_template_id_v1") || null;
+    return localStorage.getItem("bananaslides_active_template_id_v1") || null;
   });
 
   // Persist active template ID (Keep in LocalStorage as UI state)
   useEffect(() => {
-     if (activeTemplateId) {
-         localStorage.setItem("bananaslides_active_template_id_v1", activeTemplateId);
-     } else {
-         localStorage.removeItem("bananaslides_active_template_id_v1");
-     }
+    try {
+      if (activeTemplateId) {
+        localStorage.setItem("bananaslides_active_template_id_v1", activeTemplateId);
+      } else {
+        localStorage.removeItem("bananaslides_active_template_id_v1");
+      }
+    } catch (e) {
+      console.warn('LocalStorage quota exceeded for activeTemplateId', e);
+    }
   }, [activeTemplateId]);
 
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -528,54 +559,106 @@ const App: React.FC = () => {
 
   // --- Notification Polling (Global) ---
   useEffect(() => {
-     const pollInterval = setInterval(async () => {
-         try {
-              // Use centralized axios client for proxy compatibility
-              client.get('/notifications/poll')
-                  .then((notifications: any) => {
-                      if (Array.isArray(notifications) && notifications.length > 0) {
-                          notifications.forEach(note => {
-                              // Show Toast
-                              setToast({ 
-                                  id: note.id, 
-                                  message: note.message, 
-                                  type: 'success' 
-                              });
-                              
-                              // Refresh History if open
-                              if (note.type === 'snapshot_summary') {
-                                  queryClient.invalidateQueries({ queryKey: ['snapshots'] });
-                              }
-                          });
-                      }
-                  })
-                  .catch(err => console.error("Poll error (silent):", err));
-         } catch (e) {
-             // Ignore
-         }
-     }, 3000); // Poll every 3 seconds
+    const pollInterval = setInterval(async () => {
+      try {
+        // Use centralized axios client for proxy compatibility
+        client.get('/notifications/poll')
+          .then((notifications: any) => {
+            if (Array.isArray(notifications) && notifications.length > 0) {
+              notifications.forEach(note => {
+                // Show Toast
+                setToast({
+                  id: note.id,
+                  message: note.message,
+                  type: 'success'
+                });
 
-     return () => clearInterval(pollInterval);
+                // Refresh History if open
+                if (note.type === 'snapshot_summary') {
+                  queryClient.invalidateQueries({ queryKey: ['snapshots'] });
+                }
+              });
+            }
+          })
+          .catch(err => console.error("Poll error (silent):", err));
+      } catch (e) {
+        // Ignore
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(pollInterval);
   }, [queryClient, setViewMode]);
+
+  // Sync URL with Project ID (Routing)
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (viewMode === 'workbench' && currentProjectId) {
+      if (url.searchParams.get('project') !== currentProjectId) {
+        url.searchParams.set('project', currentProjectId);
+        window.history.pushState({}, '', url.toString());
+      }
+    } else if (viewMode === 'dashboard' || viewMode === 'landing') {
+      if (url.searchParams.has('project')) {
+        url.searchParams.delete('project');
+        window.history.pushState({}, '', url.toString());
+      }
+    }
+  }, [viewMode, currentProjectId]);
 
   // Sync Workbench State with Current Project (only when actually switching projects)
   useEffect(() => {
-    // Only sync when switching to a different project, not on every render
-    if (currentProjectId && currentProjectId !== prevProjectIdRef.current) {
+    console.log('[Workbench Debug] viewMode:', viewMode, 'currentProjectId:', currentProjectId, 'prevProjectIdRef.current:', prevProjectIdRef.current);
+    console.log('[Workbench Debug] currentProject:', currentProject ? 'exists' : 'null');
+
+    // Only sync when in workbench AND switching to a different project
+    if (viewMode === 'workbench' && currentProjectId && currentProjectId !== prevProjectIdRef.current) {
       if (currentProject) {
+        console.log('[Workbench] Loading project data:', currentProjectId);
+        console.log('[Workbench] Project items count:', currentProject.items?.length || 0);
+
+        // 标记正在加载数据，防止触发用户交互检测
+        isLoadingDataRef.current = true;
+
         setConfig(currentProject.globalConfig);
         setItems(currentProject.items);
-        if (currentProject.globalStyleMap) setStyleMap(currentProject.globalStyleMap);
+        // 同步更新 Ref,防止初次加载时的竞态
+        configRef.current = currentProject.globalConfig;
+        itemsRef.current = currentProject.items;
+        if (currentProject.globalStyleMap) {
+          setStyleMap(currentProject.globalStyleMap);
+          styleMapRef.current = currentProject.globalStyleMap;
+        }
+        // 重置用户交互标志和初始长度,因为这是从数据库加载的数据
+        setHasUserInteraction(false);
+        initialItemsLengthRef.current = currentProject.items.length;
+        console.log('[Workbench] Data loaded, hasUserInteraction reset to false');
+
+        // 延迟重置加载标志，确保状态更新已处理
+        setTimeout(() => {
+          isLoadingDataRef.current = false;
+        }, 100);
+
+        // 只有在数据加载成功后才更新 prevProjectIdRef
+        prevProjectIdRef.current = currentProjectId;
       }
-      prevProjectIdRef.current = currentProjectId;
+      // 如果 currentProject 为 null,不更新 prevProjectIdRef,等待下次触发
     }
-  }, [currentProjectId, currentProject]);
+  }, [currentProjectId, currentProject, viewMode]);
+
+  // 当回到仪表盘时，我们不再重置 prevProjectIdRef.current
+  // 这样如果用户立即重新进入同一个项目，由于 prevProjectIdRef.current 已经匹配，
+  // 我们就不会触发 useEffect 来从后端重新加载（可能过时的）数据，从而保留了本地最新的状态。
+
 
   // Refs for Auto-Save
+  const isLoadingDataRef = useRef(false); // 防止加载数据时触发用户交互检测
   const itemsRef = useRef(items);
   const configRef = useRef(config);
   const styleMapRef = useRef(styleMap);
   const currentProjectIdRef = useRef(currentProjectId);
+
+  // 用于跟踪初始加载的 items 长度
+  const initialItemsLengthRef = useRef<number | null>(null);
 
   // Update Refs on change
   useEffect(() => {
@@ -591,23 +674,102 @@ const App: React.FC = () => {
     currentProjectIdRef.current = currentProjectId;
   }, [currentProjectId]);
 
+  // 检测用户交互:当 items 变化且不是初始加载或数据加载时,设置 hasUserInteraction
+  const prevItemsLengthRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // 如果正在加载数据，跳过并更新 prevItemsLengthRef
+    if (isLoadingDataRef.current) {
+      console.log('[UserInteraction] Skipped: Loading data in progress');
+      prevItemsLengthRef.current = items.length;
+      return;
+    }
+
+    // 如果是首次运行，只记录初始长度
+    if (prevItemsLengthRef.current === null) {
+      prevItemsLengthRef.current = items.length;
+      return;
+    }
+
+    // 如果长度没有变化，跳过
+    if (items.length === prevItemsLengthRef.current) {
+      return;
+    }
+
+    // 更新之前的长度记录
+    const oldLength = prevItemsLengthRef.current;
+    prevItemsLengthRef.current = items.length;
+
+    // 如果 items 从空变成有内容，可能是加载数据后的首次变化，不触发
+    if (oldLength === 0 && items.length > 0) {
+      console.log('[UserInteraction] Skipped: Initial data load from 0 to', items.length);
+      return;
+    }
+
+    // 真正的用户操作：长度发生了变化
+    if (!hasUserInteraction) {
+      console.log('[UserInteraction] Detected: items changed from', oldLength, 'to', items.length);
+      setHasUserInteraction(true);
+    }
+  }, [items.length, hasUserInteraction]);
+
   // History Page State
   const [historySearchTerm, setHistorySearchTerm] = useState("");
   const [historyFilterStyle, setHistoryFilterStyle] = useState("");
   const [historyFilterRatio, setHistoryFilterRatio] = useState("");
   const [historyFilterPalette, setHistoryFilterPalette] = useState(""); // New Palette Filter
-  const [historyFilterPageCount, setHistoryFilterPageCount] = useState("");
-  const [historyFilterStatus, setHistoryFilterStatus] = useState("");
+  const [historyFilterPageType, setHistoryFilterPageType] = useState<"target" | "completed">("target"); // New Page Filter Type
+  const [historyFilterMinPages, setHistoryFilterMinPages] = useState("");
+  const [historyFilterMaxPages, setHistoryFilterMaxPages] = useState("");
+  const [historyFilterTimeType, setHistoryFilterTimeType] = useState<"lastModified" | "createdAt" | "priority">("lastModified"); // New Time Dimension
+  const [historyFilterStartDate, setHistoryFilterStartDate] = useState("");
+  const [historyFilterEndDate, setHistoryFilterEndDate] = useState("");
   const [historyFilterTime, setHistoryFilterTime] = useState("");
+  const [historySortBy, setHistorySortBy] = useState<"lastModified" | "createdAt" | "pages">("lastModified");
+  const [historySortOrder, setHistorySortOrder] = useState<"asc" | "desc">("desc");
   const [isHistorySelectionMode, setIsHistorySelectionMode] = useState(false);
   const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(
     new Set()
   );
 
-  // Data - Favorites (Presets)
+  // Dashboard Filter State
+  const [dashboardSearchTerm, setDashboardSearchTerm] = useState("");
+  const [dashboardFilterStatus, setDashboardFilterStatus] = useState<ProjectStatus | 'all'>('all');
+  const [dashboardFilterProgress, setDashboardFilterProgress] = useState<string>('all');
+  const [dashboardFilterTimeType, setDashboardFilterTimeType] = useState<"lastModified" | "createdAt" | "priority">("lastModified");
+  const [dashboardFilterStartDate, setDashboardFilterStartDate] = useState("");
+  const [dashboardFilterEndDate, setDashboardFilterEndDate] = useState("");
+  const [dashboardFilterTime, setDashboardFilterTime] = useState("");
+  const [dashboardSortBy, setDashboardSortBy] = useState<'createdAt' | 'lastModified' | 'progress'>('createdAt');
+  const [dashboardSortOrder, setDashboardSortOrder] = useState<"asc" | "desc">("desc");
+
+  // Template Page State
+  const [templateSearchTerm, setTemplateSearchTerm] = useState("");
+  const [templateCategoryTab, setTemplateCategoryTab] = useState<"market" | "popular" | "favorites">("market");
+  const [templateFilterStyle, setTemplateFilterStyle] = useState<string[]>([]);
+  const [templateFilterRatio, setTemplateFilterRatio] = useState<string[]>([]);
+  const [templateFilterPalette, setTemplateFilterPalette] = useState<string[]>([]);
+  const [templateFilterPageRange, setTemplateFilterPageRange] = useState<"all" | "under5" | "5-10" | "over10">("all");
+  const [templateFilterTimeType, setTemplateFilterTimeType] = useState<"lastModified" | "createdAt" | "priority">("priority");
+  const [templateFilterStartDate, setTemplateFilterStartDate] = useState("");
+  const [templateFilterEndDate, setTemplateFilterEndDate] = useState("");
+  const [templateFilterTime, setTemplateFilterTime] = useState("");
+  const [templateSortBy, setTemplateSortBy] = useState<"recommended" | "newest" | "usage" | "favorite">("recommended");
+  const [templateSortOrder, setTemplateSortOrder] = useState<"asc" | "desc">("desc");
+
   // Data - Favorites (Presets)
   // Data - Favorites (Replaced with React Query)
   // Logic moved to migration effect above
+
+  // Sync defaultVariantCount to all items when global setting changes
+  React.useEffect(() => {
+    if (config.defaultVariantCount && items.length > 0) {
+      setItems(prev => prev.map(item => ({
+        ...item,
+        variantCount: config.defaultVariantCount
+      })));
+    }
+  }, [config.defaultVariantCount]); // Only run when defaultVariantCount changes
 
   // UI State
   const [isProcessing, setIsProcessing] = useState(false);
@@ -648,7 +810,7 @@ const App: React.FC = () => {
     title: "",
     message: "",
     type: "info",
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -671,148 +833,148 @@ const App: React.FC = () => {
 
 
   const handleEnterPreview = (snapshot: ProjectSnapshot) => {
-      try {
-          const data = JSON.parse(snapshot.data);
-          // Load snapshot data into state
-          // Note: This temporarily replaces the "live" state in memory.
-          // Auto-save MUST be disabled while isPreviewMode is true.
-          if (data.globalConfig) setConfig(data.globalConfig);
-          if (data.items) setItems(data.items);
-          if (data.globalStyleMap) setStyleMap(data.globalStyleMap);
-          
-          setPreviewSnapshot(snapshot);
-          setToast({ id: Date.now().toString(), message: "已加载历史版本视图 (只读)", type: "info" });
-      } catch (e) {
-          console.error("Failed to load snapshot data", e);
-          setToast({ id: Date.now().toString(), message: "快照数据解析失败", type: "error" });
-      }
+    try {
+      const data = JSON.parse(snapshot.data);
+      // Load snapshot data into state
+      // Note: This temporarily replaces the "live" state in memory.
+      // Auto-save MUST be disabled while isPreviewMode is true.
+      if (data.globalConfig) setConfig(data.globalConfig);
+      if (data.items) setItems(data.items);
+      if (data.globalStyleMap) setStyleMap(data.globalStyleMap);
+
+      setPreviewSnapshot(snapshot);
+      setToast({ id: Date.now().toString(), message: "已加载历史版本视图 (只读)", type: "info" });
+    } catch (e) {
+      console.error("Failed to load snapshot data", e);
+      setToast({ id: Date.now().toString(), message: "快照数据解析失败", type: "error" });
+    }
   };
 
   const handleExitPreview = () => {
-      setPreviewSnapshot(null);
-      // Revert to live project data
-      if (currentProject) {
-          setConfig(currentProject.globalConfig);
-          setItems(currentProject.items);
-          if (currentProject.globalStyleMap) setStyleMap(currentProject.globalStyleMap);
-      }
-      setToast({ id: Date.now().toString(), message: "已退出预览模式", type: "success" });
+    setPreviewSnapshot(null);
+    // Revert to live project data
+    if (currentProject) {
+      setConfig(currentProject.globalConfig);
+      setItems(currentProject.items);
+      if (currentProject.globalStyleMap) setStyleMap(currentProject.globalStyleMap);
+    }
+    setToast({ id: Date.now().toString(), message: "已退出预览模式", type: "success" });
   };
 
   const handleRestoreCurrentSnapshot = async () => {
-      if (!previewSnapshot || !currentProjectId) return;
-      if (!confirm(`确定要恢复到版本 v${previewSnapshot.version} 吗？\n当前项目中未保存的修改将会被覆盖。`)) return;
-      
-      const loadingId = Date.now().toString();
-      setToast({ id: loadingId, message: "正在恢复版本...", type: "info" });
-      
-      try {
-          // Parse snapshot data
-          const snapshotData = JSON.parse(previewSnapshot.data);
-          const { globalConfig, styleMap: snapshotStyleMap, items: snapshotItems } = snapshotData;
-          
-          // Update frontend state with snapshot data
-          if (globalConfig) setConfig(globalConfig);
-          if (snapshotStyleMap) setStyleMap(snapshotStyleMap);
-          if (snapshotItems) setItems(snapshotItems);
-          
-          // Persist to backend - update current project with snapshot data
-          await updateProjectMutation.mutateAsync({
-              id: currentProjectId,
-              data: {
-                  globalConfig: globalConfig || config,
-                  globalStyleMap: snapshotStyleMap || {},
-              }
-          });
-          
-          // Sync slides to current project
-          if (snapshotItems && snapshotItems.length > 0) {
-              await syncSlidesMutation.mutateAsync({
-                  projectId: currentProjectId,
-                  slides: snapshotItems
-              });
-          }
-          
-          await queryClient.invalidateQueries({ queryKey: ['projects'] }); 
-          
-          setToast({ id: Date.now().toString(), message: `已恢复到版本 v${previewSnapshot.version}`, type: "success" });
-          setPreviewSnapshot(null); // Exit preview
-      } catch (e) {
-          console.error("Restore snapshot failed:", e);
-          setToast({ id: Date.now().toString(), message: "恢复失败", type: "error" });
+    if (!previewSnapshot || !currentProjectId) return;
+    if (!confirm(`确定要恢复到版本 v${previewSnapshot.version} 吗？\n当前项目中未保存的修改将会被覆盖。`)) return;
+
+    const loadingId = Date.now().toString();
+    setToast({ id: loadingId, message: "正在恢复版本...", type: "info" });
+
+    try {
+      // Parse snapshot data
+      const snapshotData = JSON.parse(previewSnapshot.data);
+      const { globalConfig, styleMap: snapshotStyleMap, items: snapshotItems } = snapshotData;
+
+      // Update frontend state with snapshot data
+      if (globalConfig) setConfig(globalConfig);
+      if (snapshotStyleMap) setStyleMap(snapshotStyleMap);
+      if (snapshotItems) setItems(snapshotItems);
+
+      // Persist to backend - update current project with snapshot data
+      await updateProjectMutation.mutateAsync({
+        id: currentProjectId,
+        data: {
+          globalConfig: globalConfig || config,
+          globalStyleMap: snapshotStyleMap || {},
+        }
+      });
+
+      // Sync slides to current project
+      if (snapshotItems && snapshotItems.length > 0) {
+        await syncSlidesMutation.mutateAsync({
+          projectId: currentProjectId,
+          slides: snapshotItems
+        });
       }
+
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+
+      setToast({ id: Date.now().toString(), message: `已恢复到版本 v${previewSnapshot.version}`, type: "success" });
+      setPreviewSnapshot(null); // Exit preview
+    } catch (e) {
+      console.error("Restore snapshot failed:", e);
+      setToast({ id: Date.now().toString(), message: "恢复失败", type: "error" });
+    }
   };
 
   const handleForkSnapshot = async () => {
-      if (!previewSnapshot) return;
-      if (!confirm(`确定要将版本 v${previewSnapshot.version} 另存为新项目吗？\n这将创建一个包含该历史版本所有数据的全新项目。`)) return;
-      
-      const loadingId = Date.now().toString();
-      setToast({ id: loadingId, message: "正在创建新项目...", type: "info" });
-      
-      try {
-        // Parse snapshot data
-          const snapshotData = JSON.parse(previewSnapshot.data);
-          // FIX: styleMap key in ProjectSession is 'globalStyleMap'
-          const { title: snapshotTitle, globalConfig, globalStyleMap: snapshotStyleMap, items: snapshotItems } = snapshotData;
-          
-          // Get project name. PRIORITY: Snapshot Title > Project Title > Cover Page Title > Default
-          const coverPageTitle = snapshotItems?.[0]?.title;
-          const originalTitle = currentProject?.title || globalConfig?.styleName || "项目";
-          // Use snapshot title if available, otherwise original title, otherwise cover page title
-          const baseTitle = snapshotTitle || originalTitle || coverPageTitle;
-          
-          // Use V1.X format where X is the snapshot version, with 【复制】 prefix
-          // FIX: Logic to avoid duplicate names (e.g. V1.1, V1.1.1, V1.1.2)
-          const baseVersionTitle = `【复制】${baseTitle} V1.${previewSnapshot.version}`;
-          let newTitle = baseVersionTitle;
-          
-          // Check for duplicates and increment suffix
-          // Check exact match first
-          if (projects.some(p => p.title === newTitle)) {
-             let counter = 1;
-             // Try .1, .2, .3 suffix
-             while (projects.some(p => p.title === `${baseVersionTitle}.${counter}`)) {
-                 counter++;
-             }
-             newTitle = `${baseVersionTitle}.${counter}`;
-          }
-          
-          const newProject = await createProjectMutation.mutateAsync({
-              title: newTitle,
-              status: 'idle',
-              globalConfig: globalConfig || { ...config },
-              globalStyleMap: snapshotStyleMap || {},
-              isPinned: false
-          });
-          
-          // Generate new IDs for forked items to avoid unique constraint conflicts
-          const forkedItems = snapshotItems?.map((item: any) => ({
-              ...item,
-              id: Math.random().toString(36).substring(2, 11) // Generate new unique ID
-          })) || [];
-          
-          // If there are items, sync them to the new project
-          if (forkedItems.length > 0) {
-              await syncSlidesMutation.mutateAsync({
-                  projectId: newProject.id,
-                  slides: forkedItems
-              });
-          }
-          
-          // Switch to the new project
-          setCurrentProjectId(newProject.id);
-          setConfig(globalConfig || config);
-          setStyleMap(snapshotStyleMap || {});
-          setItems(forkedItems);
-          setPreviewSnapshot(null); // Exit preview
-          setViewMode('workbench');
-          
-          showToast(`已创建新项目: ${newTitle}`, "success");
-      } catch (e) {
-          console.error("Fork snapshot failed:", e);
-          showToast("创建项目失败", "error");
+    if (!previewSnapshot) return;
+    if (!confirm(`确定要将版本 v${previewSnapshot.version} 另存为新项目吗？\n这将创建一个包含该历史版本所有数据的全新项目。`)) return;
+
+    const loadingId = Date.now().toString();
+    setToast({ id: loadingId, message: "正在创建新项目...", type: "info" });
+
+    try {
+      // Parse snapshot data
+      const snapshotData = JSON.parse(previewSnapshot.data);
+      // FIX: styleMap key in ProjectSession is 'globalStyleMap'
+      const { title: snapshotTitle, globalConfig, globalStyleMap: snapshotStyleMap, items: snapshotItems } = snapshotData;
+
+      // Get project name. PRIORITY: Snapshot Title > Project Title > Cover Page Title > Default
+      const coverPageTitle = snapshotItems?.[0]?.title;
+      const originalTitle = currentProject?.title || globalConfig?.styleName || "项目";
+      // Use snapshot title if available, otherwise original title, otherwise cover page title
+      const baseTitle = snapshotTitle || originalTitle || coverPageTitle;
+
+      // Use V1.X format where X is the snapshot version, with 【复制】 prefix
+      // FIX: Logic to avoid duplicate names (e.g. V1.1, V1.1.1, V1.1.2)
+      const baseVersionTitle = `【复制】${baseTitle} V1.${previewSnapshot.version}`;
+      let newTitle = baseVersionTitle;
+
+      // Check for duplicates and increment suffix
+      // Check exact match first
+      if (projects.some(p => p.title === newTitle)) {
+        let counter = 1;
+        // Try .1, .2, .3 suffix
+        while (projects.some(p => p.title === `${baseVersionTitle}.${counter}`)) {
+          counter++;
+        }
+        newTitle = `${baseVersionTitle}.${counter}`;
       }
+
+      const newProject = await createProjectMutation.mutateAsync({
+        title: newTitle,
+        status: 'idle',
+        globalConfig: globalConfig || { ...config },
+        globalStyleMap: snapshotStyleMap || {},
+        isPinned: false
+      });
+
+      // Generate new IDs for forked items to avoid unique constraint conflicts
+      const forkedItems = snapshotItems?.map((item: any) => ({
+        ...item,
+        id: Math.random().toString(36).substring(2, 11) // Generate new unique ID
+      })) || [];
+
+      // If there are items, sync them to the new project
+      if (forkedItems.length > 0) {
+        await syncSlidesMutation.mutateAsync({
+          projectId: newProject.id,
+          slides: forkedItems
+        });
+      }
+
+      // Switch to the new project
+      setCurrentProjectId(newProject.id);
+      setConfig(globalConfig || config);
+      setStyleMap(snapshotStyleMap || {});
+      setItems(forkedItems);
+      setPreviewSnapshot(null); // Exit preview
+      setViewMode('workbench');
+
+      showToast(`已创建新项目: ${newTitle}`, "success");
+    } catch (e) {
+      console.error("Fork snapshot failed:", e);
+      showToast("创建项目失败", "error");
+    }
   };
 
 
@@ -828,31 +990,31 @@ const App: React.FC = () => {
 
   // Auto-save config changes
   useEffect(() => {
-    if (!currentProjectId || isPreviewMode) return;
-    
+    if (!currentProjectId || isPreviewMode || !hasUserInteraction) return; // 只在用户操作后才保存
+
     const timer = setTimeout(() => {
       updateProjectMutation.mutate({
         id: currentProjectId,
         data: { globalConfig: config }
       });
-    }, 1000); // Debounce 1 second
+    }, 200); // 缩短防抖时间至 200ms,减少数据丢失风险
 
     return () => clearTimeout(timer);
-  }, [config, currentProjectId, updateProjectMutation]);
+  }, [config, currentProjectId, updateProjectMutation, hasUserInteraction]);
 
   // Auto-save styleMap changes
   useEffect(() => {
-    if (!currentProjectId || isPreviewMode) return;
-    
+    if (!currentProjectId || isPreviewMode || !hasUserInteraction) return; // 只在用户操作后才保存
+
     const timer = setTimeout(() => {
       updateProjectMutation.mutate({
         id: currentProjectId,
         data: { globalStyleMap: styleMap }
       });
-    }, 1000); // Debounce 1 second
+    }, 200); // 缩短防抖时间至 200ms,减少数据丢失风险
 
     return () => clearTimeout(timer);
-  }, [styleMap, currentProjectId, updateProjectMutation]);
+  }, [styleMap, currentProjectId, updateProjectMutation, hasUserInteraction]);
 
   // --- Auto-Save Interval (3 Minutes) ---
   // --- Auto-Save Interval (Duplicate removed) ---
@@ -862,17 +1024,94 @@ const App: React.FC = () => {
   // CRITICAL: Must use syncSlidesMutation, NOT updateProjectMutation
   // updateProjectMutation doesn't support items update (see projects.ts line 281-283)
   useEffect(() => {
-    if (!currentProjectId || isPreviewMode) return;
-    
+    if (!currentProjectId || isPreviewMode || !hasUserInteraction) return; // 只在用户操作后才保存
+
     const timer = setTimeout(() => {
       syncSlidesMutation.mutate({
         projectId: currentProjectId,
         slides: items
       });
-    }, 1000); // Debounce 1 second
+    }, 200); // 缩短防抖时间至 200ms,减少数据丢失风险
 
     return () => clearTimeout(timer);
-  }, [items, currentProjectId, syncSlidesMutation, isPreviewMode]);
+  }, [items, currentProjectId, syncSlidesMutation, isPreviewMode, hasUserInteraction]);
+
+  // 强制同步逻辑：当离开工作台或切换项目时执行
+  const flushAutoSave = useCallback(() => {
+    if (!currentProjectIdRef.current || isPreviewMode) return;
+
+    // 防止在用户操作之前保存数据
+    if (!hasUserInteraction) {
+      console.log('[FlushAutoSave] Skipped: No user interaction yet');
+      return;
+    }
+
+    console.log('[FlushAutoSave] Items count:', itemsRef.current.length);
+    console.log('[FlushAutoSave] Config:', configRef.current ? 'Present' : 'Empty');
+    console.log('[FlushAutoSave] StyleMap:', styleMapRef.current ? 'Present' : 'Empty');
+
+    // 同步配置
+    updateProjectMutation.mutate({
+      id: currentProjectIdRef.current,
+      data: {
+        globalConfig: configRef.current,
+        globalStyleMap: styleMapRef.current
+      }
+    });
+
+    // 同步幻灯片
+    syncSlidesMutation.mutate({
+      projectId: currentProjectIdRef.current,
+      slides: itemsRef.current
+    });
+
+    console.log('[AutoSave] Flushed changes for project:', currentProjectIdRef.current);
+  }, [updateProjectMutation, syncSlidesMutation, isPreviewMode, hasUserInteraction]);
+
+  // 监听视图切换，只有在从 'workbench' 切换到 'dashboard' 时才强制保存
+  const prevViewModeRef = useRef(viewMode);
+  useEffect(() => {
+    // Only flush if the previous view mode was 'workbench' and the current is 'dashboard'
+    // This prevents flushing on initial load or other view mode changes
+    if (prevViewModeRef.current === 'workbench' && viewMode === 'dashboard') {
+      flushAutoSave();
+    }
+    // Always update the ref to the current viewMode for the next render cycle
+    prevViewModeRef.current = viewMode;
+  }, [viewMode, flushAutoSave]);
+
+  // 监听页面刷新/关闭事件,确保数据被保存
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!currentProjectIdRef.current || isPreviewMode) return;
+
+      console.log('[BeforeUnload] Saving data before page unload...');
+      flushAutoSave();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [flushAutoSave, isPreviewMode]);
+
+  // 监听标签页可见性变化,在切换标签页时也保存数据
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && currentProjectIdRef.current && !isPreviewMode) {
+        console.log('[VisibilityChange] Tab hidden, saving data...');
+        flushAutoSave();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [flushAutoSave, isPreviewMode]);
+
 
   // --- Helpers ---
 
@@ -969,7 +1208,11 @@ const App: React.FC = () => {
   };
 
   const handleConfigChange = (key: keyof StyleConfig, value: any) => {
-    setConfig((prev) => ({ ...prev, [key]: value }));
+    setConfig((prev) => {
+      const next = { ...prev, [key]: value };
+      configRef.current = next;
+      return next;
+    });
     setIsPresetSaved(false);
   };
 
@@ -1011,11 +1254,11 @@ const App: React.FC = () => {
     // CRITICAL: Read text file content BEFORE any state updates to prevent reference loss
     // The file object can become invalid after React re-renders
     const isPDF = file.type === 'application/pdf';
-    const isWord = file.name.endsWith('.docx') || file.name.endsWith('.doc') || 
-                   file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-                   file.type === 'application/msword';
+    const isWord = file.name.endsWith('.docx') || file.name.endsWith('.doc') ||
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      file.type === 'application/msword';
     const isText = file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.json') || file.name.endsWith('.txt');
-    
+
     // For text files, read content using FileReader (more reliable than file.text())
     let preReadTextContent: string | null = null;
     if (isText) {
@@ -1031,7 +1274,7 @@ const App: React.FC = () => {
         console.error('[Pre-Read] Failed to read text file:', readError);
       }
     }
-    
+
     // For Word files, read array buffer immediately
     let preReadWordBuffer: ArrayBuffer | null = null;
     if (isWord) {
@@ -1044,12 +1287,12 @@ const App: React.FC = () => {
 
     // Now safe to update state
     setIsReadingFile(true);
-    
+
     // Show appropriate loading message
     let loadingMsg = "";
     let successMsg = "";
     let errorMsg = "";
-    
+
     if (isPDF && appSettings.docParser?.apiKey) {
       loadingMsg = "调用 MinerU 解析 PDF 中...";
       successMsg = "MinerU 解析成功";
@@ -1068,12 +1311,12 @@ const App: React.FC = () => {
       successMsg = `调用 ${providerName} API 识别成功`;
       errorMsg = `调用 ${providerName} API 失败`;
     }
-    
+
     showToast(loadingMsg, "loading");
 
     try {
       let text: string;
-      
+
       // Use pre-read content if available
       if (preReadTextContent !== null) {
         text = preReadTextContent;
@@ -1086,12 +1329,12 @@ const App: React.FC = () => {
         // For PDF and other files, use the standard extraction
         const result = await extractTextFromFile(file);
         text = result.text;
-        
+
         if (result.isFallback) {
-             showToast("MinerU 解析暂不可用，已自动切换至视觉模型为您服务。", "info");
+          showToast("MinerU 解析暂不可用，已自动切换至视觉模型为您服务。", "info");
         }
       }
-      
+
       openOutlineGenerator(text);
       showToast(successMsg, "success");
     } catch (err) {
@@ -1106,7 +1349,7 @@ const App: React.FC = () => {
   };
 
   const handleOutlineImport = (slides: GeneratedSlide[]) => {
-    
+
     // Check if importing causes overflow
     if (items.length + slides.length > config.targetPageCount) {
       const allowed = config.targetPageCount - items.length;
@@ -1115,47 +1358,47 @@ const App: React.FC = () => {
       );
       const importedSlides = slides.slice(0, allowed);
       setItems((prev) => [...prev, ...importedSlides]);
-      
+
       // Sync to database
       if (currentProjectIdRef.current) {
-          const slidesToSync = [...items, ...importedSlides].map(slide => {
-              if (slide.contentType === 'image' && slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-                  return { ...slide, variants: [slide.previewUrl, ...slide.variants] };
-              }
-              return slide;
-          });
-          syncSlidesMutation.mutate({
-              projectId: currentProjectIdRef.current,
-              slides: slidesToSync
-          });
+        const slidesToSync = [...items, ...importedSlides].map(slide => {
+          if (slide.contentType === 'image' && slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
+            return { ...slide, variants: [slide.previewUrl, ...slide.variants] };
+          }
+          return slide;
+        });
+        syncSlidesMutation.mutate({
+          projectId: currentProjectIdRef.current,
+          slides: slidesToSync
+        });
       } else {
-          console.warn('[handleOutlineImport] No currentProjectId, skipping sync!');
+        console.warn('[handleOutlineImport] No currentProjectId, skipping sync!');
       }
     } else {
       setItems((prev) => [...prev, ...slides]);
       // Update methods
       if (currentProjectIdRef.current) {
-          const project = projects.find(p => p.id === currentProjectIdRef.current);
-          if (project && !project.methods.includes('file')) {
-              updateProjectMutation.mutate({ 
-                  id: project.id, 
-                  data: { methods: [...project.methods, 'file'] } 
-              });
+        const project = projects.find(p => p.id === currentProjectIdRef.current);
+        if (project && !project.methods.includes('file')) {
+          updateProjectMutation.mutate({
+            id: project.id,
+            data: { methods: [...project.methods, 'file'] }
+          });
+        }
+
+        // Sync slides to database
+        const slidesToSync = [...items, ...slides].map(slide => {
+          if (slide.contentType === 'image' && slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
+            return { ...slide, variants: [slide.previewUrl, ...slide.variants] };
           }
-          
-          // Sync slides to database
-          const slidesToSync = [...items, ...slides].map(slide => {
-              if (slide.contentType === 'image' && slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-                  return { ...slide, variants: [slide.previewUrl, ...slide.variants] };
-              }
-              return slide;
-          });
-          syncSlidesMutation.mutate({
-              projectId: currentProjectIdRef.current,
-              slides: slidesToSync
-          });
+          return slide;
+        });
+        syncSlidesMutation.mutate({
+          projectId: currentProjectIdRef.current,
+          slides: slidesToSync
+        });
       } else {
-          console.warn('[handleOutlineImport] No currentProjectId, skipping sync!');
+        console.warn('[handleOutlineImport] No currentProjectId, skipping sync!');
       }
       setTimeout(
         () => showToast(`已成功添加 ${slides.length} 个页面`, "success"),
@@ -1177,11 +1420,11 @@ const App: React.FC = () => {
         // Do NOT clear project ID or return to dashboard if we are inside a project
         // setCurrentProjectId(null); 
         // setViewMode('dashboard'); 
-        
+
         // If we are NOT in a project context (e.g. quick start), then maybe we stay? 
         // Actually, user expects to stay in the workbench to start over.
         // So we just remove these two lines.
-        
+
         closeConfirm();
         showToast("工作台已清空", "success");
       },
@@ -1256,9 +1499,10 @@ const App: React.FC = () => {
 
   // --- History Logic ---
   const filteredHistory = projects.filter((session) => {
-    const matchSearch = session.title
-      .toLowerCase()
-      .includes(historySearchTerm.toLowerCase());
+    const matchSearch =
+      session.title.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+      session.id.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+      (session.displayId || "").toLowerCase().includes(historySearchTerm.toLowerCase());
     const matchStyle =
       !historyFilterStyle ||
       session.globalConfig.styleName === historyFilterStyle;
@@ -1268,33 +1512,59 @@ const App: React.FC = () => {
     const matchPalette =
       !historyFilterPalette ||
       session.globalConfig.colorPalette === historyFilterPalette;
-    const matchPageCount =
-      !historyFilterPageCount ||
-      session.globalConfig.targetPageCount.toString() ===
-        historyFilterPageCount;
-    const matchStatus =
-      !historyFilterStatus || session.status === historyFilterStatus;
+    const multiplier = historySortOrder === "desc" ? -1 : 1;
+    const timeRef = historyFilterTimeType === "lastModified" ? "lastModified" : "createdAt";
+
+    const matchPageRange = (() => {
+      const target = historyFilterPageType === "target"
+        ? session.globalConfig.targetPageCount
+        : session.items.filter(i => i.status === 'success' || i.status === 'completed').length;
+
+      const min = historyFilterMinPages ? parseInt(historyFilterMinPages) : 0;
+      const max = historyFilterMaxPages ? parseInt(historyFilterMaxPages) : Infinity;
+      return target >= min && target <= max;
+    })();
 
     let matchTime = true;
     if (historyFilterTime) {
       const now = Date.now();
-      const diff = now - session.lastModified;
+      const diff = now - session[timeRef]; // Linkage with time dimension
       const ONE_DAY = 24 * 60 * 60 * 1000;
       if (historyFilterTime === "24h") matchTime = diff <= ONE_DAY;
       else if (historyFilterTime === "7d") matchTime = diff <= 7 * ONE_DAY;
-      else if (historyFilterTime === "30d") matchTime = diff <= 30 * ONE_DAY;
+      else if (filterTime === "30d") matchTime = diff <= 30 * ONE_DAY;
     }
 
+    const matchDateRange = (() => {
+      if (!historyFilterStartDate && !historyFilterEndDate) return true;
+      const timestamp = session[timeRef]; // Linkage with time dimension
+      if (historyFilterStartDate) {
+        const start = new Date(historyFilterStartDate).getTime();
+        if (timestamp < start) return false;
+      }
+      if (historyFilterEndDate) {
+        const end = new Date(historyFilterEndDate).getTime() + (24 * 60 * 60 * 1000 - 1);
+        if (timestamp > end) return false;
+      }
+      return true;
+    })();
+
     return (
-      session.status === 'success' && // Only show completed projects in History
+      session.status === 'completed' &&
       matchSearch &&
       matchStyle &&
       matchRatio &&
       matchPalette &&
-      matchStatus &&
       matchTime &&
-      matchPageCount
+      matchDateRange &&
+      matchPageRange
     );
+  }).sort((a, b) => {
+    const multiplier = historySortOrder === "desc" ? -1 : 1;
+    if (historySortBy === "lastModified") return multiplier * (a.lastModified - b.lastModified);
+    if (historySortBy === "createdAt") return multiplier * (a.createdAt - b.createdAt);
+    if (historySortBy === "pages") return multiplier * (a.items.length - b.items.length);
+    return 0;
   });
 
   // --- Refinement Handlers ---
@@ -1343,7 +1613,7 @@ const App: React.FC = () => {
       textContent: "",
       previewUrl: "",
       variants: [],
-      variantCount: 2,
+      variantCount: 1,
       status: "idle",
       createdAt: Date.now(),
     };
@@ -1351,25 +1621,25 @@ const App: React.FC = () => {
     setItems((prev) => [...prev, newItem]);
     // Update methods
     if (currentProjectIdRef.current) {
-       const project = projects.find(p => p.id === currentProjectIdRef.current);
-       if (project && !project.methods.includes('text')) {
-           updateProjectMutation.mutate({
-               id: project.id,
-               data: { methods: [...project.methods, 'text'] }
-           });
-       }
-       
-       // Sync slides to database
-       const slidesToSync = [...items, newItem].map(slide => {
-           if (slide.contentType === 'image' && slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-               return { ...slide, variants: [slide.previewUrl, ...slide.variants] };
-           }
-           return slide;
-       });
-       syncSlidesMutation.mutate({
-           projectId: currentProjectIdRef.current,
-           slides: slidesToSync
-       });
+      const project = projects.find(p => p.id === currentProjectIdRef.current);
+      if (project && !project.methods.includes('text')) {
+        updateProjectMutation.mutate({
+          id: project.id,
+          data: { methods: [...project.methods, 'text'] }
+        });
+      }
+
+      // Sync slides to database
+      const slidesToSync = [...items, newItem].map(slide => {
+        if (slide.contentType === 'image' && slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
+          return { ...slide, variants: [slide.previewUrl, ...slide.variants] };
+        }
+        return slide;
+      });
+      syncSlidesMutation.mutate({
+        projectId: currentProjectIdRef.current,
+        slides: slidesToSync
+      });
     }
     setTimeout(
       () =>
@@ -1393,72 +1663,83 @@ const App: React.FC = () => {
       return;
     }
 
-    // Show loading state implicitly by keeping modal open or could add local state
-    // For now, we wait for uploads. 
-    // Ideally we should show a spinner on the button, but `tempImageFiles` is cleared after.
-    
+    showToast("正在上传图片...", "loading");
+
     let currentCount = items.length;
-    
-    const newItems = await Promise.all(tempImageFiles.map(async (file) => {
-      const type = getNextPageType(currentCount);
-      currentCount++;
-      
-      let previewUrl = resolveResourceUrl(file); 
-      
-      // Only upload if it IS a file object (not a string url)
-      if (file instanceof File) {
+
+    try {
+      const newItems = await Promise.all(tempImageFiles.map(async (file) => {
+        const type = getNextPageType(currentCount);
+        currentCount++;
+
+        let finalUrl = "";
+
+        // Force upload immediately to ensure we only store URL strings
+        if (file instanceof File) {
           try {
-              const uploadedUrl = await uploadFile(file);
-              if (uploadedUrl) previewUrl = uploadedUrl;
+            finalUrl = await uploadFile(file);
           } catch (e) {
-              console.error("Manual upload failed", e);
+            console.error("Manual upload failed", e);
+            throw new Error(`图片上传失败: ${file.name}`);
           }
-      } else if (typeof file === 'string') {
-          // It's already a path/url
-          previewUrl = file;
-      }
+        } else if (typeof file === 'string') {
+          finalUrl = file;
+        } else {
+          // Fallback for StoredResource unexpected type
+          finalUrl = resolveResourceUrl(file);
+        }
 
-      return {
-        id: generateId(),
-        contentType: "image" as const,
-        pageType: type,
-        originalFile: file,
-        previewUrl: previewUrl,
-        variants: [previewUrl],
-        variantCount: 2,
-        status: "idle" as const,
-        createdAt: Date.now(),
-      };
-    }));
+        if (!finalUrl) throw new Error("无法获取图片URL");
 
-    setItems((prev) => [...prev, ...newItems]);
+        return {
+          id: generateId(),
+          contentType: "image" as const,
+          pageType: type,
+          // CRITICAL FIX: Store URL string, NEVER File object
+          originalFile: finalUrl,
+          previewUrl: finalUrl,
+          variants: [finalUrl],
+          variantCount: 1,
+          status: "idle" as const,
+          createdAt: Date.now(),
+        };
+      }));
+
+      setItems((prev) => [...prev, ...newItems]);
+      // Sync slides to database
+      // Normalize slides: ensure previewUrl is in variants for images
+      const slidesToSync = [...items, ...newItems].map(slide => {
+        if (slide.contentType === 'image' && slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
+          return {
+            ...slide,
+            variants: [slide.previewUrl, ...slide.variants]
+          };
+        }
+        return slide;
+      });
+
+      syncSlidesMutation.mutate({
+        projectId: currentProjectId,
+        slides: slidesToSync
+      });
+
+      showToast("图片添加成功", "success");
+    } catch (error: any) {
+      showToast(error.message || "添加图片失败", "error");
+    }
+
     // Update methods
     if (currentProjectId) {
-       const project = projects.find(p => p.id === currentProjectId);
-       if (project && !project.methods.includes('image')) {
-           updateProjectMutation.mutate({
-               id: project.id,
-               data: { methods: [...project.methods, 'image'] }
-           });
-       }
-       
-       // Sync slides to database
-       // Normalize slides: ensure previewUrl is in variants for images
-       const slidesToSync = [...items, ...newItems].map(slide => {
-           if (slide.contentType === 'image' && slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-               return {
-                   ...slide,
-                   variants: [slide.previewUrl, ...slide.variants]
-               };
-           }
-           return slide;
-       });
-       
-       syncSlidesMutation.mutate({
-           projectId: currentProjectId,
-           slides: slidesToSync
-       });
+      const project = projects.find(p => p.id === currentProjectId);
+      if (project && !project.methods.includes('image')) {
+        updateProjectMutation.mutate({
+          id: project.id,
+          data: { methods: [...(project.methods || []), 'image'] }
+        });
+      }
     }
+
+
     setIsImageTaskModalOpen(false);
     setTempImageFiles([]);
     setTimeout(
@@ -1483,11 +1764,21 @@ const App: React.FC = () => {
 
   const confirmSavePreset = () => {
     if (!presetNameInput.trim()) return;
-    
+
     // Check if at least one option is selected
     if (!saveToLibrary && !saveToFavorites) {
-        showToast("请至少选择一项保存位置", "error");
-        return;
+      showToast("请至少选择一项保存位置", "error");
+      return;
+    }
+
+    // --- Quota Check ---
+    if (saveToLibrary && styleTemplates.length >= 200) {
+      showToast("自定义模板数量已达上限 (200)，请删除部分模板后再试", "error");
+      return;
+    }
+    if (saveToFavorites && favorites.length >= 20) {
+      showToast("我的收藏数量已达上限 (20)，请删除部分收藏后再试", "error");
+      return;
     }
 
     showConfirm("确认保存", "确定保存当前配置为模版吗？", async () => {
@@ -1577,29 +1868,35 @@ const App: React.FC = () => {
   const handleToggleFavorite = (template: StyleTemplate) => {
     const isFav = favorites.some((f) => f.id === template.id);
     if (isFav) {
-        removeFavoriteMutation.mutate(template.id);
-         showToast("已取消收藏", "success");
+      removeFavoriteMutation.mutate(template.id);
+      showToast("已取消收藏", "success");
     } else {
-        // Create StylePreset from Template
-        const newPreset: StylePreset = {
-            id: template.id,
-            name: template.name || template.config.styleName,
-            config: template.config,
-            styleMap: template.styleMap || { cover: null, directory: null, transition: null, content: null, end: null, custom: null },
-            createdAt: Date.now(),
-            sampleImages: []
-        };
-        // For adding favorite, actually the backend expects just the ID if it's linking, 
-        // OR the full object if it's a new favorite.
-        // Based on `useAddFavorite`, it takes `Omit<FavoriteDTO, 'id' | 'createdAt'>`.
-        // So we pass the data.
-        addFavoriteMutation.mutate({
-            name: newPreset.name,
-            config: newPreset.config,
-            styleMap: newPreset.styleMap,
-            sampleImages: newPreset.sampleImages
-        });
-        showToast("已添加至收藏夹", "success");
+      // --- Quota Check ---
+      if (favorites.length >= 20) {
+        showToast("我的收藏数量已达上限 (20)，请删除部分收藏后再试", "error");
+        return;
+      }
+
+      // Create StylePreset from Template
+      const newPreset: StylePreset = {
+        id: template.id,
+        name: template.name || template.config.styleName,
+        config: template.config,
+        styleMap: template.styleMap || { cover: null, directory: null, transition: null, content: null, end: null, custom: null },
+        createdAt: Date.now(),
+        sampleImages: []
+      };
+      // For adding favorite, actually the backend expects just the ID if it's linking, 
+      // OR the full object if it's a new favorite.
+      // Based on `useAddFavorite`, it takes `Omit<FavoriteDTO, 'id' | 'createdAt'>`.
+      // So we pass the data.
+      addFavoriteMutation.mutate({
+        name: newPreset.name,
+        config: newPreset.config,
+        styleMap: newPreset.styleMap,
+        sampleImages: newPreset.sampleImages
+      });
+      showToast("已添加至收藏夹", "success");
     }
   };
 
@@ -1622,55 +1919,55 @@ const App: React.FC = () => {
   // Manual save if needed (like after generating)
   const syncCurrentProject = () => {
     if (!currentProjectId) return;
-    
+
     // We only update Thumbnail and Status here for now. 
     // Items are saved via Auto-Save.
-    
-     const coverItem = items.find((i) => i.pageType === "cover");
-     const firstItem = items[0];
-     const bestItem = coverItem || firstItem;
 
-     let thumbUrl = currentProject?.thumbnailUrl;
+    const coverItem = items.find((i) => i.pageType === "cover");
+    const firstItem = items[0];
+    const bestItem = coverItem || firstItem;
 
-     if (bestItem) {
-       if (bestItem.variants && bestItem.variants.length > 0) {
-         thumbUrl = bestItem.variants[0];
-       } else if (bestItem.previewUrl) {
-         thumbUrl = bestItem.previewUrl;
-       }
-     }
-     
-     // Fallback to style reference
-     if ((!thumbUrl || thumbUrl.startsWith('blob:')) && !bestItem && styleMap.cover) {
-         thumbUrl = resolveResourceUrl(styleMap.cover);
-     } else if ((!thumbUrl || thumbUrl.startsWith('blob:')) && !bestItem && !styleMap.cover) {
-         thumbUrl = undefined;
-     }
-     
-     const newStatus = items.some(i => i.status === 'generating') ? 'generating' : 
-                          (items.length > 0 && items.every(i => i.status === 'success')) ? 'completed' : 
-                          items.length === 0 ? 'generating' : currentProject?.status || 'idle';
+    let thumbUrl = currentProject?.thumbnailUrl;
 
-     // Only mutate if changed
-     if (currentProject && (currentProject.thumbnailUrl !== thumbUrl || currentProject.status !== newStatus)) {
-         updateProjectMutation.mutate({
-             id: currentProjectId,
-             data: {
-                 thumbnailUrl: thumbUrl,
-                 status: newStatus,
-                 lastModified: Date.now()
-             }
-         });
-     }
+    if (bestItem) {
+      if (bestItem.variants && bestItem.variants.length > 0) {
+        thumbUrl = bestItem.variants[0];
+      } else if (bestItem.previewUrl) {
+        thumbUrl = bestItem.previewUrl;
+      }
+    }
+
+    // Fallback to style reference
+    if ((!thumbUrl || thumbUrl.startsWith('blob:')) && !bestItem && styleMap.cover) {
+      thumbUrl = resolveResourceUrl(styleMap.cover);
+    } else if ((!thumbUrl || thumbUrl.startsWith('blob:')) && !bestItem && !styleMap.cover) {
+      thumbUrl = undefined;
+    }
+
+    const newStatus = items.some(i => i.status === 'generating') ? 'generating' :
+      (items.length > 0 && items.every(i => i.status === 'success')) ? 'completed' :
+        items.length === 0 ? 'generating' : currentProject?.status || 'idle';
+
+    // Only mutate if changed
+    if (currentProject && (currentProject.thumbnailUrl !== thumbUrl || currentProject.status !== newStatus)) {
+      updateProjectMutation.mutate({
+        id: currentProjectId,
+        data: {
+          thumbnailUrl: thumbUrl,
+          status: newStatus,
+          lastModified: Date.now()
+        }
+      });
+    }
   };
 
   // Auto-sync Project State on content changes (Debounced)
   useEffect(() => {
     if (currentProjectId && (items.length > 0 || config)) {
-        const timer = setTimeout(() => {
-            syncCurrentProject();
-        }, 800);
-        return () => clearTimeout(timer);
+      const timer = setTimeout(() => {
+        syncCurrentProject();
+      }, 800);
+      return () => clearTimeout(timer);
     }
   }, [items, config, styleMap, currentProjectId]);
 
@@ -1678,13 +1975,13 @@ const App: React.FC = () => {
   // This ensures text edits and other item changes are saved to the backend
   useEffect(() => {
     if (currentProjectId && items.length > 0) {
-        const timer = setTimeout(() => {
-            syncSlidesMutation.mutate({
-                projectId: currentProjectId,
-                slides: items
-            });
-        }, 2000);
-        return () => clearTimeout(timer);
+      const timer = setTimeout(() => {
+        syncSlidesMutation.mutate({
+          projectId: currentProjectId,
+          slides: items
+        });
+      }, 2000);
+      return () => clearTimeout(timer);
     }
   }, [items, currentProjectId]);
 
@@ -1695,20 +1992,20 @@ const App: React.FC = () => {
         item.contentType === "text"
           ? item.textContent || ""
           : (item.originalFile!); // Non-null assertion is safe per our types logic here, or let type inference handle StoredResource
-          
+
       setItems((prev) =>
         prev.map((res) =>
           res.id === item.id
             ? {
-                ...res,
-                status: "generating",
-                errorMessage: undefined,
-                variants: [],
-              }
+              ...res,
+              status: "generating",
+              errorMessage: undefined,
+              variants: [],
+            }
             : res
         )
       );
-      const count = item.variantCount || 2;
+      const count = item.variantCount || 1;
 
       let selectedStyleFile = styleMap[item.pageType];
       if (!selectedStyleFile) selectedStyleFile = styleMap["content"];
@@ -1730,7 +2027,6 @@ const App: React.FC = () => {
             config,
             label,
             item.title,
-            // appSettings removed
             item.contentType // Pass 'text' or 'image'
           )
         );
@@ -1739,17 +2035,17 @@ const App: React.FC = () => {
       setItems((prev) =>
         prev.map((res) =>
           res.id === item.id
-            ? { 
-                ...res, 
-                variants: generatedVariants, 
-                // Keep original previewUrl (uploaded image) unchanged, generated images go to variants
-                // previewUrl stays as the original upload for display on the left side
-                status: "success" 
-              }
+            ? {
+              ...res,
+              variants: generatedVariants,
+              // Keep original previewUrl (uploaded image) unchanged, generated images go to variants
+              // previewUrl stays as the original upload for display on the left side
+              status: "success"
+            }
             : res
         )
       );
-      
+
       // Return the generated variants so they can be used for syncing
       return {
         itemId: item.id,
@@ -1819,62 +2115,58 @@ const App: React.FC = () => {
     await Promise.all(activePromises);
 
     setIsProcessing(false);
-    
+
     // Sync all generated slides to database
     if (currentProjectId && generatedResults.length > 0) {
-        setItems((currentItems) => {
-            // Create a map of generated results for quick lookup
-            const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
-            
-            const slidesToSync = currentItems.map(slide => {
-                const result = resultsMap.get(slide.id);
-                if (result) {
-                    // Use the generated variants for this item
-                    return {
-                        ...slide,
-                        variants: result.variants,
-                        previewUrl: result.previewUrl
-                    };
-                }
-                // For other slides, ensure previewUrl is in variants
-                if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-                    return {
-                        ...slide,
-                        variants: [slide.previewUrl, ...slide.variants]
-                    };
-                }
-                return slide;
-            });
-            
-            
-            syncSlidesMutation.mutate({
-                projectId: currentProjectId,
-                slides: slidesToSync
-            });
-            
-            return slidesToSync;
+      setItems((currentItems) => {
+        // Create a map of generated results for quick lookup
+        const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
+
+        const slidesToSync = currentItems.map(slide => {
+          const result = resultsMap.get(slide.id);
+          if (result) {
+            // Use the generated variants for this item
+            return {
+              ...slide,
+              variants: result.variants,
+              previewUrl: result.previewUrl
+            };
+          }
+          // For other slides, ensure previewUrl is in variants
+          if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
+            return {
+              ...slide,
+              variants: [slide.previewUrl, ...slide.variants]
+            };
+          }
+          return slide;
         });
+
+
+        syncSlidesMutation.mutate({
+          projectId: currentProjectId,
+          slides: slidesToSync
+        });
+
+        return slidesToSync;
+      });
     } else {
-        console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
+      console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
 
-    // Check if all slides are completed and update project status
-    // Only mark as completed if:
-    // 1. We have exactly targetPageCount items
-    // 2. ALL items have status 'success'
+    // 检查是否所有幻灯片都已完成并更新项目状态
+    // 如果所有现有项都已成功 (且至少有一个项),则标记为已完成
     setItems((currentItems) => {
-        const targetCount = config.targetPageCount || 10;
-        const hasExactCount = currentItems.length === targetCount;
-        const allCompleted = currentItems.length > 0 && 
-                             currentItems.every(i => i.status === 'success');
-        
-        if (hasExactCount && allCompleted && currentProjectId) {
-            updateProjectMutation.mutate({ 
-                id: currentProjectId, 
-                data: { status: 'completed' } 
-            });
-        }
-        return currentItems;
+      const allCompleted = currentItems.length > 0 &&
+        currentItems.every(i => i.status === 'success');
+
+      if (allCompleted && currentProjectId) {
+        updateProjectMutation.mutate({
+          id: currentProjectId,
+          data: { status: 'completed' }
+        });
+      }
+      return currentItems;
     });
 
     if (failureCount > 0) {
@@ -1894,58 +2186,53 @@ const App: React.FC = () => {
       showToast(`调用 ${providerName} API 生成单页中...`, "loading");
       try {
         const result = await processItem(item);
-        
+
         // Sync to database after successful generation
         if (currentProjectId && result) {
-            setItems((currentItems) => {
-                const slidesToSync = currentItems.map(slide => {
-                    // Use the returned variants for the generated item
-                    // DO NOT overwrite previewUrl - keep the original uploaded image on the left side
-                    if (slide.id === result.itemId) {
-                        return {
-                            ...slide,
-                            variants: result.variants
-                            // previewUrl is intentionally NOT updated here to preserve the original upload
-                        };
-                    }
-                    // For other slides, ensure previewUrl is in variants
-                    if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-                        return {
-                            ...slide,
-                            variants: [slide.previewUrl, ...slide.variants]
-                        };
-                    }
-                    return slide;
-                });
-                
-                syncSlidesMutation.mutate({
-                    projectId: currentProjectId,
-                    slides: slidesToSync
-                });
-                
-                return slidesToSync;
+          setItems((currentItems) => {
+            const slidesToSync = currentItems.map(slide => {
+              // Use the returned variants for the generated item
+              // DO NOT overwrite previewUrl - keep the original uploaded image on the left side
+              if (slide.id === result.itemId) {
+                return {
+                  ...slide,
+                  variants: result.variants
+                  // previewUrl is intentionally NOT updated here to preserve the original upload
+                };
+              }
+              // For other slides, ensure previewUrl is in variants
+              if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
+                return {
+                  ...slide,
+                  variants: [slide.previewUrl, ...slide.variants]
+                };
+              }
+              return slide;
             });
+
+            syncSlidesMutation.mutate({
+              projectId: currentProjectId,
+              slides: slidesToSync
+            });
+
+            return slidesToSync;
+          });
         }
-        
-        // Check if all slides are completed and update project status
-        // Only mark as completed if:
-        // 1. We have exactly targetPageCount items
-        // 2. ALL items have status 'success'
+
+        // 检查是否所有幻灯片都已完成并更新项目状态
         setItems((currentItems) => {
-            const targetCount = config.targetPageCount || 10;
-            const hasExactCount = currentItems.length === targetCount;
-            const allCompleted = currentItems.length > 0 && 
-                                 currentItems.every(i => i.status === 'success');
-            
-            if (hasExactCount && allCompleted && currentProjectId) {
-                updateProjectMutation.mutate({ 
-                    id: currentProjectId, 
-                    data: { status: 'completed' } 
-                });
-            }
-            return currentItems;
+          const allCompleted = currentItems.length > 0 &&
+            currentItems.every(i => i.status === 'success');
+
+          if (allCompleted && currentProjectId) {
+            updateProjectMutation.mutate({
+              id: currentProjectId,
+              data: { status: 'completed' }
+            });
+          }
+          return currentItems;
         });
-        
+
         showToast(`调用 ${providerName} API 服务成功`, "success");
       } catch (error: any) {
         showToast(`调用 ${providerName} API 失败: ${error.message}`, "error");
@@ -2011,9 +2298,11 @@ const App: React.FC = () => {
 
   // Helper for updates
   const handleUpdateItem = (id: string, updates: Partial<GeneratedSlide>) => {
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
-    );
+    setItems((prev) => {
+      const next = prev.map((item) => (item.id === id ? { ...item, ...updates } : item));
+      itemsRef.current = next;
+      return next;
+    });
   };
 
   // Paste Listener
@@ -2111,7 +2400,7 @@ const App: React.FC = () => {
         const ids = Array.from(selectedHistoryIds);
         // Not optimal to loop mutations but fine for small batch
         ids.forEach(id => deleteProjectMutation.mutate(id));
-        
+
         setSelectedHistoryIds(new Set());
         closeConfirm();
       },
@@ -2158,22 +2447,23 @@ const App: React.FC = () => {
   };
 
   const doCreateProject = async (title: string) => {
-    if (!title) return; 
-    
+    if (!title) return;
+
     // Default Style Configuration
     const defaultConfig: StyleConfig = {
       styleName: "极简科技",
       colorPalette: "经典蓝白",
       requirements: "",
       aspectRatio: "16:9",
+      defaultVariantCount: 1, // Default 1 variant per slide
       targetPageCount: 10,
       pageStructure: {
-        cover: 1, 
-        directory: 1, 
-        transition: 2, 
-        content: 5, 
-        end: 1
-      }
+        cover: 1,
+        directory: 1,
+        transition: 0,
+        content: 7,
+        end: 1,
+      },
     };
 
     try {
@@ -2188,25 +2478,25 @@ const App: React.FC = () => {
           content: null,
           end: null,
           custom: null
-        }, 
+        },
         isPinned: false
       });
 
-      
+
       setCurrentProjectId(newProject.id);
-      setConfig(defaultConfig); 
+      setConfig(defaultConfig);
       setStyleMap({
-          cover: null,
-          directory: null,
-          transition: null,
-          content: null,
-          end: null,
-          custom: null
-      }); 
-      
+        cover: null,
+        directory: null,
+        transition: null,
+        content: null,
+        end: null,
+        custom: null
+      });
+
       // Clear Items
       setItems([]);
-      
+
       setViewMode('workbench');
       showToast(`已创建新项目: ${title}`, "success");
     } catch (e) {
@@ -2215,36 +2505,81 @@ const App: React.FC = () => {
     }
   };
 
-  const handleOpenProject = (id: string) => {
+  // Reset All Filters (Global)
+  const handleResetAllFilters = () => {
+    // History Filters
+    setHistorySearchTerm("");
+    setHistoryFilterStyle("");
+    setHistoryFilterRatio("");
+    setHistoryFilterPalette("");
+    setHistoryFilterPageType("target");
+    setHistoryFilterMinPages("");
+    setHistoryFilterMaxPages("");
+    setHistoryFilterTimeType("lastModified");
+    setHistoryFilterStartDate("");
+    setHistoryFilterEndDate("");
+    setHistoryFilterTime("");
+    setHistorySortBy("lastModified");
+    setHistorySortOrder("desc");
+
+    // Dashboard Filters
+    setDashboardSearchTerm("");
+    setDashboardFilterStatus("all");
+    setDashboardFilterProgress("all");
+    setDashboardFilterTimeType("lastModified");
+    setDashboardFilterStartDate("");
+    setDashboardFilterEndDate("");
+    setDashboardFilterTime("");
+    setDashboardSortBy("lastModified");
+    setDashboardSortOrder("desc");
+
+    // Template Filters
+    setTemplateSearchTerm("");
+    setTemplateCategoryTab("market");
+    setTemplateFilterStyle([]);
+    setTemplateFilterRatio([]);
+    setTemplateFilterPalette([]);
+    setTemplateFilterPageRange("all");
+    setTemplateFilterTimeType("lastModified");
+    setTemplateFilterStartDate("");
+    setTemplateFilterEndDate("");
+    setTemplateFilterTime("");
+    setTemplateSortBy("recommended");
+    setTemplateSortOrder("desc");
+
+    showToast("所有筛选已重置", "info");
+  };
+
+  const handleOpenProject = async (id: string, view: "editor" | "workbench" = "editor") => {
     const project = projects.find(p => p.id === id);
     if (!project) return;
 
     const sanitizedItems = project.items.map(item => {
-        // Ensure variants array exists and contains previewUrl if it's an image
-        if (item.contentType === 'image' && item.previewUrl && !item.variants.includes(item.previewUrl)) {
-            return { ...item, variants: [item.previewUrl, ...item.variants] };
-        }
-        return item;
+      // Ensure variants array exists and contains previewUrl if it's an image
+      if (item.contentType === 'image' && item.previewUrl && !item.variants.includes(item.previewUrl)) {
+        return { ...item, variants: [item.previewUrl, ...item.variants] };
+      }
+      return item;
     });
     setItems(sanitizedItems);
     setConfig(project.globalConfig);
-    
+
     // Defense: Sanitize Style Map
     if (project.globalStyleMap) {
-        setStyleMap(project.globalStyleMap);
+      setStyleMap(project.globalStyleMap);
     } else {
-         // Legacy globalStyleFiles logic removed
+      // Legacy globalStyleFiles logic removed
     }
 
     setCurrentProjectId(id);
-    
+
     // NEW: Read-Only Mode for Completed Projects
     if (project.status === 'completed') {
-        setViewMode('history-detail');
-        // Ensure scrolling to top
-        window.scrollTo(0, 0);
+      setViewMode('history-detail');
+      // Ensure scrolling to top
+      window.scrollTo(0, 0);
     } else {
-        setViewMode('workbench');
+      setViewMode('workbench');
     }
   };
 
@@ -2252,17 +2587,17 @@ const App: React.FC = () => {
     showConfirm(
       "恢复编辑",
       "确定要将此项目恢复为草稿状态吗？这将允许您修改内容和配置。",
-       () => {
-          updateProjectMutation.mutate({
-              id,
-              data: { status: 'generating' } // Reset to generating to allow edits? Or just active.
-          });
-          // Set View to Workbench
-          setCurrentProjectId(id);
-          setViewMode('workbench');
-          closeConfirm();
-          showToast("项目已恢复编辑状态", "success");
-       },
+      () => {
+        updateProjectMutation.mutate({
+          id,
+          data: { status: 'generating' } // Reset to generating to allow edits? Or just active.
+        });
+        // Set View to Workbench
+        setCurrentProjectId(id);
+        setViewMode('workbench');
+        closeConfirm();
+        showToast("项目已恢复编辑状态", "success");
+      },
       "info"
     );
   };
@@ -2274,8 +2609,8 @@ const App: React.FC = () => {
       () => {
         deleteProjectMutation.mutate(id);
         if (currentProjectId === id) {
-            setCurrentProjectId(null);
-            setIsHistoryOpen(false); // Ensure history sidebar closes if open
+          setCurrentProjectId(null);
+          setIsHistoryOpen(false); // Ensure history sidebar closes if open
         }
         showToast("项目已删除", "success");
         closeConfirm();
@@ -2287,17 +2622,17 @@ const App: React.FC = () => {
   const handleTogglePin = (id: string) => {
     const project = projects.find(p => p.id === id);
     if (project) {
-        updateProjectMutation.mutate({ id, data: { isPinned: !project.isPinned } });
+      updateProjectMutation.mutate({ id, data: { isPinned: !project.isPinned } });
     }
   };
 
   const handleTogglePause = (id: string) => {
     const project = projects.find(p => p.id === id);
     if (project) {
-        updateProjectMutation.mutate({ 
-            id, 
-            data: { status: project.status === 'generating' ? 'paused' : 'generating' } 
-        });
+      updateProjectMutation.mutate({
+        id,
+        data: { status: project.status === 'generating' ? 'paused' : 'generating' }
+      });
     }
   };
 
@@ -2305,85 +2640,85 @@ const App: React.FC = () => {
   // --- Header Sync Logic (Title <-> Cover) ---
   const handleUpdateProjectTitle = (newTitle: string) => {
     if (!currentProjectId) return;
-    
+
     // 1. Update Project Metadata
-    updateProjectMutation.mutate({ 
-        id: currentProjectId, 
-        data: { title: newTitle } 
+    updateProjectMutation.mutate({
+      id: currentProjectId,
+      data: { title: newTitle }
     });
 
     // 2. Sync to Cover Page (if exists) - Update BOTH title and textContent for compatibility
     setItems(prev => prev.map(item => {
-        if (item.pageType === 'cover') {
-            return { ...item, title: newTitle, textContent: newTitle };
-        }
-        return item;
+      if (item.pageType === 'cover') {
+        return { ...item, title: newTitle, textContent: newTitle };
+      }
+      return item;
     }));
   };
 
   // Sync: Cover Content -> Project Title (Reverse) - REMOVED per user request
   // Project title is now independent from cover page content.
   useEffect(() => {
-     // Logic removed to separate project title from cover page
+    // Logic removed to separate project title from cover page
   }, []);
   const [localTitle, setLocalTitle] = useState("");
 
   // Sync active project title to local state when project changes
   useEffect(() => {
     if (activeSession?.title) {
-        setLocalTitle(activeSession.title);
+      setLocalTitle(activeSession.title);
     } else {
-        setLocalTitle("");
+      setLocalTitle("");
     }
   }, [activeSession?.id, activeSession?.title]);
 
   const handleTitleBlur = () => {
-      if (localTitle.trim() !== activeSession?.title) {
-          handleUpdateProjectTitle(localTitle);
-      }
+    if (localTitle.trim() !== activeSession?.title) {
+      handleUpdateProjectTitle(localTitle);
+    }
   };
 
   const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-          e.currentTarget.blur();
-      }
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
   };
 
   useEffect(() => {
     const interval = setInterval(() => {
       if (currentProjectIdRef.current) {
-         // Auto-save: Call update mutation
-         // Only if we have a valid ID
-         const id = currentProjectIdRef.current;
-         if (id && itemsRef.current.length > 0) {
-             const progress = itemsRef.current.length > 0 
-                ? Math.round((itemsRef.current.filter(i => i.status === 'success').length / itemsRef.current.length) * 100)
-                : 0;
+        // Auto-save: Call update mutation
+        // Only if we have a valid ID
+        const id = currentProjectIdRef.current;
+        if (id && itemsRef.current.length > 0) {
+          const progress = itemsRef.current.length > 0
+            ? Math.round((itemsRef.current.filter(i => i.status === 'success').length / itemsRef.current.length) * 100)
+            : 0;
 
-             updateProjectMutation.mutate({
-                 id,
-                 data: {
-                    // We need a way to pass items to backend. 
-                    // Since standard patch is for metadata, we might need a specific endpoint or field.
-                    // For now, let's assume our backend helper handles it or we encoded it?
-                    // Wait, our backend schema DOES NOT store JSON items yet. 
-                    // Actually, PHASE 1 schema added Project and Slide.
-                    // But our updateProjectMutation only sends globalConfig/styleMap stringified.
-                    // Items need to be saved too!
-                    // Let's assume for this transition we mainly save metadata.
-                    // WAIT: If we don't save items, we lose data!
-                    // The backend needs to support saving items.
-                    // My previous backend implementation (project.service.ts) likely handles basic update.
-                    // But does it handle items sync?
-                    // Reviewing project.service.ts... NO, I need to check.
-                    // Assuming for now we just log it or try to send it via globalConfig hack?
-                    // NO, I must fix this.
-                    // For now, let's keep the hook structure but we might need to update API.
-                 }
-             });
-             // TEMPORARY: Detailed items saving logic is complex. 
-             // We'll rely on globalConfig updates for now and implementing items sync is Phase 2.1
-         }
+          updateProjectMutation.mutate({
+            id,
+            data: {
+              // We need a way to pass items to backend. 
+              // Since standard patch is for metadata, we might need a specific endpoint or field.
+              // For now, let's assume our backend helper handles it or we encoded it?
+              // Wait, our backend schema DOES NOT store JSON items yet. 
+              // Actually, PHASE 1 schema added Project and Slide.
+              // But our updateProjectMutation only sends globalConfig/styleMap stringified.
+              // Items need to be saved too!
+              // Let's assume for this transition we mainly save metadata.
+              // WAIT: If we don't save items, we lose data!
+              // The backend needs to support saving items.
+              // My previous backend implementation (project.service.ts) likely handles basic update.
+              // But does it handle items sync?
+              // Reviewing project.service.ts... NO, I need to check.
+              // Assuming for now we just log it or try to send it via globalConfig hack?
+              // NO, I must fix this.
+              // For now, let's keep the hook structure but we might need to update API.
+            }
+          });
+          // TEMPORARY: Detailed items saving logic is complex. 
+          // We'll rely on globalConfig updates for now and implementing items sync is Phase 2.1
+        }
       }
     }, 180000); // 3 minutes
 
@@ -2392,12 +2727,14 @@ const App: React.FC = () => {
 
 
 
-  useEffect(() => {
-    localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(styleTemplates));
-  }, [styleTemplates]);
+
 
   useEffect(() => {
-    localStorage.setItem(ONBOARDING_STORAGE_KEY, "completed");
+    try {
+      localStorage.setItem(ONBOARDING_STORAGE_KEY, "completed");
+    } catch (e) {
+      // Quietly fail
+    }
   }, [showOnboarding === false]);
 
   const toggleHistorySelection = (id: string) => {
@@ -2424,21 +2761,21 @@ const App: React.FC = () => {
   const handleStartProjectRequest = (projectId: string) => {
     const project = projects.find(p => p.id === projectId);
     if (!project) return;
-  
+
     const validItems = project.items.filter(i => i.title || i.textContent || i.originalFile || i.previewUrl);
-    
+
     if (validItems.length === 0) {
       showToast("项目没有有效的待生成任务", "info");
       return;
     }
-  
+
     const pendingItems = validItems.filter(i => i.status !== 'success');
-    
+
     if (pendingItems.length === 0) {
       handleOpenProject(projectId);
       return;
     }
-  
+
     setStartProjectModalData({
       isOpen: true,
       project,
@@ -2449,8 +2786,8 @@ const App: React.FC = () => {
   const handleConfirmBatchStart = () => {
     const { project } = startProjectModalData;
     if (project) {
-        handleOpenProject(project.id);
-        setPendingAutoBatch(project.id); // Trigger auto batch in useEffect
+      handleOpenProject(project.id);
+      setPendingAutoBatch(project.id); // Trigger auto batch in useEffect
     }
     setStartProjectModalData(prev => ({ ...prev, isOpen: false }));
   };
@@ -2459,12 +2796,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (pendingAutoBatch && currentProjectId === pendingAutoBatch) {
       if (items.length > 0) { // Wait for items to load
-         // Small delay to ensure state is ready
-         const timer = setTimeout(() => {
-             handleGenerateBatch();
-             setPendingAutoBatch(null); // Clear flag
-         }, 500);
-         return () => clearTimeout(timer);
+        // Small delay to ensure state is ready
+        const timer = setTimeout(() => {
+          handleGenerateBatch();
+          setPendingAutoBatch(null); // Clear flag
+        }, 500);
+        return () => clearTimeout(timer);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2497,12 +2834,12 @@ const App: React.FC = () => {
       {/* Snapshot Preview Banner */}
       {previewSnapshot && (
         <div className="fixed top-0 left-0 right-0 z-[60]">
-             <SnapshotPreviewBanner 
-                snapshot={previewSnapshot}
-                onRestore={handleRestoreCurrentSnapshot}
-                onFork={handleForkSnapshot}
-                onExit={handleExitPreview}
-             />
+          <SnapshotPreviewBanner
+            snapshot={previewSnapshot}
+            onRestore={handleRestoreCurrentSnapshot}
+            onFork={handleForkSnapshot}
+            onExit={handleExitPreview}
+          />
         </div>
       )}
 
@@ -2590,14 +2927,14 @@ const App: React.FC = () => {
               {/* Left: Images */}
               <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group">
                 {selectedPresetForDetail.styleMap?.cover ||
-                selectedPresetForDetail.styleFile ? (
+                  selectedPresetForDetail.styleFile ? (
                   <>
                     <img
                       src={
-                        (selectedPresetForDetail.styleMap?.cover instanceof Blob) ? 
-                        URL.createObjectURL(selectedPresetForDetail.styleMap.cover) :
-                        (selectedPresetForDetail.styleFile instanceof Blob) ?
-                        URL.createObjectURL(selectedPresetForDetail.styleFile) : ''
+                        (selectedPresetForDetail.styleMap?.cover instanceof Blob) ?
+                          URL.createObjectURL(selectedPresetForDetail.styleMap.cover) :
+                          (selectedPresetForDetail.styleFile instanceof Blob) ?
+                            URL.createObjectURL(selectedPresetForDetail.styleFile) : ''
                       }
                       className="w-full h-full object-contain bg-slate-50"
                     />
@@ -2606,9 +2943,9 @@ const App: React.FC = () => {
                         onClick={() =>
                           setLightboxImage(
                             (selectedPresetForDetail.styleMap?.cover instanceof Blob) ?
-                             URL.createObjectURL(selectedPresetForDetail.styleMap.cover) :
-                            (selectedPresetForDetail.styleFile instanceof Blob) ?
-                             URL.createObjectURL(selectedPresetForDetail.styleFile) : undefined
+                              URL.createObjectURL(selectedPresetForDetail.styleMap.cover) :
+                              (selectedPresetForDetail.styleFile instanceof Blob) ?
+                                URL.createObjectURL(selectedPresetForDetail.styleFile) : undefined
                           )
                         }
                         className="flex flex-col items-center justify-center gap-1 bg-white/90 hover:bg-white text-slate-800 w-16 h-16 rounded-lg backdrop-blur shadow-sm transition-all"
@@ -2632,7 +2969,7 @@ const App: React.FC = () => {
               <div className="w-full lg:w-2/3 bg-white border border-slate-200 rounded-xl p-5 h-full overflow-hidden pointer-events-none opacity-90">
                 <StyleControls
                   config={selectedPresetForDetail.config}
-                  onChange={() => {}}
+                  onChange={() => { }}
                   readOnly={true}
                 />
               </div>
@@ -2668,11 +3005,10 @@ const App: React.FC = () => {
             <button
               onClick={confirmSavePreset}
               disabled={!saveToFavorites && !saveToLibrary}
-              className={`px-6 py-2 rounded-lg text-white transition-all ${
-                (!saveToFavorites && !saveToLibrary)
-                  ? "bg-slate-200 cursor-not-allowed"
-                  : "bg-indigo-500 hover:bg-indigo-600"
-              }`}
+              className={`px-6 py-2 rounded-lg text-white transition-all ${(!saveToFavorites && !saveToLibrary)
+                ? "bg-slate-200 cursor-not-allowed"
+                : "bg-indigo-500 hover:bg-indigo-600"
+                }`}
             >
               下一步
             </button>
@@ -2691,37 +3027,37 @@ const App: React.FC = () => {
             placeholder="例如：科技感蓝色商务风"
             autoFocus
           />
-          
+
           <div className="flex flex-col gap-3 mt-4">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={saveToLibrary}
-                    onChange={(e) => setSaveToLibrary(e.target.checked)}
-                    className="w-4 h-4 text-rose-500 rounded border-slate-300 focus:ring-rose-200"
-                  />
-                  <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-700">添加至模版库 (推荐)</span>
-                      <span className="text-xs text-slate-400">将配置保存为可复用的模版，方便后续调用</span>
-                  </div>
-              </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={saveToLibrary}
+                onChange={(e) => setSaveToLibrary(e.target.checked)}
+                className="w-4 h-4 text-rose-500 rounded border-slate-300 focus:ring-rose-200"
+              />
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-slate-700">添加至模版库 (推荐)</span>
+                <span className="text-xs text-slate-400">将配置保存为可复用的模版，方便后续调用</span>
+              </div>
+            </label>
 
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input 
-                    type="checkbox" 
-                    checked={saveToFavorites}
-                    onChange={(e) => setSaveToFavorites(e.target.checked)}
-                    className="w-4 h-4 text-indigo-500 rounded border-slate-300 focus:ring-indigo-200"
-                  />
-                  <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-700">收藏至我的收藏</span>
-                      <span className="text-xs text-slate-400">同时添加到个人收藏夹中</span>
-                  </div>
-              </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={saveToFavorites}
+                onChange={(e) => setSaveToFavorites(e.target.checked)}
+                className="w-4 h-4 text-indigo-500 rounded border-slate-300 focus:ring-indigo-200"
+              />
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-slate-700">收藏至我的收藏</span>
+                <span className="text-xs text-slate-400">同时添加到个人收藏夹中</span>
+              </div>
+            </label>
           </div>
-          
 
-          
+
+
           {(!saveToFavorites && !saveToLibrary) && (
             <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2 text-xs text-amber-700">
               <AlertTriangle size={14} />
@@ -2827,7 +3163,7 @@ const App: React.FC = () => {
               {filteredFavorites.map((fav) => (
                 <div key={fav.id} className="h-[325px] w-full relative">
                   <div className="absolute inset-0 origin-top-left" style={{ transform: 'scale(0.85)', width: '117.65%', height: '117.65%' }}>
-                    <SharedStyleCard 
+                    <SharedStyleCard
                       item={fav}
                       onDetail={() => setSelectedPresetForDetail(fav)}
                       onApply={() => handleApplyPresetRequest(fav)}
@@ -2871,10 +3207,39 @@ const App: React.FC = () => {
               全部清空
             </button>
             <button
-              onClick={() => {
-                setStyleMap(tempStyleMap);
-                setIsStyleModalOpen(false);
-                setIsPresetSaved(false);
+              onClick={async () => {
+                // Ensure all files in tempStyleMap are uploaded before saving
+                const finalStyleMap = { ...tempStyleMap };
+                let hasUploads = false;
+
+                showToast("正在保存风格配置...", "loading");
+
+                try {
+                  // Iterate all keys in style map
+                  for (const key of Object.keys(finalStyleMap)) {
+                    const k = key as keyof GlobalStyleMap;
+                    const val = finalStyleMap[k];
+
+                    if (val instanceof File) {
+                      hasUploads = true;
+                      try {
+                        const url = await uploadFile(val);
+                        finalStyleMap[k] = url;
+                      } catch (e) {
+                        console.error(`Failed to upload style image for ${k}`, e);
+                        showToast(`上传失败: ${k}`, "error");
+                        return; // Stop if upload fails
+                      }
+                    }
+                  }
+
+                  setStyleMap(finalStyleMap);
+                  setIsStyleModalOpen(false);
+                  setIsPresetSaved(false);
+                  showToast("风格配置已更新", "success");
+                } catch (e) {
+                  showToast("保存风格失败", "error");
+                }
               }}
               className="px-6 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg"
             >
@@ -2953,11 +3318,10 @@ const App: React.FC = () => {
             <button
               onClick={confirmImageTasks}
               disabled={tempImageFiles.length === 0}
-              className={`flex-1 py-2 rounded-lg font-medium shadow-sm transition-all ${
-                tempImageFiles.length === 0
-                  ? "bg-slate-200 text-slate-400 cursor-not-allowed"
-                  : "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200"
-              }`}
+              className={`flex-1 py-2 rounded-lg font-medium shadow-sm transition-all ${tempImageFiles.length === 0
+                ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                : "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-200"
+                }`}
             >
               确认添加 ({tempImageFiles.length})
             </button>
@@ -2971,7 +3335,7 @@ const App: React.FC = () => {
               onFilesSelected={(f) =>
                 setTempImageFiles((prev) => [...prev, ...f])
               }
-              onRemoveFile={() => {}}
+              onRemoveFile={() => { }}
               label={
                 tempImageFiles.length > 0 ? "继续添加图片" : "点击选择图片"
               }
@@ -3020,986 +3384,1167 @@ const App: React.FC = () => {
         </div>
       </Modal>
 
-    <ErrorBoundary>
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans selection:bg-rose-100 selection:text-rose-600 flex flex-col overflow-x-hidden">
-    
+      <ErrorBoundary>
+        <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans selection:bg-rose-100 selection:text-rose-600 flex flex-col overflow-x-hidden">
 
 
-      {/* --- HEADER --- */}
-      {viewMode !== 'landing' && (
-        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 h-16 shrink-0 shadow-sm">
-          <div className="max-w-[1480px] mx-auto flex items-center justify-between relative h-full px-6">
-          
-          {/* LEFT SECTION: Logo + Context Navigation */}
-          <div className="flex items-center gap-6 z-10 w-[300px]">
-            {/* Logo - Always visible */}
-            <div
-              className="flex items-center gap-2.5 cursor-pointer group"
-              onClick={() => setViewMode('dashboard')}
-            >
-              <div className="w-10 h-10 bg-gradient-to-br from-rose-400 to-rose-600 rounded-2xl flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:scale-110 transition-transform">
-                <Wand2 className="text-white" size={20} />
-              </div>
-              <div>
-                <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">BananaSlides</h1>
-                <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mt-1 block">Gen-AI PPT</span>
-              </div>
-            </div>
 
-            {/* Workbench Context: Back Button & Title */}
-            {(viewMode === 'workbench' || viewMode === 'history-detail') && (
-              <>
-                 <div className="h-8 w-px bg-slate-200/80"></div>
-                 
-                 <div className="flex items-center gap-3">
-                   <button
-                    onClick={() => {
-                        setViewMode(viewMode === 'history-detail' ? 'history' : 'dashboard');
-                        setIsHistoryOpen(false);
-                    }}
-                    className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all text-xs font-bold whitespace-nowrap"
-                   >
-                     <div className="bg-white p-1 rounded-lg shadow-sm">
-                        <ArrowLeft size={12} />
-                     </div>
-                     返回
-                   </button>
-                   
-                   {/* ID Badge - Moved before title */}
-                   {activeSession?.displayId && (
-                     <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap shrink-0">
-                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID</span>
-                       <span className="text-xs font-mono font-bold text-slate-500">{activeSession.displayId}</span>
-                     </div>
-                   )}
-                   
-                   {/* Project Title Input/Display - Optimized */}
-                   <div className="relative group">
-                     {viewMode === 'workbench' ? (
-                       <div className="flex items-center gap-2">
-                         <input 
-                           type="text"
-                           value={localTitle}
-                           onChange={(e) => setLocalTitle(e.target.value)}
-                           onBlur={handleTitleBlur}
-                           onKeyDown={handleTitleKeyDown}
-                           className="text-sm font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 hover:bg-slate-50 focus:bg-white rounded-lg px-3 py-1.5 outline-none transition-all w-[400px] placeholder:text-slate-400"
-                           placeholder="输入项目名称..."
-                         />
-                         <Edit3 size={12} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                       </div>
-                     ) : (
-                       <h2 className="text-sm font-bold text-slate-800 px-3 py-1.5 select-text cursor-default border border-transparent">
-                         {activeSession?.title || "未命名项目"}
-                       </h2>
-                     )}
-                   </div>
-                 </div>
-              </>
-            )}
-          </div>
+          {/* --- HEADER --- */}
+          {viewMode !== 'landing' && (
+            <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 h-16 shrink-0 shadow-sm">
+              <div className="max-w-[1480px] mx-auto flex items-center justify-between relative h-full px-6">
 
-          {/* CENTER SECTION: Global Navigation (3 Tabs) */}
-          {(viewMode === 'dashboard' || viewMode === 'history' || viewMode === 'templates') ? (
-             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                <nav className="flex items-center bg-slate-100/50 p-1 rounded-xl border border-slate-200/50">
-                  <button
-                    onClick={() => setViewMode("dashboard")}
-                    className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${
-                      viewMode === "dashboard"
-                        ? "bg-white text-slate-800 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
+                {/* LEFT SECTION: Logo + Context Navigation */}
+                <div className={`flex items-center gap-6 z-10 shrink-0 ${(viewMode === 'workbench' || viewMode === 'history-detail') ? '' : 'w-[300px]'}`}>
+                  <div
+                    className="flex items-center gap-2.5 cursor-pointer group"
+                    onClick={() => setViewMode('dashboard')}
                   >
-                    <Home size={14} /> 创作室
-                  </button>
-                  <button
-                    onClick={() => setViewMode("history")}
-                    className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${
-                      viewMode === "history"
-                        ? "bg-white text-slate-800 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    <History size={14} /> 历史库
-                  </button>
-                  <button
-                    onClick={() => setViewMode("templates")}
-                    className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${
-                      viewMode === "templates"
-                        ? "bg-white text-slate-800 shadow-sm"
-                        : "text-slate-500 hover:text-slate-800"
-                    }`}
-                  >
-                    <BookTemplate size={14} /> 模版间
-                  </button>
-                </nav>
-             </div>
-          ) : (
-             /* Placeholder for center alignment if needed in workbench, or keep empty */
-             <div className="absolute left-1/2 -translate-x-1/2"></div>
-          )}
+                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform duration-500">
+                      <div className="relative flex items-center justify-center w-6 h-6">
+                        <div className="absolute w-4 h-3 bg-white/20 rounded-sm -rotate-12 translate-x-1 -translate-y-1" />
+                        <div className="absolute w-4 h-3 bg-white/40 rounded-sm rotate-12 -translate-x-1" />
+                        <div className="relative w-4.5 h-3.5 bg-white rounded-[2px] shadow-sm flex items-center justify-center z-10">
+                          <Presentation size={10} className="text-blue-600" />
+                        </div>
+                        <Sparkles size={8} className="absolute -top-1 -right-1 text-yellow-300 animate-pulse z-20" />
+                        <Sparkles size={6} className="absolute -bottom-0.5 -left-0.5 text-white/80 animate-bounce delay-75 z-20" />
+                      </div>
+                    </div>
+                    <div>
+                      <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">BananaSlides</h1>
+                      <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">GenAI PPT</span>
+                    </div>
+                  </div>
 
-          {/* RIGHT SECTION: Tools */}
-          <div className="flex items-center gap-3 z-10 w-[300px] justify-end">
-            
-            {viewMode === 'workbench' && (
-                <button
-                   onClick={() => setIsHistoryOpen(true)}
-                   className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
-                   title="历史版本"
-                >
-                  <History size={18} />
-                </button>
-            )}
+                  {/* Workbench Context: Back Button & Title */}
+                  {(viewMode === 'workbench' || viewMode === 'history-detail') && (
+                    <>
+                      <div className="h-8 w-px bg-slate-200/80"></div>
 
-            <button
-               onClick={toggleFullscreen}
-               className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
-               title={isFullscreen ? "退出全屏" : "全屏模式"}
-            >
-              {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-            </button>
-            
-            <button
-              onClick={() => setIsGlobalSettingsOpen(true)}
-              className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
-              title="全局设置"
-            >
-              <Settings size={18} />
-            </button>
-          </div>
-        </div>
-        </header>
-      )}
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => {
+                            setViewMode(viewMode === 'history-detail' ? 'history' : 'dashboard');
+                            setIsHistoryOpen(false);
+                          }}
+                          className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all text-xs font-bold whitespace-nowrap"
+                        >
+                          <div className="bg-white p-1 rounded-lg shadow-sm">
+                            <ArrowLeft size={12} />
+                          </div>
+                          返回
+                        </button>
 
-      {viewMode === "landing" ? (
-        <LandingPage onEnter={() => setViewMode('dashboard')} />
-      ) : (
-        viewMode !== 'templates' && (
-          <main className="max-w-[1480px] mx-auto px-6 py-6 space-y-8 flex-1">
-            {viewMode === "dashboard" && (
-              <Dashboard
-                projects={projects}
-                onCreateProject={handleOpenCreateProjectModal}
-                onOpenProject={handleOpenProject}
-                onTogglePause={handleTogglePause}
-                onDeleteProject={handleDeleteProject}
-                onTogglePin={handleTogglePin}
-                onStartProject={handleStartProjectRequest}
-              />
-            )}
+                        {/* ID Badge - Moved before title */}
+                        {activeSession?.displayId && (
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap shrink-0">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID</span>
+                            <span className="text-xs font-mono font-bold text-slate-500">{activeSession.displayId}</span>
+                          </div>
+                        )}
 
-        {viewMode === "workbench" && (
-          <>
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden">
-              <div className="absolute top-0 left-0 bg-rose-500 text-white text-[10px] px-3 py-1 rounded-br-lg font-bold tracking-wide z-10 flex items-center gap-1">
-                <Settings2 size={10} /> 全局设置 (Global Settings)
-              </div>
-
-              {/* --- Moved Save Preset & Favorites Buttons Here --- */}
-              <div className="absolute top-4 right-6 flex items-center gap-3 z-10">
-                <button
-                   onClick={openSavePresetModal}
-                   disabled={isPresetSaved}
-                   className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all font-medium shadow-sm ${
-                     isPresetSaved
-                       ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
-                       : "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 placeholder-opacity-100" // placeholder-opacity used to ensure class existence? No just use safe fallback
-                   } ${!isPresetSaved ? "hover:scale-105 active:scale-95" : ""}`}
-                   title={isPresetSaved ? "已保存为模版" : "保存当前配置为模版"}
-                >
-                   {isPresetSaved ? <CheckCircle2 size={14} /> : <Save size={14} />} {isPresetSaved ? "已保存" : "保存模版"}
-                </button>
-
-                <button
-                  onClick={() => setViewMode('templates')}
-                  className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm transition-all font-medium bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200`}
-                >
-                  <BookTemplate size={14} /> 模版库
-                </button>
-                <button
-                  onClick={() => setIsFavoritesModalOpen(true)}
-                  className="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all font-medium shadow-sm"
-                >
-                  <BookTemplate size={14} /> 我的收藏
-                </button>
-              </div>
-
-              {/* Updated Layout: Top Row (Left 1/3, Right 2/3) + Bottom Row */}
-              {/* Updated Layout: Top Row (Left 1/3, Right 2/3) + Bottom Row */}
-              <div className="flex flex-col gap-6 mt-6 min-w-0 w-full">
-                <div className="flex flex-col lg:flex-row gap-6 lg:h-[450px] w-full min-w-0">
-                  {/* Left 1/3: Global Style Images - CAROUSEL PREVIEW */}
-                  <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group min-w-0">
-                    {hasAnyStyle ? (
-                      <>
-                        {/* Main View Area */}
-                        {/* Main View Area */}
-                        <div className="flex-1 relative bg-slate-100 w-full min-h-0">
-                          {styleMap[activePreviewType] ? (
-                            <div className="absolute inset-2 flex items-center justify-center">
-                                <img
-                                  src={resolveResourceUrl(
-                                    styleMap[activePreviewType]!
-                                  )}
-                                  alt={activePreviewType}
-                                  className="w-full h-full object-contain cursor-zoom-in"
-                                  onClick={() =>
-                                    setLightboxImage(
-                                      resolveResourceUrl(
-                                        styleMap[activePreviewType]!
-                                      )
-                                    )
-                                  }
-                                />
+                        {/* Project Title Input/Display - Optimized */}
+                        <div className="relative group">
+                          {viewMode === 'workbench' ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={localTitle}
+                                onChange={(e) => setLocalTitle(e.target.value)}
+                                onBlur={handleTitleBlur}
+                                onKeyDown={handleTitleKeyDown}
+                                className="text-sm font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 hover:bg-slate-50 focus:bg-white rounded-lg px-3 py-1.5 outline-none transition-all w-[400px] placeholder:text-slate-400"
+                                placeholder="输入项目名称..."
+                              />
+                              <Edit3 size={12} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                             </div>
                           ) : (
-                            <div className="absolute inset-0 p-4">
-                              <div
-                                onClick={openStyleModal}
-                                className="w-full h-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:bg-rose-50/30 transition-all rounded-lg cursor-pointer flex flex-col items-center justify-center text-center bg-slate-50"
-                              >
-                                <div className="bg-white p-4 rounded-full mb-4 shadow-sm text-rose-500 border border-slate-100">
-                                  <Upload size={24} />
-                                </div>
-                                <h4 className="font-bold text-slate-700 mb-1">
-                                  上传风格参考图
-                                </h4>
-                                <p className="text-xs text-slate-400 px-4">
-                                  支持为封面、目录、正文等不同页面分别设置风格
-                                </p>
-                              </div>
-                            </div>
+                            <h2 className="text-sm font-bold text-slate-800 px-3 py-1.5 select-text cursor-default border border-transparent whitespace-nowrap max-w-[400px] truncate" title={activeSession?.title || "未命名项目"}>
+                              {activeSession?.title || "未命名项目"}
+                            </h2>
                           )}
-
-                          {/* Top Label Badge */}
-                          <div className="absolute top-2 left-2 px-2 py-1 bg-black/60 backdrop-blur-md rounded text-white text-xs font-bold shadow-sm">
-                            {
-                              PAGE_TYPES.find(
-                                (p) => p.type === activePreviewType
-                              )?.label
-                            }
-                          </div>
-
-                          {/* Hover Controls */}
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 pointer-events-none">
-                            <button
-                              onClick={openStyleModal}
-                              disabled={!!previewSnapshot}
-                              className={`pointer-events-auto flex flex-col items-center justify-center gap-1 bg-white hover:bg-rose-50 text-rose-600 w-24 h-12 rounded-lg shadow-lg transition-all ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                              <span className="text-xs font-bold flex items-center gap-1">
-                                <Upload size={14} /> 管理参考图
-                              </span>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Bottom Carousel / Tabs */}
-                        <div className="h-14 bg-white border-t border-slate-200 flex items-center px-2 gap-2 overflow-x-auto custom-scrollbar shrink-0 w-full">
-                          {PAGE_TYPES.map((pt) => (
-                            <button
-                              key={pt.type}
-                              onClick={() => setActivePreviewType(pt.type)}
-                              className={`flex-1 min-w-[50px] h-10 rounded border transition-all relative overflow-hidden group/thumb
-                                                        ${
-                                                          activePreviewType ===
-                                                          pt.type
-                                                            ? "border-indigo-500 ring-1 ring-indigo-500"
-                                                            : "border-slate-200 hover:border-slate-300"
-                                                        }
-                                                    `}
-                              title={pt.label}
-                            >
-                              {styleMap[pt.type] ? (
-                                <img
-                                  src={resolveResourceUrl(styleMap[pt.type]!)}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-300">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
-                                </div>
-                              )}
-                              {/* Active Indicator */}
-                              {activePreviewType === pt.type && (
-                                <div className="absolute inset-0 border-2 border-indigo-500 rounded pointer-events-none"></div>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="absolute inset-0 p-4">
-                        <div
-                          onClick={openStyleModal}
-                          className="w-full h-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:bg-rose-50/30 transition-all rounded-lg cursor-pointer flex flex-col items-center justify-center text-center bg-slate-50"
-                        >
-                          <div className="bg-white p-4 rounded-full mb-4 shadow-sm text-rose-500 border border-slate-100">
-                            <Upload size={24} />
-                          </div>
-                          <h4 className="font-bold text-slate-700 mb-1">
-                            上传风格参考图
-                          </h4>
-                          <p className="text-xs text-slate-400 px-4">
-                            支持为封面、目录、正文等不同页面分别设置风格
-                          </p>
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Right 2/3: Controls */}
-                  <div className="w-full lg:w-2/3 bg-white border border-slate-200 rounded-xl p-5 h-full overflow-y-auto custom-scrollbar min-w-0">
-                    <StyleControls
-                      config={config}
-                      onChange={handleConfigChange}
-                      readOnly={!!previewSnapshot}
-                    />
-                  </div>
+                    </>
+                  )}
                 </div>
 
-                {/* Bottom Row: Requirements (Increased Height) */}
-                <div className="flex flex-col">
-                  <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
-                    <LinkIcon size={14} className="text-slate-500" />{" "}
-                    全局设计要求
-                  </h3>
-                  <div className="relative w-full">
-                    <textarea
-                      value={config.requirements}
-                      onChange={(e) =>
-                        handleConfigChange("requirements", e.target.value)
-                      }
-                      placeholder={`例如：封面使用极简科技风格，主色调为深蓝与白色，标题使用无衬线字体，正文排版清晰，强调商务专业感...`}
-                      disabled={!!previewSnapshot}
-                      className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px] ${previewSnapshot ? 'opacity-70 cursor-not-allowed' : ''}`}
-                    />
-                    <button
-                      onClick={handleRefineRequirements}
-                      disabled={
-                        !!previewSnapshot || isRefiningRequirements || !(config.requirements || '').trim()
-                      }
-                      className={`absolute bottom-3 right-3 p-1.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-all shadow-sm
-                                        ${
-                                          !(config.requirements || '').trim()
-                                            ? "bg-slate-100 text-slate-300 cursor-not-allowed opacity-50"
-                                            : isRefiningRequirements
-                                            ? "bg-indigo-50 text-indigo-400 cursor-wait"
-                                            : "bg-white text-indigo-600 hover:bg-indigo-50 border border-indigo-100 hover:shadow-md"
-                                        }
-                                    `}
-                      title="AI 智能修饰设计要求"
-                    >
-                      {isRefiningRequirements ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Sparkles size={14} />
-                      )}
-                      {isRefiningRequirements ? "修饰中..." : "AI 修饰"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4">
-                {/* ... same ... */}
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                    <Layers size={22} className="text-slate-700" /> 页面任务列表{" "}
-                    <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-slate-200">
-                      {items.length} / {config.targetPageCount} P
-                    </span>
-                  </h2>
-                  <p className="text-sm text-slate-500 mt-1 ml-1">
-                    在此添加具体的幻灯片内容素材，每个任务将对应生成一页 PPT
-                  </p>
-                </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={handleAddTextPage}
-                      disabled={!!previewSnapshot}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <Plus size={14} /> 添加文本
-                    </button>
-                    <button
-                      onClick={openImageTaskModal}
-                      disabled={!!previewSnapshot}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <Plus size={14} /> 添加图片
-                    </button>
-                    <div className="h-5 w-px bg-slate-200 mx-0.5"></div>
-
-                    <button
-                      onClick={() => openOutlineGenerator()}
-                      disabled={!!previewSnapshot}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <Sparkles size={14} /> 一句话生成
-                    </button>
-                    <button
-                      onClick={() => outlineFileInputRef.current?.click()}
-                      disabled={!!previewSnapshot || isReadingFile}
-                      title="支持的格式: PDF, Word (.doc/.docx), Markdown (.md), 文本 (.txt), JSON"
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm disabled:opacity-50 whitespace-nowrap"
-                    >
-                      {isReadingFile ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <FileInput size={14} />
-                      )}{" "}
-                      {isReadingFile ? "解析中..." : "解析文件生成"}
-                    </button>
-
-                    <input
-                      type="file"
-                      ref={outlineFileInputRef}
-                      onChange={handleOutlineFileSelect}
-                      accept=".txt,.md,.json,.pdf,.doc,.docx"
-                      className="hidden"
-                    />
-
-                    <button
-                      onClick={handleGenerateBatch}
-                      disabled={!!previewSnapshot || items.length === 0 || isProcessing}
-                      className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition-all transform active:scale-95 whitespace-nowrap ${
-                        items.length === 0 || isProcessing
-                          ? "bg-rose-300 cursor-not-allowed"
-                          : "bg-rose-400 hover:bg-rose-500 hover:shadow-rose-100"
-                      }`}
-                    >
-                      {isProcessing ? (
-                        <>
-                          <Loader2 size={14} className="animate-spin" /> 生成中...
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 size={14} /> 批量生成图片
-                        </>
-                      )}
-                    </button>
-
-                    <div className="relative">
+                {/* CENTER SECTION: Global Navigation (3 Tabs) */}
+                {(viewMode === 'dashboard' || viewMode === 'history' || viewMode === 'templates') ? (
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <nav className="flex items-center bg-slate-100/50 p-1 rounded-xl border border-slate-200/50">
                       <button
-                        onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                        disabled={
-                          items.filter((i) => i.status === "success").length === 0
-                        }
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border shadow-sm whitespace-nowrap ${
-                          items.filter((i) => i.status === "success").length === 0
-                            ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
-                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-200"
-                        }`}
+                        onClick={() => setViewMode("dashboard")}
+                        className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "dashboard"
+                          ? "bg-white text-slate-800 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800"
+                          }`}
                       >
-                        <Download size={14} /> 导出
+                        <Home size={14} /> 创作室
                       </button>
-                    {isExportMenuOpen && (
-                      <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
-                        <button
-                          onClick={() => handleBatchExport("zip")}
-                          className="w-full text-left px-4 py-3 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2"
-                        >
-                          <ImageIcon size={14} /> 导出图片 (ZIP)
-                        </button>
-                        <button
-                          onClick={() => handleBatchExport("pdf")}
-                          className="w-full text-left px-4 py-3 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2 border-t border-slate-100"
-                        >
-                          <FileDown size={14} /> 导出 PDF
-                        </button>
-                        <button
-                          onClick={() => handleBatchExport("pptx")}
-                          className="w-full text-left px-4 py-3 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2 border-t border-slate-100"
-                        >
-                          <Presentation size={14} /> 导出 PPTX
-                        </button>
-                      </div>
-                    )}
-                    {/* Close export menu when clicking outside - simple implementation via overlay or effect could be added, here relying on toggle */}
-                    {isExportMenuOpen && (
-                      <div
-                        className="fixed inset-0 z-[90] cursor-default"
-                        onClick={() => setIsExportMenuOpen(false)}
-                      ></div>
-                    )}
+                      <button
+                        onClick={() => setViewMode("history")}
+                        className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "history"
+                          ? "bg-white text-slate-800 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800"
+                          }`}
+                      >
+                        <History size={14} /> 历史库
+                      </button>
+                      <button
+                        onClick={() => setViewMode("templates")}
+                        className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "templates"
+                          ? "bg-white text-slate-800 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800"
+                          }`}
+                      >
+                        <BookTemplate size={14} /> 模版间
+                      </button>
+                    </nav>
                   </div>
+                ) : (
+                  /* Placeholder for center alignment if needed in workbench, or keep empty */
+                  <div className="absolute left-1/2 -translate-x-1/2"></div>
+                )}
 
-                  <div className="h-6 w-px bg-slate-200 mx-1"></div>
+                {/* RIGHT SECTION: Tools */}
+                <div className="flex items-center gap-3 z-10 w-[300px] justify-end">
+
+                  {viewMode === 'workbench' && (
+                    <button
+                      onClick={() => setIsHistoryOpen(true)}
+                      className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+                      title="历史版本"
+                    >
+                      <History size={18} />
+                    </button>
+                  )}
+
                   <button
-                    onClick={clearWorkbench}
-                    disabled={!!previewSnapshot}
-                    className={`p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    title="清空列表"
+                    onClick={toggleFullscreen}
+                    className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+                    title={isFullscreen ? "退出全屏" : "全屏模式"}
                   >
-                    <Trash2 size={18} />
+                    {isFullscreen ? <Minimize size={18} /> : <Maximize2 size={18} />}
+                  </button>
+
+                  <button
+                    onClick={() => setIsGlobalSettingsOpen(true)}
+                    className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+                    title="全局设置"
+                  >
+                    <Settings size={18} />
                   </button>
                 </div>
               </div>
+            </header>
+          )}
 
-              <div className="min-h-[300px]">
-                {items.length === 0 ? (
-                  <div className="bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-2xl h-[400px] flex flex-col items-center justify-center p-8">
-                    <div className="bg-white p-4 rounded-full mb-6 shadow-sm border border-slate-100">
-                      <LayoutGrid size={32} className="text-slate-300" />
-                    </div>
-                    <h2 className="text-lg font-medium text-slate-700 mb-2">
-                      暂无任务
-                    </h2>
-                    <p className="text-slate-400 text-sm mb-8">
-                      请添加需要生成 PPT 的内容素材 (目标{" "}
-                      {config.targetPageCount} 页)
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-5">
-                    {items.map((item, index) => (
-                      <ResultCard
-                        key={item.id}
-                        item={item}
-                        index={index + 1}
-                        onDragStart={() => handleDragStart(index)}
-                        onDragOver={(e) => handleDragOver(e)}
-                        onDrop={() => handleDrop(index)}
-                        onGenerateSingle={() => handleSingleGenerate(item.id)}
-                        onRegenerate={() => handleRegenerate(item.id)}
-                        onUpdate={(updates) =>
-                          handleUpdateItem(item.id, updates)
-                        }
-                        onDelete={() => handleDeletePage(item.id)}
-                        onDuplicate={() => handleDuplicatePage(item.id)}
-                        onViewImage={(url) => setLightboxImage(url)}
-                        onRefineContent={handleRefineSlideContent}
-                        readOnly={!!previewSnapshot}
-                      />
-                    ))}
+          {viewMode === "landing" ? (
+            <LandingPage onEnter={() => setViewMode('dashboard')} />
+          ) : (
+            viewMode !== 'templates' ? (
+              <main className="max-w-[1480px] mx-auto px-6 py-6 space-y-8 flex-1">
+                {viewMode === "dashboard" && (
+                  <Dashboard
+                    projects={projects}
+                    onCreateProject={handleOpenCreateProjectModal}
+                    onOpenProject={handleOpenProject}
+                    onTogglePause={handleTogglePause}
+                    onDeleteProject={handleDeleteProject}
+                    onTogglePin={handleTogglePin}
+                    onStartProject={handleStartProjectRequest}
+                    // Lifted States
+                    searchQuery={dashboardSearchTerm}
+                    setSearchQuery={setDashboardSearchTerm}
+                    statusFilter={dashboardFilterStatus}
+                    setStatusFilter={setDashboardFilterStatus}
+                    progressFilter={dashboardFilterProgress}
+                    setProgressFilter={setDashboardFilterProgress}
+                    timeTypeFilter={dashboardFilterTimeType}
+                    setTimeTypeFilter={setDashboardFilterTimeType}
+                    startDateFilter={dashboardFilterStartDate}
+                    setStartDateFilter={setDashboardFilterStartDate}
+                    endDateFilter={dashboardFilterEndDate}
+                    setEndDateFilter={setDashboardFilterEndDate}
+                    timeFilter={dashboardFilterTime}
+                    setTimeFilter={setDashboardFilterTime}
+                    sortBy={dashboardSortBy}
+                    setSortBy={setDashboardSortBy}
+                  />
+                )}
 
-                    {/* Quick Add Card at the end of the grid */}
-                    <div
-                      className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center gap-4 transition-all group min-h-[350px]
-                                    ${
-                                      isFull
-                                        ? "border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-70"
-                                        : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50"
-                                    }
-                                `}
-                    >
-                      <div
-                        className={`p-3 rounded-full mb-2 transition-all ${
-                          isFull
-                            ? "bg-slate-100 text-slate-400"
-                            : "bg-white text-indigo-500 shadow-sm group-hover:shadow-md group-hover:scale-110"
-                        }`}
-                      >
-                        <Plus size={24} />
+                {viewMode === "workbench" && (
+                  <>
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 bg-rose-500 text-white text-[10px] px-3 py-1 rounded-br-lg font-bold tracking-wide z-10 flex items-center gap-1">
+                        <Settings2 size={10} /> 全局设置 (Global Settings)
                       </div>
 
-                      {isFull ? (
-                        <div className="text-center">
-                          <span className="font-bold text-slate-500 block mb-1">
-                            页面上限已达
-                          </span>
-                          <span className="text-xs text-slate-400">
-                            已达到全局设置的 {config.targetPageCount} 页
-                          </span>
+                      {/* --- Moved Save Preset & Favorites Buttons Here --- */}
+                      <div className="absolute top-4 right-6 flex items-center gap-3 z-10">
+                        <button
+                          onClick={openSavePresetModal}
+                          disabled={isPresetSaved}
+                          className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all font-medium shadow-sm ${isPresetSaved
+                            ? "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
+                            : "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 placeholder-opacity-100" // placeholder-opacity used to ensure class existence? No just use safe fallback
+                            } ${!isPresetSaved ? "hover:scale-105 active:scale-95" : ""}`}
+                          title={isPresetSaved ? "已保存为模版" : "保存当前配置为模版"}
+                        >
+                          {isPresetSaved ? <CheckCircle2 size={14} /> : <Save size={14} />} {isPresetSaved ? "已保存" : "保存模版"}
+                        </button>
+
+                        <button
+                          onClick={() => setViewMode('templates')}
+                          className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm transition-all font-medium bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200`}
+                        >
+                          <BookTemplate size={14} /> 模版库
+                        </button>
+                        <button
+                          onClick={() => setIsFavoritesModalOpen(true)}
+                          className="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all font-medium shadow-sm"
+                        >
+                          <BookTemplate size={14} /> 我的收藏
+                        </button>
+                      </div>
+
+                      {/* Updated Layout: Top Row (Left 1/3, Right 2/3) + Bottom Row */}
+                      {/* Updated Layout: Top Row (Left 1/3, Right 2/3) + Bottom Row */}
+                      <div className="flex flex-col gap-6 mt-6 min-w-0 w-full">
+                        <div className="flex flex-col lg:flex-row gap-6 lg:h-[450px] w-full min-w-0">
+                          {/* Left 1/3: Global Style Images - CAROUSEL PREVIEW */}
+                          <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group min-w-0">
+                            {hasAnyStyle ? (
+                              <>
+                                {/* Main View Area */}
+                                {/* Main View Area */}
+                                <div className="flex-1 relative bg-slate-100 w-full min-h-0">
+                                  {styleMap[activePreviewType] ? (
+                                    <div className="absolute inset-2 flex items-center justify-center">
+                                      <img
+                                        src={resolveResourceUrl(
+                                          styleMap[activePreviewType]!
+                                        )}
+                                        alt={activePreviewType}
+                                        className="w-full h-full object-contain cursor-zoom-in"
+                                        onClick={() =>
+                                          setLightboxImage(
+                                            resolveResourceUrl(
+                                              styleMap[activePreviewType]!
+                                            )
+                                          )
+                                        }
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="absolute inset-0 p-4">
+                                      <div
+                                        onClick={openStyleModal}
+                                        className="w-full h-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:bg-rose-50/30 transition-all rounded-lg cursor-pointer flex flex-col items-center justify-center text-center bg-slate-50"
+                                      >
+                                        <div className="bg-white p-4 rounded-full mb-4 shadow-sm text-rose-500 border border-slate-100">
+                                          <Upload size={24} />
+                                        </div>
+                                        <h4 className="font-bold text-slate-700 mb-1">
+                                          上传风格参考图
+                                        </h4>
+                                        <p className="text-xs text-slate-400 px-4">
+                                          支持为封面、目录、正文等不同页面分别设置风格
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Top Label Badge */}
+                                  <div className="absolute top-2 left-2 px-2 py-1 bg-black/60 backdrop-blur-md rounded text-white text-xs font-bold shadow-sm">
+                                    {
+                                      PAGE_TYPES.find(
+                                        (p) => p.type === activePreviewType
+                                      )?.label
+                                    }
+                                  </div>
+
+                                  {/* Hover Controls */}
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 pointer-events-none">
+                                    <button
+                                      onClick={openStyleModal}
+                                      disabled={!!previewSnapshot}
+                                      className={`pointer-events-auto flex flex-col items-center justify-center gap-1 bg-white hover:bg-rose-50 text-rose-600 w-24 h-12 rounded-lg shadow-lg transition-all ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                      <span className="text-xs font-bold flex items-center gap-1">
+                                        <Upload size={14} /> 管理参考图
+                                      </span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Bottom Carousel / Tabs */}
+                                <div className="h-14 bg-white border-t border-slate-200 flex items-center px-2 gap-2 overflow-x-auto custom-scrollbar shrink-0 w-full">
+                                  {PAGE_TYPES.map((pt) => (
+                                    <button
+                                      key={pt.type}
+                                      onClick={() => setActivePreviewType(pt.type)}
+                                      className={`flex-1 min-w-[50px] h-10 rounded border transition-all relative overflow-hidden group/thumb
+                                                        ${activePreviewType ===
+                                          pt.type
+                                          ? "border-indigo-500 ring-1 ring-indigo-500"
+                                          : "border-slate-200 hover:border-slate-300"
+                                        }
+                                                    `}
+                                      title={pt.label}
+                                    >
+                                      {styleMap[pt.type] ? (
+                                        <img
+                                          src={resolveResourceUrl(styleMap[pt.type]!)}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full bg-slate-50 flex items-center justify-center text-slate-300">
+                                          <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                                        </div>
+                                      )}
+                                      {/* Active Indicator */}
+                                      {activePreviewType === pt.type && (
+                                        <div className="absolute inset-0 border-2 border-indigo-500 rounded pointer-events-none"></div>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="absolute inset-0 p-4">
+                                <div
+                                  onClick={openStyleModal}
+                                  className="w-full h-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:bg-rose-50/30 transition-all rounded-lg cursor-pointer flex flex-col items-center justify-center text-center bg-slate-50"
+                                >
+                                  <div className="bg-white p-4 rounded-full mb-4 shadow-sm text-rose-500 border border-slate-100">
+                                    <Upload size={24} />
+                                  </div>
+                                  <h4 className="font-bold text-slate-700 mb-1">
+                                    上传风格参考图
+                                  </h4>
+                                  <p className="text-xs text-slate-400 px-4">
+                                    支持为封面、目录、正文等不同页面分别设置风格
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right 2/3: Controls */}
+                          <div className="w-full lg:w-2/3 bg-white border border-slate-200 rounded-xl p-5 h-full overflow-y-auto custom-scrollbar min-w-0">
+                            <StyleControls
+                              config={config}
+                              onChange={handleConfigChange}
+                              readOnly={!!previewSnapshot}
+                            />
+                          </div>
                         </div>
-                      ) : (
-                        <>
-                          <span className="font-bold text-slate-700 mb-2">
-                            快速添加页面 (P{items.length + 1})
-                          </span>
-                          <div className="flex gap-3 w-full max-w-xs">
+
+                        {/* Bottom Row: Requirements (Increased Height) */}
+                        <div className="flex flex-col">
+                          <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                            <LinkIcon size={14} className="text-slate-500" />{" "}
+                            全局设计要求
+                          </h3>
+                          <div className="relative w-full">
+                            <textarea
+                              value={config.requirements}
+                              onChange={(e) =>
+                                handleConfigChange("requirements", e.target.value)
+                              }
+                              placeholder={`例如：封面使用极简科技风格，主色调为深蓝与白色，标题使用无衬线字体，正文排版清晰，强调商务专业感...`}
+                              disabled={!!previewSnapshot}
+                              className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px] ${previewSnapshot ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            />
                             <button
-                              onClick={handleAddTextPage}
-                              className="flex-1 flex flex-col items-center gap-2 p-3 rounded-lg border border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50 transition-all text-sm font-medium text-slate-600 hover:text-indigo-600"
+                              onClick={handleRefineRequirements}
+                              disabled={
+                                !!previewSnapshot || isRefiningRequirements || !(config.requirements || '').trim()
+                              }
+                              className={`absolute bottom-3 right-3 p-1.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-all shadow-sm
+                                        ${!(config.requirements || '').trim()
+                                  ? "bg-slate-100 text-slate-300 cursor-not-allowed opacity-50"
+                                  : isRefiningRequirements
+                                    ? "bg-indigo-50 text-indigo-400 cursor-wait"
+                                    : "bg-white text-indigo-600 hover:bg-indigo-50 border border-indigo-100 hover:shadow-md"
+                                }
+                                    `}
+                              title="AI 智能修饰设计要求"
                             >
-                              <FileText size={18} /> 文本页面
-                            </button>
-                            <button
-                              onClick={openImageTaskModal}
-                              className="flex-1 flex flex-col items-center gap-2 p-3 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50 transition-all text-sm font-medium text-slate-600 hover:text-blue-600"
-                            >
-                              <ImageIcon size={18} /> 图片页面
+                              {isRefiningRequirements ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <Sparkles size={14} />
+                              )}
+                              {isRefiningRequirements ? "修饰中..." : "AI 修饰"}
                             </button>
                           </div>
-                        </>
-                      )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4">
+                        {/* ... same ... */}
+                        <div>
+                          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            <Layers size={22} className="text-slate-700" /> 页面任务列表{" "}
+                            <span className="bg-slate-100 text-slate-600 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-slate-200">
+                              {items.length} / {config.targetPageCount} P
+                            </span>
+                          </h2>
+                          <p className="text-sm text-slate-500 mt-1 ml-1">
+                            在此添加具体的幻灯片内容素材，每个任务将对应生成一页 PPT
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={handleAddTextPage}
+                            disabled={!!previewSnapshot}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            <Plus size={14} /> 添加文本
+                          </button>
+                          <button
+                            onClick={openImageTaskModal}
+                            disabled={!!previewSnapshot}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            <Plus size={14} /> 添加图片
+                          </button>
+                          <div className="h-5 w-px bg-slate-200 mx-0.5"></div>
+
+                          <button
+                            onClick={() => openOutlineGenerator()}
+                            disabled={!!previewSnapshot}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            <Sparkles size={14} /> 一句话生成
+                          </button>
+                          <button
+                            onClick={() => outlineFileInputRef.current?.click()}
+                            disabled={!!previewSnapshot || isReadingFile}
+                            title="支持的格式: PDF, Word (.doc/.docx), Markdown (.md), 文本 (.txt), JSON"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {isReadingFile ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <FileInput size={14} />
+                            )}{" "}
+                            {isReadingFile ? "解析中..." : "解析文件生成"}
+                          </button>
+
+                          <input
+                            type="file"
+                            ref={outlineFileInputRef}
+                            onChange={handleOutlineFileSelect}
+                            accept=".txt,.md,.json,.pdf,.doc,.docx"
+                            className="hidden"
+                          />
+
+                          <button
+                            onClick={handleGenerateBatch}
+                            disabled={!!previewSnapshot || items.length === 0 || isProcessing}
+                            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm transition-all transform active:scale-95 whitespace-nowrap ${items.length === 0 || isProcessing
+                              ? "bg-rose-300 cursor-not-allowed"
+                              : "bg-rose-400 hover:bg-rose-500 hover:shadow-rose-100"
+                              }`}
+                          >
+                            {isProcessing ? (
+                              <>
+                                <Loader2 size={14} className="animate-spin" /> 生成中...
+                              </>
+                            ) : (
+                              <>
+                                <Wand2 size={14} /> 批量生成图片
+                              </>
+                            )}
+                          </button>
+
+                          <div className="relative">
+                            <button
+                              onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                              disabled={
+                                items.filter((i) => i.status === "success").length === 0
+                              }
+                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border shadow-sm whitespace-nowrap ${items.filter((i) => i.status === "success").length === 0
+                                ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-indigo-600 hover:border-indigo-200"
+                                }`}
+                            >
+                              <Download size={14} /> 导出
+                            </button>
+                            {isExportMenuOpen && (
+                              <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
+                                <button
+                                  onClick={() => handleBatchExport("zip")}
+                                  className="w-full text-left px-4 py-3 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2"
+                                >
+                                  <ImageIcon size={14} /> 导出图片 (ZIP)
+                                </button>
+                                <button
+                                  onClick={() => handleBatchExport("pdf")}
+                                  className="w-full text-left px-4 py-3 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2 border-t border-slate-100"
+                                >
+                                  <FileDown size={14} /> 导出 PDF
+                                </button>
+                                <button
+                                  onClick={() => handleBatchExport("pptx")}
+                                  className="w-full text-left px-4 py-3 hover:bg-slate-50 text-sm text-slate-700 flex items-center gap-2 border-t border-slate-100"
+                                >
+                                  <Presentation size={14} /> 导出 PPTX
+                                </button>
+                              </div>
+                            )}
+                            {/* Close export menu when clicking outside - simple implementation via overlay or effect could be added, here relying on toggle */}
+                            {isExportMenuOpen && (
+                              <div
+                                className="fixed inset-0 z-[90] cursor-default"
+                                onClick={() => setIsExportMenuOpen(false)}
+                              ></div>
+                            )}
+                          </div>
+
+                          <div className="h-6 w-px bg-slate-200 mx-1"></div>
+                          <button
+                            onClick={clearWorkbench}
+                            disabled={!!previewSnapshot}
+                            className={`p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title="清空列表"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="min-h-[300px]">
+                        {items.length === 0 ? (
+                          <div className="bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-2xl h-[400px] flex flex-col items-center justify-center p-8">
+                            <div className="bg-white p-4 rounded-full mb-6 shadow-sm border border-slate-100">
+                              <LayoutGrid size={32} className="text-slate-300" />
+                            </div>
+                            <h2 className="text-lg font-medium text-slate-700 mb-2">
+                              暂无任务
+                            </h2>
+                            <p className="text-slate-400 text-sm mb-8">
+                              请添加需要生成 PPT 的内容素材 (目标{" "}
+                              {config.targetPageCount} 页)
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-5">
+                            {items.map((item, index) => (
+                              <ResultCard
+                                key={item.id}
+                                item={item}
+                                index={index + 1}
+                                onDragStart={() => handleDragStart(index)}
+                                onDragOver={(e) => handleDragOver(e)}
+                                onDrop={() => handleDrop(index)}
+                                onGenerateSingle={() => handleSingleGenerate(item.id)}
+                                onRegenerate={() => handleRegenerate(item.id)}
+                                onUpdate={(updates) =>
+                                  handleUpdateItem(item.id, updates)
+                                }
+                                onDelete={() => handleDeletePage(item.id)}
+                                onDuplicate={() => handleDuplicatePage(item.id)}
+                                onViewImage={(url) => setLightboxImage(url)}
+                                onRefineContent={handleRefineSlideContent}
+                                readOnly={!!previewSnapshot}
+                              />
+                            ))}
+
+                            {/* Quick Add Card at the end of the grid */}
+                            <div
+                              className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center gap-4 transition-all group min-h-[350px]
+                                    ${isFull
+                                  ? "border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-70"
+                                  : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50"
+                                }
+                                `}
+                            >
+                              <div
+                                className={`p-3 rounded-full mb-2 transition-all ${isFull
+                                  ? "bg-slate-100 text-slate-400"
+                                  : "bg-white text-indigo-500 shadow-sm group-hover:shadow-md group-hover:scale-110"
+                                  }`}
+                              >
+                                <Plus size={24} />
+                              </div>
+
+                              {isFull ? (
+                                <div className="text-center">
+                                  <span className="font-bold text-slate-500 block mb-1">
+                                    页面上限已达
+                                  </span>
+                                  <span className="text-xs text-slate-400">
+                                    已达到全局设置的 {config.targetPageCount} 页
+                                  </span>
+                                </div>
+                              ) : (
+                                <>
+                                  <span className="font-bold text-slate-700 mb-2">
+                                    快速添加页面 (P{items.length + 1})
+                                  </span>
+                                  <div className="flex gap-3 w-full max-w-xs">
+                                    <button
+                                      onClick={handleAddTextPage}
+                                      className="flex-1 flex flex-col items-center gap-2 p-3 rounded-lg border border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50 transition-all text-sm font-medium text-slate-600 hover:text-indigo-600"
+                                    >
+                                      <FileText size={18} /> 文本页面
+                                    </button>
+                                    <button
+                                      onClick={openImageTaskModal}
+                                      className="flex-1 flex flex-col items-center gap-2 p-3 rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50 transition-all text-sm font-medium text-slate-600 hover:text-blue-600"
+                                    >
+                                      <ImageIcon size={18} /> 图片页面
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {viewMode === "history" && (
+                  <div className="flex flex-col space-y-6">
+                    {/* Search & Filters Bar */}
+                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center w-full">
+                      {/* Search */}
+                      <div className="flex-1 relative group">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
+                        <input
+                          type="text"
+                          placeholder="搜索项目标题或 ID..."
+                          value={historySearchTerm}
+                          onChange={(e) => setHistorySearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-sm font-medium"
+                        />
+                      </div>
+
+                      {/* Filters Toolbar */}
+                      <div className="flex flex-wrap gap-2 mt-2 lg:mt-0">
+                        <select
+                          value={historyFilterStyle}
+                          onChange={(e) => setHistoryFilterStyle(e.target.value)}
+                          className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
+                        >
+                          <option value="">所有风格</option>
+                          {STYLE_PRESETS.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={historyFilterRatio}
+                          onChange={(e) => setHistoryFilterRatio(e.target.value)}
+                          className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
+                        >
+                          <option value="">所有比例</option>
+                          {RATIO_PRESETS.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={historyFilterPalette}
+                          onChange={(e) => setHistoryFilterPalette(e.target.value)}
+                          className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none min-w-[120px]"
+                        >
+                          <option value="">所有配色</option>
+                          {COLOR_PRESETS.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                        {/* 规模筛选 */}
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-md p-1 transition-all focus-within:border-indigo-200 focus-within:ring-2 focus-within:ring-indigo-50">
+                          <select
+                            value={historyFilterPageType}
+                            onChange={(e) => setHistoryFilterPageType(e.target.value as any)}
+                            className="text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded py-0.5 px-1.5 outline-none shadow-sm cursor-pointer"
+                          >
+                            <option value="target">规划页数</option>
+                            <option value="completed">完成页数</option>
+                          </select>
+                          <div className="flex items-center gap-1 px-1">
+                            <input
+                              type="number"
+                              placeholder="最小"
+                              value={historyFilterMinPages}
+                              onChange={(e) => setHistoryFilterMinPages(e.target.value)}
+                              className="w-8 text-[10px] bg-transparent outline-none text-center font-medium placeholder:text-slate-300"
+                            />
+                            <span className="text-slate-300">-</span>
+                            <input
+                              type="number"
+                              placeholder="最大"
+                              value={historyFilterMaxPages}
+                              onChange={(e) => setHistoryFilterMaxPages(e.target.value)}
+                              className="w-8 text-[10px] bg-transparent outline-none text-center font-medium placeholder:text-slate-300"
+                            />
+                          </div>
+                        </div>
+
+                        {/* 时间联动筛选 */}
+                        <div className="flex items-center gap-1.5 p-1 bg-slate-50 border border-slate-200 rounded-md">
+                          <select
+                            value={historyFilterTimeType}
+                            onChange={(e) => setHistoryFilterTimeType(e.target.value as any)}
+                            className="text-[11px] font-bold text-indigo-600 bg-white border-none rounded py-1 px-2 outline-none shadow-sm cursor-pointer"
+                          >
+                            <option value="lastModified">完成时间</option>
+                            <option value="createdAt">创建时间</option>
+                          </select>
+
+                          <div className="w-px h-4 bg-slate-200 mx-0.5"></div>
+
+                          <select
+                            value={historyFilterTime}
+                            onChange={(e) => setHistoryFilterTime(e.target.value)}
+                            className="text-[11px] bg-transparent border-none py-1 px-1 outline-none text-slate-600 cursor-pointer"
+                          >
+                            <option value="">快速范围</option>
+                            <option value="24h">24小时内</option>
+                            <option value="7d">7天内</option>
+                            <option value="30d">30天内</option>
+                          </select>
+
+                          <div className="flex items-center gap-1 ml-1 pl-1 border-l border-slate-200">
+                            <input
+                              type="date"
+                              value={historyFilterStartDate}
+                              onChange={(e) => setHistoryFilterStartDate(e.target.value)}
+                              className="text-[9px] bg-transparent p-0 border-none outline-none text-slate-500"
+                              title="起始范围"
+                            />
+                            <span className="text-[9px] text-slate-300">-</span>
+                            <input
+                              type="date"
+                              value={historyFilterEndDate}
+                              onChange={(e) => setHistoryFilterEndDate(e.target.value)}
+                              className="text-[9px] bg-transparent p-0 border-none outline-none text-slate-500"
+                              title="结束范围"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="h-8 w-px bg-slate-100 mx-1 hidden xl:block"></div>
+
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={historySortBy}
+                            onChange={(e) => setHistorySortBy(e.target.value as any)}
+                            className="text-[11px] font-bold border border-slate-200 bg-white text-slate-700 rounded-md py-1.5 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
+                          >
+                            <option value="lastModified">按完成时间</option>
+                            <option value="createdAt">按创建时间</option>
+                            <option value="pages">按页数</option>
+                          </select>
+                          <button
+                            onClick={() => setHistorySortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                            className="p-1.5 bg-white border border-slate-200 rounded-md hover:bg-slate-50 hover:border-indigo-200 transition-all shadow-sm"
+                            title={historySortOrder === 'desc' ? "倒序(新在前)" : "正序(旧在前)"}
+                          >
+                            {historySortOrder === 'desc' ? <ArrowDownNarrowWide size={14} className="text-indigo-500" /> : <ArrowUpNarrowWide size={14} className="text-indigo-500" />}
+                          </button>
+
+                          <div className="w-px h-6 bg-slate-100 mx-0.5"></div>
+
+                          <button
+                            onClick={() => {
+                              setHistorySearchTerm("");
+                              setHistoryFilterStyle("");
+                              setHistoryFilterRatio("");
+                              setHistoryFilterPalette("");
+                              setHistoryFilterPageType("target");
+                              setHistoryFilterMinPages("");
+                              setHistoryFilterMaxPages("");
+                              setHistoryFilterTimeType("lastModified");
+                              setHistoryFilterStartDate("");
+                              setHistoryFilterEndDate("");
+                              setHistoryFilterTime("");
+                              setHistorySortBy("lastModified");
+                              setHistorySortOrder("desc");
+                            }}
+                            className="p-1.5 bg-slate-100 text-slate-500 rounded-md hover:bg-slate-200 hover:text-slate-700 transition-all"
+                            title="重置所有筛选"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* History List - Horizontal Layout */}
+                    {filteredHistory.length === 0 ? (
+                      <div className="text-center py-20 flex-1">
+                        <History size={48} className="mx-auto text-slate-200 mb-4" />
+                        <h3>暂无历史项目</h3>
+                      </div>
+                    ) : (
+                      <div className="space-y-4 pb-12 flex-1">
+                        {filteredHistory.map((session) => (
+                          <div
+                            key={session.id}
+                            className={`bg-white rounded-2xl shadow-sm border p-5 flex flex-col md:flex-row gap-8 transition-all hover:shadow-xl group relative ${isHistorySelectionMode &&
+                              selectedHistoryIds.has(session.id)
+                              ? "ring-2 ring-indigo-500 border-indigo-500"
+                              : "border-slate-100 hover:border-indigo-100"
+                              }`}
+                            onClick={() => {
+                              if (isHistorySelectionMode)
+                                toggleHistorySelection(session.id);
+                            }}
+                          >
+                            {/* Project ID Badge - Integrated Corner Style */}
+                            <div className="absolute top-0 left-0 z-20">
+                              <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-700/90 text-white rounded-tl-2xl rounded-br-xl shadow-sm border-r border-b border-white/10 backdrop-blur-md">
+                                <Settings2 size={8} className="text-slate-300" />
+                                <span className="text-[9px] font-bold tracking-wider uppercase">
+                                  {session.displayId ? session.displayId : `PID-${session.id.substring(0, 8)}`}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Cover Thumbnail */}
+                            <div
+                              className="w-full md:w-72 aspect-video bg-slate-50 rounded-xl overflow-hidden border border-slate-100 shrink-0 relative cursor-zoom-in group/thumb shadow-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (session.thumbnailUrl)
+                                  setLightboxImage(session.thumbnailUrl);
+                              }}
+                            >
+                              {session.thumbnailUrl ? (
+                                <img
+                                  src={session.thumbnailUrl}
+                                  className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-300 bg-slate-50">
+                                  <ImageIcon size={40} strokeWidth={1.5} />
+                                </div>
+                              )}
+
+                              {/* Page Count Overlay */}
+                              <div className="absolute bottom-3 right-3 px-2 py-1 rounded-lg bg-black/50 text-white text-[10px] font-black backdrop-blur-sm pointer-events-none border border-white/10">
+                                {session.items.length}P
+                              </div>
+
+                              <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/20 transition-all flex items-center justify-center pointer-events-none opacity-0 group-hover/thumb:opacity-100">
+                                <div className="bg-white/90 p-2 rounded-full shadow-lg transform scale-90 group-hover/thumb:scale-100 transition-transform">
+                                  <ZoomIn className="text-slate-800" size={20} />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Content Info */}
+                            <div className="flex-1 flex flex-col min-w-0">
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="font-black text-slate-800 text-xl mb-2 truncate group-hover:text-indigo-600 transition-colors">
+                                    {session.title}
+                                  </h3>
+                                  <div className="flex flex-wrap gap-2">
+                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md border border-slate-200/50 uppercase">
+                                      {session.globalConfig?.styleName || "默认风格"}
+                                    </span>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md border border-slate-200/50">
+                                      {session.globalConfig?.aspectRatio || "16:9"}
+                                    </span>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded-md border border-indigo-100">
+                                      规划 {session.globalConfig?.targetPageCount || 10} 页，完成 {session.items.filter(i => i.status === 'success' || i.status === 'completed').length} 页
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {!isHistorySelectionMode && (
+                                  <div className="flex items-center gap-3 shrink-0 ml-4">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenProject(session.id);
+                                      }}
+                                      className="group/btn relative flex items-center gap-2 text-xs font-black bg-gradient-to-r from-indigo-500 to-blue-600 text-white px-5 py-2.5 rounded-xl hover:shadow-lg hover:shadow-indigo-200 transition-all active:scale-95 overflow-hidden"
+                                    >
+                                      <span className="relative z-10">查看详情</span>
+                                      <ArrowRight size={14} className="relative z-10 group-hover/btn:translate-x-1 transition-transform" />
+                                      <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-500 opacity-0 group-hover/btn:opacity-100 transition-opacity"></div>
+                                    </button>
+
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteProject(session.id);
+                                      }}
+                                      className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
+                                      title="删除项目"
+                                    >
+                                      <Trash2 size={18} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Filmstrip View - Preview of generated slides */}
+                              <div className="flex gap-2.5 overflow-x-auto no-scrollbar py-3 border-y border-slate-50 my-2">
+                                {session.items.slice(0, 10).map((item, idx) => {
+                                  const thumbnailUrl = (item.variants && item.variants.length > 0)
+                                    ? item.variants[0]
+                                    : item.previewUrl;
+
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className="w-16 h-10 rounded-lg bg-slate-50 border border-slate-100 overflow-hidden shrink-0 flex items-center justify-center shadow-sm relative group/item"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (thumbnailUrl) setLightboxImage(thumbnailUrl);
+                                      }}
+                                    >
+                                      {thumbnailUrl ? (
+                                        <img src={thumbnailUrl} className="w-full h-full object-cover group-hover/item:scale-110 transition-transform" alt={`page ${idx}`} />
+                                      ) : (
+                                        <div className="text-[8px] font-bold text-slate-300 uppercase">P{idx + 1}</div>
+                                      )}
+                                      <div className="absolute inset-0 bg-black/0 group-hover/item:bg-black/10 transition-colors pointer-events-none"></div>
+                                    </div>
+                                  );
+                                })}
+                                {session.items.length > 10 && (
+                                  <div className="w-16 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 shadow-sm">
+                                    <span className="text-[8px] font-bold text-slate-300">+{session.items.length - 10}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] font-medium text-slate-400 mt-auto pt-2">
+                                <div className="flex items-center gap-1.5">
+                                  <Calendar size={13} className="text-slate-300" />
+                                  <span>创建于 <span className="text-slate-500">{new Date(session.createdAt).toLocaleString()}</span></span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <CheckCircle2 size={13} className="text-emerald-400" />
+                                  <span>完成于 <span className="text-slate-500">{new Date(session.lastModified).toLocaleString()}</span></span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Count Footer */}
+                    <div className="py-4 border-t border-slate-200 flex justify-between items-center px-6">
+                      <span className="text-xs text-slate-400">共筛选出 {filteredHistory.length} 个项目</span>
+                      <button
+                        onClick={handleResetAllFilters}
+                        className="text-[10px] font-bold text-blue-500 hover:text-blue-600 bg-blue-50 px-3 py-1 rounded-full transition-colors"
+                      >
+                        重置所有筛选
+                      </button>
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-          </>
-        )}
 
-        {viewMode === "history" && (
-          <div className="flex flex-col space-y-6">
-            {/* Search & Filters Bar */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center w-full">
-              {/* Search */}
-              <div className="flex-1 w-full lg:w-auto relative">
-                <Search
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  type="text"
-                  placeholder="搜索项目标题..."
-                  value={historySearchTerm}
-                  onChange={(e) => setHistorySearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                />
-              </div>
+                {/* History Detail View - Updated Layout Match */}
+                {viewMode === "history-detail" && activeSession && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-6">
+                      <button
+                        onClick={() => setViewMode("history")}
+                        className="text-slate-400 hover:text-slate-700 flex items-center gap-1 text-sm font-medium transition-colors"
+                        title="返回历史列表"
+                      >
+                        <ArrowRight size={16} className="rotate-180" /> 返回列表
+                      </button>
 
-              {/* Filters Toolbar */}
-              <div className="flex flex-wrap gap-2 mt-2 lg:mt-0">
-                <select
-                  value={historyFilterStyle}
-                  onChange={(e) => setHistoryFilterStyle(e.target.value)}
-                  className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-                >
-                  <option value="">所有风格</option>
-                  {STYLE_PRESETS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={historyFilterRatio}
-                  onChange={(e) => setHistoryFilterRatio(e.target.value)}
-                  className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-                >
-                  <option value="">所有比例</option>
-                  {RATIO_PRESETS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={historyFilterPalette}
-                  onChange={(e) => setHistoryFilterPalette(e.target.value)}
-                  className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none min-w-[120px]"
-                >
-                  <option value="">所有配色</option>
-                  {COLOR_PRESETS.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  placeholder="页数"
-                  value={historyFilterPageCount}
-                  onChange={(e) => setHistoryFilterPageCount(e.target.value)}
-                  className="w-16 text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none text-center"
-                />
-                <select
-                  value={historyFilterStatus}
-                  onChange={(e) => setHistoryFilterStatus(e.target.value)}
-                  className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-                >
-                  <option value="">所有状态</option>
-                  <option value="completed">已完成</option>
-                  <option value="generating">生成中</option>
-                </select>
-                <select
-                  value={historyFilterTime}
-                  onChange={(e) => setHistoryFilterTime(e.target.value)}
-                  className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-                >
-                  <option value="">所有时间</option>
-                  <option value="24h">24小时内</option>
-                  <option value="7d">7天内</option>
-                  <option value="30d">30天内</option>
-                </select>
-              </div>
-            </div>
+                      <div className="h-4 w-px bg-slate-300 mx-2"></div>
 
-            {/* History List - Horizontal Layout */}
-            {filteredHistory.length === 0 ? (
-              <div className="text-center py-20 flex-1">
-                <History size={48} className="mx-auto text-slate-200 mb-4" />
-                <h3>暂无历史项目</h3>
-              </div>
-            ) : (
-              <div className="space-y-4 pb-12 flex-1">
-                {filteredHistory.map((session) => (
-                  <div
-                    key={session.id}
-                    className={`bg-white rounded-xl shadow-sm border p-4 flex flex-col md:flex-row gap-6 transition-all hover:shadow-md group relative ${
-                      isHistorySelectionMode &&
-                      selectedHistoryIds.has(session.id)
-                        ? "ring-2 ring-indigo-500 border-indigo-500"
-                        : "border-slate-200"
-                    }`}
-                    onClick={() => {
-                      if (isHistorySelectionMode)
-                        toggleHistorySelection(session.id);
-                    }}
-                  >
-                    {/* Cover Thumbnail */}
-                    <div
-                      className="w-full md:w-64 aspect-video bg-slate-100 rounded-lg overflow-hidden border border-slate-100 shrink-0 relative cursor-zoom-in"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (session.thumbnailUrl)
-                          setLightboxImage(session.thumbnailUrl);
-                      }}
-                    >
-                      {session.thumbnailUrl ? (
-                        <img
-                          src={session.thumbnailUrl}
-                          className="w-full h-full object-contain bg-slate-50"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-300">
-                          <ImageIcon size={32} />
-                        </div>
-                      )}
-                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-xs font-medium backdrop-blur-sm pointer-events-none">
-                        P{session.items.length}
-                      </div>
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100">
-                        <ZoomIn
-                          className="text-white drop-shadow-md"
-                          size={24}
-                        />
-                      </div>
+                      <h2 className="text-xl font-bold text-slate-800">
+                        {activeSession.title}
+                      </h2>
+                      <span className="text-slate-400 text-sm">
+                        ({activeSession.items.length} 页)
+                      </span>
+
+                      {/* Restore Button */}
+                      <button
+                        onClick={() => handleRestoreToEdit(activeSession.id)}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-100 transition-colors shadow-sm"
+                      >
+                        <Edit3 size={14} /> 恢复编辑
+                      </button>
                     </div>
 
-                    {/* Content Info */}
-                    <div className="flex-1 flex flex-col justify-between">
-                      <div>
-                        <div className="flex justify-between items-start">
-                          <h3 className="font-bold text-slate-800 text-lg mb-2 line-clamp-1">
-                            {session.title}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden mb-8">
+                      <div className="absolute top-0 left-0 bg-slate-500 text-white text-[10px] px-3 py-1 rounded-br-lg font-bold tracking-wide z-10 flex items-center gap-1">
+                        <Settings2 size={10} /> 历史快照
+                      </div>
+
+                      <div className="flex flex-col gap-6 mt-6">
+                        <div className="flex flex-col lg:flex-row gap-6 lg:h-[450px]">
+                          {/* Left 1/3: Images - Single View */}
+                          <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group">
+                            {activeSession.globalStyleMap?.cover ? (
+                              <>
+                                <img
+                                  src={typeof activeSession.globalStyleMap.cover === 'string'
+                                    ? activeSession.globalStyleMap.cover
+                                    : URL.createObjectURL(activeSession.globalStyleMap.cover)
+                                  }
+                                  className="w-full h-full object-contain bg-slate-50"
+                                />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100">
+                                  <button
+                                    onClick={() =>
+                                      setLightboxImage(
+                                        typeof activeSession.globalStyleMap?.cover === 'string'
+                                          ? activeSession.globalStyleMap.cover
+                                          : URL.createObjectURL(activeSession.globalStyleMap?.cover!)
+                                      )
+                                    }
+                                    className="flex flex-col items-center justify-center gap-1 bg-white/90 hover:bg-white text-slate-800 w-16 h-16 rounded-lg backdrop-blur shadow-sm transition-all"
+                                  >
+                                    <ZoomIn size={24} />
+                                    <span className="text-[10px] font-medium">
+                                      查看大图
+                                    </span>
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs p-8 text-center flex-col gap-2">
+                                <ImageIcon size={32} />
+                                <span>无参考图</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right 2/3: Controls (Read Only) */}
+                          <div className="w-full lg:w-2/3 bg-white border border-slate-200 rounded-xl p-5 h-full overflow-y-auto custom-scrollbar pointer-events-none opacity-90">
+                            <StyleControls
+                              config={activeSession.globalConfig}
+                              onChange={() => { }}
+                              readOnly={true}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Bottom: Requirements */}
+                        <div className="flex flex-col pointer-events-none opacity-90">
+                          <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
+                            <LinkIcon size={14} className="text-slate-500" />{" "}
+                            全局设计要求
                           </h3>
-                          {!isHistorySelectionMode && (
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenProject(session.id);
-                                }}
-                                className="text-sm bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 font-medium transition-colors"
-                              >
-                                打开项目
-                              </button>
-                              <div className="h-4 w-px bg-slate-200 mx-1"></div>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteProject(session.id);
-                                }}
-                                className="text-sm text-slate-400 hover:text-red-500 px-2 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
-                                title="删除"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          )}
+                          <textarea
+                            value={activeSession.globalConfig.requirements}
+                            readOnly
+                            className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none resize-none h-[140px]"
+                          />
                         </div>
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          <span className="text-xs px-2 py-1 bg-slate-50 border border-slate-100 rounded text-slate-500">
-                            {session.globalConfig?.styleName || "默认风格"}
-                          </span>
-                          <span className="text-xs px-2 py-1 bg-slate-50 border border-slate-100 rounded text-slate-500">
-                            {session.globalConfig?.aspectRatio || "16:9"}
-                          </span>
-                          <span className="text-xs px-2 py-1 bg-slate-50 border border-slate-100 rounded text-slate-500">
-                            {session.globalConfig?.pageStructure?.content || 0} 内容页
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4 text-xs text-slate-400 mt-2 border-t border-slate-50 pt-3">
-                        <div className="flex items-center gap-1">
-                          <Calendar size={12} /> 创建于{" "}
-                          {new Date(session.lastModified).toLocaleString()}
-                        </div>
-                        <div>ID: {session.id.substring(0, 8)}</div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {/* Count Footer */}
-            <div className="py-4 border-t border-slate-200 text-center text-xs text-slate-400">
-              共筛选出 {filteredHistory.length} 个项目
-            </div>
-          </div>
-        )}
-
-        {/* History Detail View - Updated Layout Match */}
-        {viewMode === "history-detail" && activeSession && (
-          <div>
-            <div className="flex items-center gap-2 mb-6">
-              <button
-                onClick={() => setViewMode("history")}
-                className="text-slate-400 hover:text-slate-700 flex items-center gap-1 text-sm font-medium transition-colors"
-                title="返回历史列表"
-              >
-                <ArrowRight size={16} className="rotate-180" /> 返回列表
-              </button>
-              
-              <div className="h-4 w-px bg-slate-300 mx-2"></div>
-              
-              <h2 className="text-xl font-bold text-slate-800">
-                {activeSession.title}
-              </h2>
-              <span className="text-slate-400 text-sm">
-                ({activeSession.items.length} 页)
-              </span>
-
-              {/* Restore Button */}
-              <button
-                onClick={() => handleRestoreToEdit(activeSession.id)}
-                className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-100 transition-colors shadow-sm"
-              >
-                <Edit3 size={14} /> 恢复编辑
-              </button>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden mb-8">
-              <div className="absolute top-0 left-0 bg-slate-500 text-white text-[10px] px-3 py-1 rounded-br-lg font-bold tracking-wide z-10 flex items-center gap-1">
-                <Settings2 size={10} /> 历史快照
-              </div>
-
-              <div className="flex flex-col gap-6 mt-6">
-                <div className="flex flex-col lg:flex-row gap-6 lg:h-[450px]">
-                  {/* Left 1/3: Images - Single View */}
-                  <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group">
-                    {activeSession.globalStyleMap?.cover ? (
-                      <>
-                        <img
-                          src={typeof activeSession.globalStyleMap.cover === 'string' 
-                            ? activeSession.globalStyleMap.cover 
-                            : URL.createObjectURL(activeSession.globalStyleMap.cover)
-                          }
-                          className="w-full h-full object-contain bg-slate-50"
+                    <div className="grid grid-cols-1 gap-5">
+                      {activeSession.items.map((item, index) => (
+                        <ResultCard
+                          key={item.id}
+                          item={item}
+                          index={index + 1}
+                          onViewImage={(url) => setLightboxImage(url)}
+                          readOnly={true}
                         />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100">
-                          <button
-                            onClick={() =>
-                              setLightboxImage(
-                                typeof activeSession.globalStyleMap?.cover === 'string'
-                                  ? activeSession.globalStyleMap.cover
-                                  : URL.createObjectURL(activeSession.globalStyleMap?.cover!)
-                              )
-                            }
-                            className="flex flex-col items-center justify-center gap-1 bg-white/90 hover:bg-white text-slate-800 w-16 h-16 rounded-lg backdrop-blur shadow-sm transition-all"
-                          >
-                            <ZoomIn size={24} />
-                            <span className="text-[10px] font-medium">
-                              查看大图
-                            </span>
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs p-8 text-center flex-col gap-2">
-                        <ImageIcon size={32} />
-                        <span>无参考图</span>
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
-
-                  {/* Right 2/3: Controls (Read Only) */}
-                  <div className="w-full lg:w-2/3 bg-white border border-slate-200 rounded-xl p-5 h-full overflow-y-auto custom-scrollbar pointer-events-none opacity-90">
-                    <StyleControls
-                      config={activeSession.globalConfig}
-                      onChange={() => {}}
-                      readOnly={true}
+                )}
+              </main>
+            ) : (
+              <main className="flex-1">
+                {/* Style Template Manager (Full View) */}
+                {viewMode === 'templates' && (
+                  <div className="flex-1 bg-slate-50 overflow-hidden flex flex-col h-[calc(100vh-64px)]">
+                    <StyleTemplateManager
+                      isOpen={true} // Full view mode is always open
+                      onClose={() => setViewMode('workbench')}
+                      onApplyTemplate={handleApplyTemplate}
+                      templates={styleTemplates}
+                      activeTemplateId={activeTemplateId || ""}
+                      initialEditingTemplateId={editingTemplateId}
+                      onClearEditingTemplateId={() => setEditingTemplateId(null)}
+                      favorites={favorites}
+                      onApplyFavorite={handleApplyPresetRequest}
+                      appSettings={appSettings}
+                      onShowToast={showToast}
+                      // Lifted States
+                      searchTerm={templateSearchTerm}
+                      setSearchQuery={setTemplateSearchTerm}
+                      activeTab={templateCategoryTab}
+                      setActiveTab={setTemplateCategoryTab}
+                      styleFilter={templateFilterStyle}
+                      setStyleFilter={setTemplateFilterStyle}
+                      ratioFilter={templateFilterRatio}
+                      setRatioFilter={setTemplateFilterRatio}
+                      paletteFilter={templateFilterPalette}
+                      setPaletteFilter={setTemplateFilterPalette}
+                      pageRangeFilter={templateFilterPageRange}
+                      setPageRangeFilter={setTemplateFilterPageRange}
+                      timeTypeFilter={templateFilterTimeType}
+                      setTimeTypeFilter={setTemplateFilterTimeType}
+                      startDateFilter={templateFilterStartDate}
+                      setStartDateFilter={setTemplateFilterStartDate}
+                      endDateFilter={templateFilterEndDate}
+                      setEndDateFilter={setTemplateFilterEndDate}
+                      timeFilter={templateFilterTime}
+                      setTimeFilter={setTemplateFilterTime}
+                      sortBy={templateSortBy}
+                      setSortBy={setTemplateSortBy as any}
+                      sortOrder={templateSortOrder}
+                      setSortOrder={setTemplateSortOrder}
                     />
                   </div>
-                </div>
+                )}
+              </main>
+            )
+          )}
 
-                {/* Bottom: Requirements */}
-                <div className="flex flex-col pointer-events-none opacity-90">
-                  <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
-                    <LinkIcon size={14} className="text-slate-500" />{" "}
-                    全局设计要求
-                  </h3>
-                  <textarea
-                    value={activeSession.globalConfig.requirements}
-                    readOnly
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none resize-none h-[140px]"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-5">
-              {activeSession.items.map((item, index) => (
-                <ResultCard
-                  key={item.id}
-                  item={item}
-                  index={index + 1}
-                  onViewImage={(url) => setLightboxImage(url)}
-                  readOnly={true}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-          </main>
-        )
-      )}
 
-      {/* Style Template Manager (Full View) */}
-      {viewMode === 'templates' && (
-        <div className="flex-1 bg-slate-50 overflow-hidden flex flex-col h-[calc(100vh-64px)]">
-           <StyleTemplateManager
-             isOpen={true} // Always open when in this view
-             onClose={() => setViewMode('workbench')} // Return to workbench on close
-             onApplyTemplate={(template) => {
-               handleApplyTemplate(template);
-             }}
-             templates={styleTemplates}
-             activeTemplateId={activeTemplateId}
-             initialEditingTemplateId={editingTemplateId}
-             onClearEditingTemplateId={() => setEditingTemplateId(null)}
-             favorites={favorites}
-             onApplyFavorite={handleApplyPresetRequest}
-             appSettings={appSettings}
-             onShowToast={showToast}
-           />
+          {/* Onboarding Guide */}
+          {showOnboarding && viewMode !== 'landing' && (
+            <OnboardingGuide
+              isOpen={showOnboarding}
+              onClose={() => setShowOnboarding(false)}
+            />
+          )}
         </div>
-      )}
 
-
-      {/* Onboarding Guide */}
-      {showOnboarding && viewMode !== 'landing' && (
-        <OnboardingGuide
-          isOpen={showOnboarding}
-          onClose={() => setShowOnboarding(false)}
-        />
-      )}
-    </div>
-
-      <StartProjectModal
-        isOpen={startProjectModalData.isOpen}
-        onClose={() => setStartProjectModalData(prev => ({ ...prev, isOpen: false }))}
-        project={startProjectModalData.project}
-        pendingItems={startProjectModalData.pendingItems}
-        onConfirmBatch={handleConfirmBatchStart}
-        onOpenProject={() => {
+        <StartProjectModal
+          isOpen={startProjectModalData.isOpen}
+          onClose={() => setStartProjectModalData(prev => ({ ...prev, isOpen: false }))}
+          project={startProjectModalData.project}
+          pendingItems={startProjectModalData.pendingItems}
+          onConfirmBatch={handleConfirmBatchStart}
+          onOpenProject={() => {
             if (startProjectModalData.project) {
-                handleOpenProject(startProjectModalData.project.id);
+              handleOpenProject(startProjectModalData.project.id);
             }
             setStartProjectModalData(prev => ({ ...prev, isOpen: false }));
-        }}
-      />
-    </ErrorBoundary>
+          }}
+        />
+      </ErrorBoundary >
 
-    </div>
+    </div >
   );
 }
 

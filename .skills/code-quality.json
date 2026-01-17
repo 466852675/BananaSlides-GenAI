@@ -1,0 +1,157 @@
+{
+  "name": "代码质量全面审查",
+  "description": "对 BananaSlides 项目进行全面的代码质量审查,包括类型检查、构建验证、依赖审计、安全检查和 API 测试",
+  "version": "1.0.0",
+  "author": "BananaSlides Team",
+  "category": "代码质量",
+  "icon": "🔍",
+  "steps": [
+    {
+      "id": "check_frontend_types",
+      "name": "前端类型检查",
+      "description": "使用 TypeScript 检查前端代码的类型错误",
+      "command": "npx tsc --noEmit",
+      "cwd": "${PROJECT_ROOT}",
+      "blocking": true,
+      "icon": "🎨",
+      "show_output": true
+    },
+    {
+      "id": "check_backend_types",
+      "name": "后端类型检查",
+      "description": "使用 TypeScript 检查后端代码的类型错误",
+      "command": "npx tsc --noEmit",
+      "cwd": "${PROJECT_ROOT}/server",
+      "blocking": true,
+      "icon": "🔧",
+      "show_output": true
+    },
+    {
+      "id": "build_frontend",
+      "name": "前端构建验证",
+      "description": "构建前端项目以确保所有依赖和配置正确",
+      "command": "npm run build",
+      "cwd": "${PROJECT_ROOT}",
+      "blocking": true,
+      "icon": "🏗️",
+      "show_output": true
+    },
+    {
+      "id": "build_backend",
+      "name": "后端构建验证",
+      "description": "构建后端项目以确保所有依赖和配置正确",
+      "command": "npm run build",
+      "cwd": "${PROJECT_ROOT}/server",
+      "blocking": true,
+      "icon": "⚙️",
+      "show_output": true
+    },
+    {
+      "id": "validate_prisma",
+      "name": "数据库模式验证",
+      "description": "验证 Prisma 数据库模型和迁移文件的正确性",
+      "command": "npx prisma validate",
+      "cwd": "${PROJECT_ROOT}/server",
+      "blocking": true,
+      "icon": "🗄️",
+      "show_output": true
+    },
+    {
+      "id": "format_prisma",
+      "name": "数据库格式化",
+      "description": "格式化 Prisma Schema 文件",
+      "command": "npx prisma format",
+      "cwd": "${PROJECT_ROOT}/server",
+      "blocking": true,
+      "icon": "✨",
+      "show_output": true
+    },
+    {
+      "id": "audit_frontend_deps",
+      "name": "前端依赖审计",
+      "description": "检查前端依赖包的安全漏洞",
+      "command": "npm audit --audit-level=moderate",
+      "cwd": "${PROJECT_ROOT}",
+      "blocking": true,
+      "icon": "📦",
+      "show_output": true
+    },
+    {
+      "id": "audit_backend_deps",
+      "name": "后端依赖审计",
+      "description": "检查后端依赖包的安全漏洞",
+      "command": "npm audit --audit-level=moderate",
+      "cwd": "${PROJECT_ROOT}/server",
+      "blocking": true,
+      "icon": "📦",
+      "show_output": true
+    },
+    {
+      "id": "check_api_endpoints",
+      "name": "API 端点测试",
+      "description": "测试关键 API 端点的可访问性",
+      "command": "node test_api.js",
+      "cwd": "${PROJECT_ROOT}/server",
+      "blocking": true,
+      "icon": "🌐",
+      "show_output": true,
+      "optional": true
+    },
+    {
+      "id": "check_consistency",
+      "name": "代码一致性检查",
+      "description": "检查前后端代码风格和命名规范的一致性",
+      "command": "node ../check_braces.py",
+      "cwd": "${PROJECT_ROOT}",
+      "blocking": true,
+      "icon": "📝",
+      "show_output": true,
+      "optional": true
+    }
+  ],
+  "success_message": "代码质量审查完成!\n\n审查结果:\n- ✅ 前端类型检查通过\n- ✅ 后端类型检查通过\n- ✅ 前端构建成功\n- ✅ 后端构建成功\n- ✅ 数据库模式验证通过\n- ✅ 依赖审计完成\n\n请查看详细输出以了解任何发现的问题。",
+  "error_message": "代码质量审查发现问题!\n\n请检查上述步骤的输出以了解具体问题。\n建议:\n1. 修复 TypeScript 类型错误\n2. 解决依赖安全问题\n3. 确保构建成功\n4. 验证数据库模式",
+  "report_output": "code-quality-report.txt",
+  "checklist": [
+    {
+      "category": "类型安全",
+      "items": [
+        "前端无 TypeScript 错误",
+        "后端无 TypeScript 错误",
+        "所有类型定义完整"
+      ]
+    },
+    {
+      "category": "构建验证",
+      "items": [
+        "前端构建成功",
+        "后端构建成功",
+        "无构建警告"
+      ]
+    },
+    {
+      "category": "数据库",
+      "items": [
+        "Prisma Schema 语法正确",
+        "迁移文件一致性",
+        "数据库模型关系正确"
+      ]
+    },
+    {
+      "category": "安全性",
+      "items": [
+        "无高危安全漏洞",
+        "依赖包版本更新",
+        "API Key 安全配置"
+      ]
+    },
+    {
+      "category": "代码规范",
+      "items": [
+        "命名规范一致",
+        "代码格式统一",
+        "注释清晰完整"
+      ]
+    }
+  ]
+}
