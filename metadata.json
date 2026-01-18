@@ -1,5 +1,0 @@
-{
-  "name": "BananaSlides-GenAI",
-  "description": "A Nano Banana powered PPT generator that transforms images into styled presentation slides.",
-  "requestFramePermissions": ["clipboard-read"]
-}

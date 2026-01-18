@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Rocket,
   Clock,
@@ -18,9 +19,165 @@ import {
   AlertCircle,
   Clock3,
   History,
-  Calendar
+  Calendar,
+  RefreshCcw,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  Check
 } from 'lucide-react';
 import { ProjectSession, ProjectStatus } from '../types';
+import { STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from '../constants';
+
+// --- Cascading Filter Component ---
+const CascadingFilter: React.FC<{
+  label: string;
+  value: string;
+  systemOptions: string[];
+  customOptions: string[];
+  onChange: (val: string) => void;
+  active: boolean;
+}> = ({ label, value, systemOptions, customOptions, onChange, active }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hoverCategory, setHoverCategory] = useState<'system' | 'custom'>('system');
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isOpen &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target as Node) &&
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    // Close on any scroll to prevent floating menu detachment
+    const handleScroll = () => {
+      if (isOpen) setIsOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', handleScroll, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [isOpen]);
+
+  const toggleOpen = () => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const dropdownMenu = (
+    <div
+      ref={menuRef}
+      className="fixed bg-white rounded-xl shadow-xl border border-slate-100 z-[9999] flex overflow-hidden min-w-[280px] animate-in fade-in zoom-in-95 duration-200"
+      style={{ top: position.top, left: position.left }}
+    >
+      {/* Level 1: Categories */}
+      <div className="w-28 bg-slate-50 border-r border-slate-100 py-2 flex flex-col">
+        <button
+          onMouseEnter={() => setHoverCategory('system')}
+          className={`text-left px-3 py-2 text-xs font-medium flex items-center justify-between ${hoverCategory === 'system' ? 'bg-white text-blue-600' : 'text-slate-600 hover:bg-slate-100/50'
+            }`}
+        >
+          <span>系统内置</span>
+          {hoverCategory === 'system' && <ChevronRight size={12} />}
+        </button>
+        <button
+          onMouseEnter={() => setHoverCategory('custom')}
+          className={`text-left px-3 py-2 text-xs font-medium flex items-center justify-between ${hoverCategory === 'custom' ? 'bg-white text-blue-600' : 'text-slate-600 hover:bg-slate-100/50'
+            }`}
+        >
+          <span>自定义</span>
+          {hoverCategory === 'custom' && <ChevronRight size={12} />}
+        </button>
+      </div>
+
+      {/* Level 2: Options */}
+      <div className="flex-1 py-2 max-h-[300px] overflow-y-auto min-w-[160px]">
+        <div className="px-2 pb-1 mb-1 border-b border-slate-50">
+          <span className="text-[10px] text-slate-400 font-bold px-2">
+            {hoverCategory === 'system' ? '系统预设' : '我的足迹'}
+          </span>
+        </div>
+
+        {hoverCategory === 'system' ? (
+          systemOptions.map(opt => (
+            <button
+              key={opt}
+              onClick={() => { onChange(opt); setIsOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 ${value === opt ? 'text-blue-600 font-bold bg-blue-50/50' : 'text-slate-600'
+                }`}
+            >
+              {opt}
+              {value === opt && <Check size={12} />}
+            </button>
+          ))
+        ) : (
+          customOptions.length > 0 ? customOptions.map(opt => (
+            <button
+              key={opt}
+              onClick={() => { onChange(opt); setIsOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 ${value === opt ? 'text-blue-600 font-bold bg-blue-50/50' : 'text-slate-600'
+                }`}
+            >
+              {opt}
+              {value === opt && <Check size={12} />}
+            </button>
+          )) : (
+            <div className="px-3 py-4 text-center text-xs text-slate-400">
+              暂无自定义记录
+            </div>
+          )
+        )}
+
+        {/* Clear Option */}
+        <div className="mt-2 pt-2 border-t border-slate-50 px-2">
+          <button
+            onClick={() => { onChange(""); setIsOpen(false); }}
+            className="w-full text-center py-1.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-md transition-colors"
+          >
+            清除筛选
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={buttonRef}
+        onClick={toggleOpen}
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all whitespace-nowrap ${active || isOpen
+          ? 'bg-blue-50 text-blue-600 border-blue-200'
+          : 'bg-slate-50 text-slate-600 border-transparent hover:bg-slate-100'
+          }`}
+      >
+        <span>{value || `所有${label}`}</span>
+        <ChevronDown size={12} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && createPortal(dropdownMenu, document.body)}
+    </div>
+  );
+};
 
 interface DashboardProps {
   projects: ProjectSession[];
@@ -33,21 +190,30 @@ interface DashboardProps {
   // Lifted Search State
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  // Lifted Filter States (Optional for now, but good to add for consistency)
+  // Lifted Filter States
   statusFilter?: ProjectStatus | 'all';
   setStatusFilter?: (status: ProjectStatus | 'all') => void;
-  progressFilter?: string; // Placeholder if needed
-  setProgressFilter?: (val: string) => void;
-  timeTypeFilter?: "lastModified" | "createdAt" | "priority";
-  setTimeTypeFilter?: (val: "lastModified" | "createdAt" | "priority") => void;
+
+  styleFilter?: string[];
+  setStyleFilter?: (val: string[]) => void;
+  ratioFilter?: string[];
+  setRatioFilter?: (val: string[]) => void;
+  paletteFilter?: string[];
+  setPaletteFilter?: (val: string[]) => void;
+
+  timeTypeFilter?: "lastModified" | "createdAt";
+  setTimeTypeFilter?: (val: "lastModified" | "createdAt") => void;
   startDateFilter?: string;
   setStartDateFilter?: (val: string) => void;
   endDateFilter?: string;
   setEndDateFilter?: (val: string) => void;
   timeFilter?: string;
   setTimeFilter?: (val: string) => void;
+
   sortBy?: 'createdAt' | 'lastModified' | 'progress';
   setSortBy?: (val: 'createdAt' | 'lastModified' | 'progress') => void;
+  sortOrder?: 'asc' | 'desc';
+  setSortOrder?: (val: 'asc' | 'desc') => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -60,13 +226,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onStartProject,
   searchQuery,
   setSearchQuery,
-  // Filters could be destructured here if implemented
+  statusFilter = 'all',
+  setStatusFilter,
+  styleFilter = [],
+  setStyleFilter,
+  ratioFilter = [],
+  setRatioFilter,
+  paletteFilter = [],
+  setPaletteFilter,
+  timeTypeFilter = 'lastModified',
+  setTimeTypeFilter,
+  startDateFilter,
+  setStartDateFilter,
+  endDateFilter,
+  setEndDateFilter,
+  timeFilter,
+  setTimeFilter,
+  sortBy = 'lastModified',
+  setSortBy,
+  sortOrder = 'desc',
+  setSortOrder
 }) => {
-  // const [searchQuery, setSearchQuery] = useState(''); // Removed internal state
-  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all'); // Keeping internal for now unless passed
-  const [methodFilter, setMethodFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'createdAt' | 'lastModified' | 'progress'>('createdAt');
+  // const [methodFilter, setMethodFilter] = useState<string>('all'); // Removed
   const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
+
+  // --- Derived Data for Filters ---
+  const styleTags = useMemo(() => Array.from(new Set(projects.map(p => p.globalConfig?.styleName).filter(Boolean))), [projects]);
+  const ratioTags = useMemo(() => Array.from(new Set(projects.map(p => p.globalConfig?.aspectRatio).filter(Boolean))), [projects]);
+  const paletteTags = useMemo(() => Array.from(new Set(projects.map(p => p.globalConfig?.colorPalette).filter(Boolean))), [projects]);
 
   // --- Helpers ---
   const timeAgo = (timestamp: number) => {
@@ -104,50 +291,43 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const activeProjectsCount = generatingProjects + pausedProjects + inProgressProjects + idleProjects;
 
     const projectCompletionRate = totalProjects > 0 ? Math.round((completedProjects / totalProjects) * 100) : 0;
+    const activeProjectTotal = generatingProjects + pausedProjects + inProgressProjects;
 
-    // --- Page Stats ---
-    const totalPages = projects.reduce((acc, p) => acc + p.items.length, 0);
-    const todayPlannedPages = projects
-      .filter(p => p.createdAt >= todayTimestamp)
-      .reduce((acc, p) => acc + p.items.length, 0);
-    const generatingPages = projects.reduce((acc, p) => acc + p.items.filter(i => i.status === 'generating').length, 0);
-    const successPages = projects.reduce((acc, p) => acc + p.items.filter(i => i.status === 'success').length, 0);
-    const todaySuccessPages = projects
-      .filter(p => p.createdAt >= todayTimestamp)
-      .reduce((acc, p) => acc + p.items.filter(i => i.status === 'success').length, 0);
-    const pageCompletionRate = todayPlannedPages > 0 ? Math.round((todaySuccessPages / todayPlannedPages) * 100) : 0;
+    // --- Page Stats (Deep Dive) ---
+    // Flatten all items from all projects
+    const allItems = projects.flatMap(p => p.items || []);
 
-    // --- Last Edited Project ---
-    const sortedByModified = [...projects].sort((a, b) => b.lastModified - a.lastModified);
-    const lastEditedProject = sortedByModified[0] || null;
+    const totalPages = allItems.length;
+    const successPages = allItems.filter(i => i.status === 'success').length;
 
-    // --- Efficiency Stats ---
-    let avgPageTime = 2.5; // Default fallback
-    if (completedProjects > 0) {
-      const completedList = projects.filter(p => p.status === 'completed');
-      const totalDurationMs = completedList.reduce((acc, p) => acc + (p.lastModified - p.createdAt), 0);
-      const totalCompletedPages = completedList.reduce((acc, p) => acc + p.items.length, 0);
-      if (totalCompletedPages > 0) {
-        // Minutes per page
-        avgPageTime = parseFloat(((totalDurationMs / 1000 / 60) / totalCompletedPages).toFixed(1));
-      }
-    }
+    // Today's Pages (Approximate: based on project creation OR item creation if tracked)
+    // Using project creation for simplicity as items don't always track separate dates in minimal view
+    const todayProjectItems = projects.filter(p => p.createdAt >= todayTimestamp).flatMap(p => p.items || []);
+    const todayPlannedPages = todayProjectItems.length;
+
+    // Calculate Average Page Generation Time (Mock or Real)
+    // Real logic would require start/end timestamps per page. 
+    // We can infer from project modification time / count? Rough estimate.
+    const avgPageTime = "0.5"; // Hardcoded for V1
+
+    // Find Last Edited
+    const lastEditedProject = [...projects].sort((a, b) => b.lastModified - a.lastModified)[0];
 
     return {
-      // Project
       totalProjects,
       todayProjects,
       generatingProjects,
       pausedProjects,
+      inProgressProjects,
+      idleProjects,
       completedProjects,
-      activeProjectsCount, // New
-      projectCompletionRate,
-      // Page
+      activeProjectsCount: activeProjectTotal,
+      // Page Level
       totalPages,
-      todayPlannedPages,
-      generatingPages,
       successPages,
-      pageCompletionRate,
+      todayPlannedPages,
+      // Derived rates
+      pageCompletionRate: totalPages > 0 ? Math.round((successPages / totalPages) * 100) : 0,
       // Efficiency
       avgPageTime,
       // Quick Resume
@@ -159,22 +339,83 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const filteredProjects = useMemo(() => {
     return projects
       .filter(p => {
+        // Exclude completed projects (they belong to History)
+        if (p.status === 'completed') return false;
+
         const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (p.styleTemplateId || '').toLowerCase().includes(searchQuery.toLowerCase());
+          (p.displayId || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          p.id.toLowerCase().includes(searchQuery.toLowerCase());
+
         const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
-        const matchesMethod = methodFilter === 'all' || (p.methods && p.methods.includes(methodFilter));
-        return matchesSearch && matchesStatus && matchesMethod;
+
+        // New Filters
+        const matchesStyle = styleFilter && styleFilter.length > 0
+          ? styleFilter.includes(p.globalConfig?.styleName!)
+          : true;
+        const matchesRatio = ratioFilter && ratioFilter.length > 0
+          ? ratioFilter.includes(p.globalConfig?.aspectRatio!)
+          : true;
+        const matchesPalette = paletteFilter && paletteFilter.length > 0
+          ? paletteFilter.includes(p.globalConfig?.colorPalette!)
+          : true;
+
+        // Time Filtering
+        const timestamp = timeTypeFilter === 'createdAt' ? p.createdAt : p.lastModified;
+
+        const matchesTime = (() => {
+          if (!timeFilter) return true;
+          const now = Date.now();
+          const diff = now - (timestamp || 0);
+          const ONE_DAY = 24 * 60 * 60 * 1000;
+          if (timeFilter === "24h") return diff <= ONE_DAY;
+          if (timeFilter === "7d") return diff <= 7 * ONE_DAY;
+          if (timeFilter === "30d") return diff <= 30 * ONE_DAY;
+          return true;
+        })();
+
+        const matchesDateRange = (() => {
+          if (!startDateFilter && !endDateFilter) return true;
+          const t = timestamp || 0;
+          if (startDateFilter && t < new Date(startDateFilter).getTime()) return false;
+          // End date should include the whole day, so add 24h - 1ms
+          if (endDateFilter && t > new Date(endDateFilter).getTime() + 86400000) return false;
+          return true;
+        })();
+
+        return matchesSearch && matchesStatus && matchesStyle && matchesRatio && matchesPalette && matchesTime && matchesDateRange;
       })
       .sort((a, b) => {
-        // Pin priority
+        // Pin priority (Always pinned first)
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
 
+        let res = 0;
         // Secondary sort
-        if (sortBy === 'progress') return b.progress - a.progress;
-        return b[sortBy] - a[sortBy];
+        if (sortBy === 'progress') res = b.progress - a.progress;
+        else res = (b[sortBy!] as number) - (a[sortBy!] as number);
+
+        return sortOrder === 'desc' ? res : -res;
       });
-  }, [projects, searchQuery, statusFilter, sortBy]);
+  }, [
+    projects, searchQuery, statusFilter,
+    styleFilter, ratioFilter, paletteFilter,
+    timeTypeFilter, timeFilter, startDateFilter, endDateFilter,
+    sortBy, sortOrder
+  ]);
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    if (setStatusFilter) setStatusFilter('all');
+    if (setStyleFilter) setStyleFilter([]);
+    if (setRatioFilter) setRatioFilter([]);
+    if (setPaletteFilter) setPaletteFilter([]);
+    if (setTimeTypeFilter) setTimeTypeFilter("lastModified");
+    if (setTimeFilter) setTimeFilter("");
+    if (setStartDateFilter) setStartDateFilter("");
+    if (setEndDateFilter) setEndDateFilter("");
+    if (setSortBy) setSortBy("lastModified");
+    if (setSortOrder) setSortOrder("desc");
+  };
 
   return (
     <div className="flex-1 bg-[#f8fafc] overflow-y-hidden">
@@ -182,7 +423,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* --- Advanced Dimension Analytics Bar --- */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
-          <div className="flex items-center justify-between gap-6 overflow-x-auto no-scrollbar">
+          {/* (Keeping Analytics UI as is) */}
+          <div className="flex items-center justify-between gap-6 overflow-hidden">
             {/* 1. Cumulative (Highlighted) */}
             <div className="flex items-center gap-4 shrink-0">
               <div className="p-3 bg-blue-50 rounded-2xl text-blue-500">
@@ -331,63 +573,191 @@ export const Dashboard: React.FC<DashboardProps> = ({
           `}} />
         </div>
 
-        {/* --- Search & Filter Bar --- */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap items-center gap-4">
-          <div className="relative flex-1 min-w-[300px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        {/* --- Search & Filter Toolbar (Compact) --- */}
+        <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200/60 flex flex-nowrap items-center gap-2 sticky top-[80px] z-30 transition-all overflow-x-auto no-scrollbar">
+
+          {/* 1. Search (Expanded) */}
+          <div className="relative flex-1 min-w-[240px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             <input
               type="text"
-              placeholder="搜索项目标题或风格模板..."
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all"
+              placeholder="搜索项目名称或ID..."
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-blue-200 rounded-xl text-xs transition-all outline-none"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 md:pb-0">
-            <Filter size={16} className="text-slate-400 shrink-0" />
-            <FilterChip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>全部</FilterChip>
-            <FilterChip active={statusFilter === 'idle'} onClick={() => setStatusFilter('idle')}>未开始</FilterChip>
-            <FilterChip active={statusFilter === 'in-progress'} onClick={() => setStatusFilter('in-progress')}>进行中</FilterChip>
-            <FilterChip active={statusFilter === 'generating'} onClick={() => setStatusFilter('generating')}>生成中</FilterChip>
-            <FilterChip active={statusFilter === 'error'} onClick={() => setStatusFilter('error')}>生成失败</FilterChip>
+          {/* Spacer replaced by margin */}
 
-            <div className="h-4 w-px bg-slate-200 mx-2" />
+          {/* 2. Filters (Cascading & Standard) */}
+          <div className="flex items-center gap-1.5 overflow-visible">
+            {/* Status (Standard Select) */}
+            <div className="relative">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter && setStatusFilter(e.target.value as any)}
+                className={`appearance-none bg-slate-50 hover:bg-slate-100 border border-transparent hover:border-slate-200 rounded-lg py-1.5 pl-2.5 pr-6 text-xs font-medium text-slate-600 outline-none cursor-pointer transition-all ${statusFilter !== 'all' ? 'text-blue-600 font-bold bg-blue-50 border-blue-100' : ''
+                  }`}
+              >
+                <option value="all">所有状态</option>
+                <option value="idle">未开始</option>
+                <option value="in-progress">进行中</option>
+                <option value="generating">生成中</option>
+                <option value="error">失败</option>
+              </select>
+              <Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
 
-            <FilterChip active={methodFilter === 'all'} onClick={() => setMethodFilter('all')}>所有方式</FilterChip>
-            <FilterChip active={methodFilter === 'text'} onClick={() => setMethodFilter('text')}>📝 文本</FilterChip>
-            <FilterChip active={methodFilter === 'image'} onClick={() => setMethodFilter('image')}>🖼️ 图片</FilterChip>
-            <FilterChip active={methodFilter === 'file'} onClick={() => setMethodFilter('file')}>📄 文件</FilterChip>
+            {/* Style Cascading */}
+            <CascadingFilter
+              label="风格"
+              value={styleFilter?.[0] || ""}
+              active={!!(styleFilter && styleFilter.length > 0)}
+              systemOptions={STYLE_PRESETS}
+              customOptions={styleTags.filter(t => !STYLE_PRESETS.includes(t!)) as string[]}
+              onChange={(val) => setStyleFilter && setStyleFilter(val ? [val] : [])}
+            />
+
+            {/* Ratio */}
+            <div className="relative">
+              <select
+                value={ratioFilter?.[0] || ""}
+                onChange={(e) => setRatioFilter && setRatioFilter(e.target.value ? [e.target.value] : [])}
+                className={`appearance-none bg-slate-50 hover:bg-slate-100 border border-transparent hover:border-slate-200 rounded-lg py-1.5 pl-2.5 pr-6 text-xs font-medium text-slate-600 outline-none cursor-pointer transition-all ${ratioFilter && ratioFilter.length > 0 ? 'text-blue-600 font-bold bg-blue-50 border-blue-100' : ''
+                  }`}
+              >
+                <option value="">所有比例</option>
+                {RATIO_PRESETS.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+              <Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+
+            {/* Palette Cascading */}
+            <CascadingFilter
+              label="配色"
+              value={paletteFilter?.[0] || ""}
+              active={!!(paletteFilter && paletteFilter.length > 0)}
+              systemOptions={COLOR_PRESETS}
+              customOptions={paletteTags.filter(t => !COLOR_PRESETS.includes(t!)) as string[]}
+              onChange={(val) => setPaletteFilter && setPaletteFilter(val ? [val] : [])}
+            />
+
+            <div className="w-px h-4 bg-slate-200 mx-0.5" />
+
+            {/* Combined Time Controls */}
+            <div className="flex items-center gap-1 bg-slate-50 rounded-lg p-0.5 border border-slate-100 shrink-0">
+              {/* Time Basis */}
+              <select
+                value={timeTypeFilter || "lastModified"}
+                onChange={(e) => setTimeTypeFilter && setTimeTypeFilter(e.target.value as any)}
+                className="bg-transparent text-[10px] font-bold text-slate-500 hover:text-blue-600 outline-none cursor-pointer pl-2 pr-1"
+              >
+                <option value="lastModified">活跃</option>
+                <option value="createdAt">创建</option>
+              </select>
+
+              <div className="w-px h-3 bg-slate-200" />
+
+              {/* Time Range */}
+              <div className="relative">
+                <select
+                  value={timeFilter || ""}
+                  onChange={(e) => {
+                    if (setTimeFilter) setTimeFilter(e.target.value);
+                    if (e.target.value !== 'custom') {
+                      if (setStartDateFilter) setStartDateFilter("");
+                      if (setEndDateFilter) setEndDateFilter("");
+                    }
+                  }}
+                  className={`appearance-none bg-transparent py-1 pl-2 pr-5 text-xs font-medium text-slate-600 outline-none cursor-pointer transition-all ${timeFilter ? 'text-blue-600 font-bold' : ''
+                    }`}
+                >
+                  <option value="">全部时间</option>
+                  <option value="24h">24H</option>
+                  <option value="7d">7天</option>
+                  <option value="30d">30天</option>
+                  <option value="custom">自定义</option>
+                </select>
+                <Calendar size={10} className="absolute right-0.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* Custom Date Inputs (Always Visible for Stability) */}
+              <div className={`flex items-center gap-1 transition-all duration-200 shrink-0 ${timeFilter === 'custom' ? 'opacity-100' : 'opacity-40 pointer-events-none grayscale'}`}>
+                <div className="w-px h-3 bg-slate-200 mx-0.5" />
+                <input
+                  type="date"
+                  value={startDateFilter || ""}
+                  disabled={timeFilter !== 'custom'}
+                  onChange={(e) => setStartDateFilter && setStartDateFilter(e.target.value)}
+                  className="w-[105px] px-2 py-1 bg-white border border-slate-200 rounded-md text-[10px] text-slate-600 outline-none focus:border-blue-300 focus:ring-1 transition-all font-mono disabled:bg-slate-50"
+                  placeholder="开始"
+                />
+                <span className="text-slate-300 transform -translate-y-px">-</span>
+                <input
+                  type="date"
+                  value={endDateFilter || ""}
+                  disabled={timeFilter !== 'custom'}
+                  onChange={(e) => setEndDateFilter && setEndDateFilter(e.target.value)}
+                  className="w-[105px] px-2 py-1 bg-white border border-slate-200 rounded-md text-[10px] text-slate-600 outline-none focus:border-blue-300 focus:ring-1 transition-all font-mono disabled:bg-slate-50"
+                  placeholder="结束"
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="h-8 w-px bg-slate-100 hidden md:block" />
 
-          <div className="flex items-center gap-3 shrink-0">
-            <select
-              className="text-sm bg-slate-50 border-none rounded-xl py-2 pl-3 pr-8 focus:ring-2 focus:ring-blue-500/20"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+          {/* 3. Sort & Actions */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="relative group hidden xl:block">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy && setSortBy(e.target.value as any)}
+                className="appearance-none bg-transparent hover:bg-slate-50 rounded-lg py-1.5 pl-2 pr-2 text-xs font-bold text-slate-500 hover:text-slate-700 outline-none cursor-pointer transition-all text-left"
+              >
+                <option value="lastModified">按活跃</option>
+                <option value="createdAt">按创建</option>
+                <option value="progress">按进度</option>
+              </select>
+            </div>
+
+            <button
+              onClick={() => setSortOrder && setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-all"
+              title={sortOrder === 'asc' ? "升序" : "降序"}
             >
-              <option value="lastModified">最后活跃</option>
-              <option value="createdAt">创建时间</option>
-              <option value="progress">完成进度</option>
-            </select>
+              <ArrowUpDown size={14} className={sortOrder === 'asc' ? "rotate-180" : ""} />
+            </button>
+
+            <button
+              onClick={handleResetFilters}
+              className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-lg transition-all"
+              title="重置"
+            >
+              <RefreshCcw size={14} />
+            </button>
+
+            <div className="w-px h-4 bg-slate-200 mx-1" />
+
             <button
               onClick={onCreateProject}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs md:text-sm font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all whitespace-nowrap"
             >
-              <Plus size={18} />
-              创建项目
+              <Plus size={16} strokeWidth={2.5} />
+              <span className="hidden md:inline">新建项目</span>
+              <span className="md:hidden">新建</span>
             </button>
           </div>
         </div>
 
         {/* --- Project Grid (Active) --- */}
         {filteredProjects.length > 0 ? (
-          <div className="space-y-12 pb-20">
+          <div className="space-y-12 pb-20 w-full">
             {/* Non-Completed Projects Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProjects.filter(p => p.status !== 'completed').map(project => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full">
+              {filteredProjects.filter(p => true).map(project => (
                 <ProjectCard
                   key={project.id}
                   project={project}
@@ -482,9 +852,10 @@ const ProjectCard: React.FC<{
   }, [project.items]);
 
   const isGenerating = project.status === 'generating';
+  const [thumbPage, setThumbPage] = useState(0);
 
   return (
-    <div className={`bg-white rounded-3xl overflow-hidden border transition-all group relative ${project.isPinned ? 'border-blue-200 shadow-md ring-1 ring-blue-50' : 'border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100'
+    <div className={`bg-white rounded-3xl overflow-hidden border transition-all group relative flex flex-col h-full ${project.isPinned ? 'border-blue-200 shadow-md ring-1 ring-blue-50' : 'border-slate-100 shadow-sm hover:shadow-xl hover:border-blue-100'
       }`}>
       {/* Pin Icon */}
       <button
@@ -496,7 +867,7 @@ const ProjectCard: React.FC<{
       </button>
 
       {/* Main Content Area */}
-      <div className="p-5" onClick={onOpen}>
+      <div className="p-5 flex-1" onClick={onOpen}>
         <div className="flex gap-4 mb-4">
           <div className="w-16 h-12 bg-slate-100 rounded-xl overflow-hidden shrink-0 flex items-center justify-center border border-slate-50">
             {project.thumbnailUrl ? (
@@ -573,21 +944,56 @@ const ProjectCard: React.FC<{
           </div>
         </div>
 
-        {/* Filmstrip View (Preview of generated slides) */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 -mx-1">
-          {project.items.slice(0, 5).map((item, idx) => (
-            <div key={item.id} className="w-12 h-8 rounded-lg bg-slate-50 border border-slate-100 overflow-hidden shrink-0 flex items-center justify-center shadow-sm">
-              {item.previewUrl ? (
-                <img src={item.previewUrl} className="w-full h-full object-cover" alt={`page ${idx}`} />
-              ) : (
-                <Clock3 size={12} className="text-slate-300" />
-              )}
-            </div>
-          ))}
+        {/* Filmstrip View (Paginated) */}
+        <div className="relative group/filmstrip">
+          <div className="flex gap-2 overflow-hidden py-2 -mx-1 px-1">
+            {project.items.slice(thumbPage * 5, (thumbPage + 1) * 5).map((item, idx) => {
+              const itemThumb = (item.variants && item.variants.length > 0) ? item.variants[0] : item.previewUrl;
+              return (
+                <div key={item.id} className="relative w-12 h-8 rounded-lg bg-slate-50 border border-slate-100 overflow-hidden shrink-0 flex items-center justify-center shadow-sm group/thumb">
+                  {itemThumb ? (
+                    <img src={itemThumb} className="w-full h-full object-cover" alt={`page ${idx}`} />
+                  ) : (
+                    <Clock3 size={12} className="text-slate-300" />
+                  )}
+                  {/* Page Type Badge */}
+                  <div className="absolute bottom-0 right-0 bg-black/60 backdrop-blur-[1px] px-1 rounded-tl-md">
+                    <span className="text-[8px] font-bold text-white leading-none block py-0.5">
+                      {item.pageType === 'cover' ? '封' :
+                        item.pageType === 'directory' ? '目' :
+                          item.pageType === 'transition' ? '转' :
+                            item.pageType === 'end' ? '结' : '文'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            {/* Placeholder for empty slots to maintain height if needed, usually not with flex */}
+          </div>
+
+          {/* Pagination Controls - Overlay */}
           {project.items.length > 5 && (
-            <div className="w-12 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
-              <span className="text-[10px] font-bold text-slate-400">+{project.items.length - 5}</span>
-            </div>
+            <>
+              {thumbPage > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setThumbPage(p => p - 1); }}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-6 h-6 bg-white/90 shadow-md border border-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:text-blue-600 hover:scale-110 transition-all z-20 opacity-0 group-hover/filmstrip:opacity-100"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+              )}
+              {(thumbPage + 1) * 5 < project.items.length && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setThumbPage(p => p + 1); }}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-6 bg-white/90 shadow-md border border-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:text-blue-600 hover:scale-110 transition-all z-20 opacity-0 group-hover/filmstrip:opacity-100"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              )}
+              {/* Page Indicator (Optional - tiny dots?) - Maybe not needed for simple prev/next */}
+            </>
           )}
         </div>
       </div>

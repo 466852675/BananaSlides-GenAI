@@ -113,11 +113,10 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
               e.stopPropagation();
               onToggleFavorite();
             }}
-            className={`absolute top-2 right-12 z-20 p-1.5 rounded-full backdrop-blur-md transition-all shadow-sm ${
-              isFavorite
-                ? "bg-rose-500/90 text-white hover:bg-rose-600"
-                : "bg-white/40 text-white hover:bg-white hover:text-rose-500"
-            }`}
+            className={`absolute top-2 right-12 z-20 p-1.5 rounded-full backdrop-blur-md transition-all shadow-sm ${isFavorite
+              ? "bg-rose-500/90 text-white hover:bg-rose-600"
+              : "bg-white/40 text-white hover:bg-white hover:text-rose-500"
+              }`}
             title={isFavorite ? "取消收藏" : "收藏风格"}
           >
             <Heart size={14} fill={isFavorite ? "currentColor" : "none"} />
@@ -138,6 +137,7 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
       <div className="p-4 pb-20 flex-1 flex flex-col space-y-3 relative">
         {/* Title & Metadata */}
         <div>
+          <div className="text-[10px] font-mono text-slate-400 mb-0.5 select-all">{item.id}</div>
           <h4
             className="font-bold text-slate-800 text-sm truncate mb-1"
             title={item.name}
@@ -151,17 +151,31 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
             <span className="bg-slate-100 px-1.5 py-0.5 rounded">
             </span>
             <div className="w-px h-3 bg-slate-200"></div>
-            <span className="flex items-center gap-1">
-               <Clock size={10} /> {new Date(item.createdAt).toLocaleString('zh-CN', { 
-                  year: 'numeric', 
-                  month: '2-digit', 
-                  day: '2-digit', 
-                  hour: '2-digit', 
-                  minute: '2-digit', 
+            {variant === 'favorites' ? (
+              <div className="flex flex-col gap-0.5">
+                <span className="flex items-center gap-1">
+                  <Clock size={10} className="text-slate-300" /> 创建: {new Date(('templateCreatedAt' in item ? item.templateCreatedAt : undefined) || item.createdAt).toLocaleDateString()}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock size={10} className="text-slate-300" /> 更新: {new Date(('templateUpdatedAt' in item ? item.templateUpdatedAt : undefined) || ('updatedAt' in item ? (item as any).updatedAt : undefined) || item.createdAt).toLocaleDateString()}
+                </span>
+                <span className="flex items-center gap-1 text-rose-400 font-medium">
+                  <Heart size={10} /> 收藏: {new Date(item.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+            ) : (
+              <span className="flex items-center gap-1">
+                <Clock size={10} /> {new Date(item.createdAt).toLocaleString('zh-CN', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
                   second: '2-digit',
-                  hour12: false 
-               }).replace(/\//g, '-')}
-            </span>
+                  hour12: false
+                }).replace(/\//g, '-')}
+              </span>
+            )}
           </div>
         </div>
 
@@ -241,11 +255,10 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
                   if (!isActive) onApply(item);
                 }}
                 disabled={isActive}
-                className={`flex-1 flex justify-center items-center py-2 rounded-xl text-xs font-bold transition-all ${
-                  isActive
-                    ? "bg-green-100 text-green-700 border border-green-200 cursor-default"
-                    : "bg-indigo-50 border border-indigo-100 text-indigo-600 hover:bg-indigo-100 hover:border-indigo-200"
-                }`}
+                className={`flex-1 flex justify-center items-center py-2 rounded-xl text-xs font-bold transition-all ${isActive
+                  ? "bg-green-100 text-green-700 border border-green-200 cursor-default"
+                  : "bg-indigo-50 border border-indigo-100 text-indigo-600 hover:bg-indigo-100 hover:border-indigo-200"
+                  }`}
               >
                 {isActive ? (
                   <>

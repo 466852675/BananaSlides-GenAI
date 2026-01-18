@@ -3,7 +3,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export class ProjectService {
-    
+
     // Helper: Generate Display ID (PID-YYMMDD-XXXXXX)
     private generateDisplayId(): string {
         const date = new Date();
@@ -11,10 +11,10 @@ export class ProjectService {
         const mm = (date.getMonth() + 1).toString().padStart(2, '0');
         const dd = date.getDate().toString().padStart(2, '0');
         const timestamp = `${yy}${mm}${dd}`;
-        
+
         // 6-char Random Hex
         const randomHex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0').toUpperCase();
-        
+
         return `PID-${timestamp}-${randomHex}`;
     }
 
@@ -22,8 +22,8 @@ export class ProjectService {
     async findAll() {
         const projects = await prisma.project.findMany({
             orderBy: { updatedAt: 'desc' },
-            include: { 
-                items: { 
+            include: {
+                items: {
                     orderBy: { index: 'asc' }
                     // Removed 'take: 5' - we need all items for accurate progress calculation
                 }
@@ -36,7 +36,7 @@ export class ProjectService {
             if (!p.displayId) {
                 const newId = this.generateDisplayId();
                 p.displayId = newId; // Update in-memory object
-                
+
                 // Update in DB (fire and forget or wait)
                 migrations.push(prisma.project.update({
                     where: { id: p.id },
@@ -56,10 +56,10 @@ export class ProjectService {
     async findById(id: string) {
         return prisma.project.findUnique({
             where: { id },
-            include: { 
-                items: { 
-                    orderBy: { index: 'asc' } 
-                } 
+            include: {
+                items: {
+                    orderBy: { index: 'asc' }
+                }
             }
         });
     }
@@ -72,7 +72,7 @@ export class ProjectService {
                 displayId: this.generateDisplayId()
             },
             include: {
-                 items: true
+                items: true
             }
         });
     }
@@ -85,15 +85,13 @@ export class ProjectService {
         });
     }
 
-    // Set Pinned Status (Bypass @updatedAt)
+    // Set Pinned Status
     async setPinnedStatus(id: string, isPinned: boolean) {
-        // Use executeRaw to update isPinned strictly, avoiding the automatic @updatedAt trigger
-        // Note: SQLite uses 0/1 for booleans
-        const pinnedVal = isPinned ? 1 : 0;
-        await prisma.$executeRaw`UPDATE Project SET isPinned = ${pinnedVal} WHERE id = ${id}`;
-        
-        // Return the updated project for consistency
-        return this.findById(id);
+        // Use standard Prisma update to ensure compatibility (avoids table name issues)
+        return prisma.project.update({
+            where: { id },
+            data: { isPinned }
+        });
     }
 
     // Sync Slides (Update or create slides, preserving IDs)
@@ -105,10 +103,10 @@ export class ProjectService {
                 where: { projectId },
                 select: { id: true }
             });
-            
+
             const existingIds = new Set(existingSlides.map(s => s.id));
             const incomingIds = new Set(slides.map(s => s.id).filter(Boolean));
-            
+
             // Delete slides that are no longer in the incoming data
             const idsToDelete = [...existingIds].filter(id => !incomingIds.has(id));
             if (idsToDelete.length > 0) {

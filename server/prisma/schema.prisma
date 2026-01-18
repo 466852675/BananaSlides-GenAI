@@ -73,17 +73,23 @@ model Slide {
 }
 
 model StyleTemplate {
-  id        String   @id @default(uuid())
-  name      String
-  config    String   // JSON StyleConfig
-  styleMap  String?  // JSON GlobalStyleMap
-  isCustom  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(uuid())
+  name           String
+  config         String   // JSON StyleConfig
+  styleMap       String?  // JSON GlobalStyleMap
+  isCustom       Boolean  @default(true)
+  isOfficial     Boolean  @default(false)
+  isRecommended  Boolean  @default(false)
+  usageCount     Int      @default(0)
+  favoriteCount  Int      @default(0)
+  recommendCount Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Favorite {
   id           String   @id @default(uuid())
+  templateId   String?  // 关联的模版 ID（可选，用于判断收藏状态）
   name         String
   config       String   // JSON StyleConfig
   styleMap     String?  // JSON GlobalStyleMap

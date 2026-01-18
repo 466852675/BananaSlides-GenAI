@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import uploadRoutes from './routes/upload.routes';
 import projectRoutes from './routes/project.routes';
 import snapshotRoutes from './routes/snapshot.routes';
@@ -45,10 +46,27 @@ app.use('/api/settings', settingRoutes);
 
 import { SettingService } from './services/setting.service';
 
-app.listen(port, async () => {
+// Watch for .env changes (Hot Reload)
+const envPath = path.join(process.cwd(), '.env');
+if (fs.existsSync(envPath)) {
+    console.log(`[App] Watching for .env changes at: ${envPath}`);
+    let fsWait: NodeJS.Timeout | null = null;
+    fs.watch(envPath, (event: string, filename: string | Buffer | null) => {
+        if (filename && event === 'change') {
+            if (fsWait) return;
+            fsWait = setTimeout(async () => {
+                fsWait = null;
+                console.log(`[App] Detected change in .env, reloading...`);
+                await SettingService.reloadEnv();
+            }, 500); // 500ms Debounce (increased to reduce excessive reloads)
+        }
+    });
+}
+
+const server = app.listen(port, async () => {
     console.log(`BananaSlides Server running at http://localhost:${port}`);
     console.log(`Uploads Directory: ${uploadDir}`);
-    
+
     // Sync Env Settings to DB on Startup
     try {
         await SettingService.syncEnvToDatabase();
@@ -62,6 +80,19 @@ app.listen(port, async () => {
     - GET /api/projects
     - POST /api/doc-parser/parse
     - /api/projects/:id/snapshots`);
+});
+
+server.on('error', (err) => {
+    console.error('[App] Server encountered an error:', err);
+});
+
+// Global Error Handlers
+process.on('uncaughtException', (err) => {
+    console.error('[App] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[App] Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 export default app;

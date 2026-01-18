@@ -22,3 +22,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files
+.env
+.env.*
+!*.example
+
+# Database (SQLite)
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+server/prisma/dev.db
+
+# Uploads
+server/uploads/*
+!server/uploads/.gitkeep

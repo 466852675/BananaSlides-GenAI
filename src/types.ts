@@ -47,6 +47,7 @@ export interface GenerationRequest {
 
 export interface StylePreset {
   id: string;
+  templateId?: string; // 关联的模版 ID
   name: string;
   config: StyleConfig;
   styleMap?: GlobalStyleMap; // Updated to store map
@@ -54,6 +55,8 @@ export interface StylePreset {
   styleFile?: StoredResource | null;
   sampleImages?: string[];
   createdAt: number;
+  templateCreatedAt?: number; // New: Original template creation time
+  templateUpdatedAt?: number; // New: Original template update time
 }
 
 export type ProjectStatus = 'idle' | 'in-progress' | 'generating' | 'paused' | 'completed' | 'error';
@@ -88,6 +91,8 @@ export interface StyleTemplate {
   usageCount?: number;
   favoriteCount?: number;
   recommendCount?: number;
+  updatedAt?: number;
+  recommendedAt?: number; // New: Time when recommended
 }
 
 export interface OutlineItem {

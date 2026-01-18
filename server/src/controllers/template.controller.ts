@@ -54,12 +54,17 @@ export const createTemplate = async (req: Request, res: Response) => {
 export const updateTemplate = async (req: Request, res: Response) => {
     try {
         const id = req.params.id as string;
-        const { name, config, styleMap } = req.body;
-        
+        const { name, config, styleMap, isRecommended, recommendCount, favoriteCount, usageCount, isOfficial } = req.body;
+
         const updateData: any = {};
         if (name !== undefined) updateData.name = name;
         if (config !== undefined) updateData.config = safeJSONStringify(config);
         if (styleMap !== undefined) updateData.styleMap = safeJSONStringify(styleMap);
+        if (isRecommended !== undefined) updateData.isRecommended = isRecommended;
+        if (recommendCount !== undefined) updateData.recommendCount = recommendCount;
+        if (favoriteCount !== undefined) updateData.favoriteCount = favoriteCount;
+        if (usageCount !== undefined) updateData.usageCount = usageCount;
+        if (isOfficial !== undefined) updateData.isOfficial = isOfficial;
 
         const result = await templateService.update(id, updateData);
         res.json(transformTemplateOut(result));

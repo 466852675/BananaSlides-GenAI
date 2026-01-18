@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, ClipboardEvent } from "react";
+import { createPortal } from 'react-dom';
 import {
   Wand2,
   LayoutGrid,
@@ -39,8 +40,10 @@ import {
   FileDigit,
   ZoomIn,
   Clock,
+  Clock3,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   CornerDownRight,
   Settings,
   BookTemplate,
@@ -57,10 +60,12 @@ import {
 import { ImageUploader } from "./components/ImageUploader";
 import {
   StyleControls,
+} from "./components/StyleControls";
+import {
   STYLE_PRESETS,
   COLOR_PRESETS,
   RATIO_PRESETS,
-} from "./components/StyleControls";
+} from "./constants";
 import { ResultCard } from "./components/ResultCard";
 import {
   StyleConfig,
@@ -94,7 +99,8 @@ import {
 } from "./services/exportService";
 import { Dashboard } from "./components/Dashboard";
 import { OnboardingGuide } from "./components/OnboardingGuide";
-import { StyleTemplateManager } from "./components/StyleTemplateManager";
+import { StyleTemplateManager, FilterTag } from "./components/StyleTemplateManager";
+import { StyleTemplateEditor } from './components/StyleTemplateEditor';
 import { CreateProjectModal } from "./components/CreateProjectModal";
 import { SharedStyleCard } from "./components/SharedStyleCard";
 import LandingPage from "./components/LandingPage";
@@ -113,6 +119,22 @@ import { StartProjectModal } from "./components/StartProjectModal";
 import { generateId } from "./utils";
 
 // --- Constants ---
+const DEFAULT_STYLE_CONFIG: StyleConfig = {
+  styleName: "",
+  aspectRatio: "16:9",
+  colorPalette: "",
+  targetPageCount: 10,
+  pageStructure: {
+    cover: 1,
+    directory: 1,
+    transition: 2,
+    content: 5,
+    end: 1,
+  },
+  defaultVariantCount: 4,
+  requirements: "",
+};
+
 const SETTINGS_STORAGE_KEY = "bananaslides_global_settings_v1";
 const PROJECTS_STORAGE_KEY = "bananaslides_projects_v1";
 const TEMPLATES_STORAGE_KEY = "bananaslides_templates_v1";
@@ -277,6 +299,349 @@ const Modal: React.FC<ModalProps> = ({
   );
 };
 
+// --- Cascading Filter Component (Duplicated from Dashboard for isolation) ---
+const CascadingFilter: React.FC<{
+  label: string;
+  value: string;
+  systemOptions: string[];
+  customOptions: string[];
+  onChange: (val: string) => void;
+  active: boolean;
+}> = ({ label, value, systemOptions, customOptions, onChange, active }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hoverCategory, setHoverCategory] = useState<'system' | 'custom'>('system');
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isOpen &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target as Node) &&
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+
+    // Close on any scroll
+    const handleScroll = () => {
+      if (isOpen) setIsOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', handleScroll, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [isOpen]);
+
+  const toggleOpen = () => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const dropdownMenu = (
+    <div
+      ref={menuRef}
+      className="fixed bg-white rounded-xl shadow-xl border border-slate-100 z-[9999] flex overflow-hidden min-w-[280px] animate-in fade-in zoom-in-95 duration-200"
+      style={{ top: position.top, left: position.left }}
+    >
+      {/* Level 1: Categories */}
+      <div className="w-28 bg-slate-50 border-r border-slate-100 py-2 flex flex-col">
+        <button
+          onMouseEnter={() => setHoverCategory('system')}
+          className={`text-left px-3 py-2 text-xs font-medium flex items-center justify-between ${hoverCategory === 'system' ? 'bg-white text-blue-600' : 'text-slate-600 hover:bg-slate-100/50'
+            }`}
+        >
+          <span>系统内置</span>
+          {hoverCategory === 'system' && <ChevronRight size={12} />}
+        </button>
+        <button
+          onMouseEnter={() => setHoverCategory('custom')}
+          className={`text-left px-3 py-2 text-xs font-medium flex items-center justify-between ${hoverCategory === 'custom' ? 'bg-white text-blue-600' : 'text-slate-600 hover:bg-slate-100/50'
+            }`}
+        >
+          <span>自定义</span>
+          {hoverCategory === 'custom' && <ChevronRight size={12} />}
+        </button>
+      </div>
+
+      {/* Level 2: Options */}
+      <div className="flex-1 py-2 max-h-[300px] overflow-y-auto min-w-[160px]">
+        <div className="px-2 pb-1 mb-1 border-b border-slate-50">
+          <span className="text-[10px] text-slate-400 font-bold px-2">
+            {hoverCategory === 'system' ? '系统预设' : '我的足迹'}
+          </span>
+        </div>
+
+        {hoverCategory === 'system' ? (
+          systemOptions.map(opt => (
+            <button
+              key={opt}
+              onClick={() => { onChange(opt); setIsOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 ${value === opt ? 'text-blue-600 font-bold bg-blue-50/50' : 'text-slate-600'
+                }`}
+            >
+              {opt}
+              {value === opt && <Check size={12} />}
+            </button>
+          ))
+        ) : (
+          customOptions.length > 0 ? customOptions.map(opt => (
+            <button
+              key={opt}
+              onClick={() => { onChange(opt); setIsOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs rounded-md flex items-center justify-between hover:bg-slate-50 ${value === opt ? 'text-blue-600 font-bold bg-blue-50/50' : 'text-slate-600'
+                }`}
+            >
+              {opt}
+              {value === opt && <Check size={12} />}
+            </button>
+          )) : (
+            <div className="px-3 py-4 text-center text-xs text-slate-400">
+              暂无自定义记录
+            </div>
+          )
+        )}
+
+        {/* Clear Option */}
+        <div className="mt-2 pt-2 border-t border-slate-50 px-2">
+          <button
+            onClick={() => { onChange(""); setIsOpen(false); }}
+            className="w-full text-center py-1.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-md transition-colors"
+          >
+            清除筛选
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={buttonRef}
+        onClick={toggleOpen}
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all whitespace-nowrap ${active || isOpen
+          ? 'bg-blue-50 text-blue-600 border-blue-200'
+          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+          }`}
+      >
+        <span>{value || `所有${label}`}</span>
+        <ChevronDown size={12} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && createPortal(dropdownMenu, document.body)}
+    </div>
+  );
+};
+
+// --- History Project Card with Pagination ---
+const HistoryProjectCard: React.FC<{
+  session: ProjectSession;
+  isSelectionMode: boolean;
+  isSelected: boolean;
+  onToggleSelection: (id: string) => void;
+  onOpen: (id: string) => void;
+  onDelete: (id: string) => void;
+  onViewImage: (url: string) => void;
+}> = ({ session, isSelectionMode, isSelected, onToggleSelection, onOpen, onDelete, onViewImage }) => {
+  const [thumbPage, setThumbPage] = useState(0);
+
+  return (
+    <div
+      className={`bg-white rounded-2xl shadow-sm border p-5 flex flex-col md:flex-row gap-8 transition-all hover:shadow-xl group relative ${isSelectionMode && isSelected
+        ? "ring-2 ring-indigo-500 border-indigo-500"
+        : "border-slate-100 hover:border-indigo-100"
+        }`}
+      onClick={() => {
+        if (isSelectionMode)
+          onToggleSelection(session.id);
+      }}
+    >
+      {/* Project ID Badge */}
+      <div className="absolute top-0 left-0 z-20">
+        <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-700/90 text-white rounded-tl-2xl rounded-br-xl shadow-sm border-r border-b border-white/10 backdrop-blur-md">
+          <Settings2 size={8} className="text-slate-300" />
+          <span className="text-[9px] font-bold tracking-wider uppercase">
+            {session.displayId ? session.displayId : `PID-${session.id.substring(0, 8)}`}
+          </span>
+        </div>
+      </div>
+
+      {/* Cover Thumbnail */}
+      <div
+        className="w-full md:w-72 aspect-video bg-slate-50 rounded-xl overflow-hidden border border-slate-100 shrink-0 relative cursor-zoom-in group/thumb shadow-sm"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (session.thumbnailUrl)
+            onViewImage(session.thumbnailUrl);
+        }}
+      >
+        {session.thumbnailUrl ? (
+          <img
+            src={session.thumbnailUrl}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-slate-300 bg-slate-50">
+            <ImageIcon size={40} strokeWidth={1.5} />
+          </div>
+        )}
+
+        {/* Page Count Overlay */}
+        <div className="absolute bottom-3 right-3 px-2 py-1 rounded-lg bg-black/50 text-white text-[10px] font-black backdrop-blur-sm pointer-events-none border border-white/10">
+          {session.items.length}P
+        </div>
+
+        <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/20 transition-all flex items-center justify-center pointer-events-none opacity-0 group-hover/thumb:opacity-100">
+          <div className="bg-white/90 p-2 rounded-full shadow-lg transform scale-90 group-hover/thumb:scale-100 transition-transform">
+            <ZoomIn className="text-slate-800" size={20} />
+          </div>
+        </div>
+      </div>
+
+      {/* Content Info */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex justify-between items-start mb-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-black text-slate-800 text-xl mb-2 truncate group-hover:text-indigo-600 transition-colors">
+              {session.title}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md border border-slate-200/50 uppercase">
+                {session.globalConfig?.styleName || "默认风格"}
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md border border-slate-200/50">
+                {session.globalConfig?.aspectRatio || "16:9"}
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded-md border border-indigo-100">
+                规划 {session.globalConfig?.targetPageCount || 10} 页，完成 {session.items.filter(i => i.status === 'success').length} 页
+              </span>
+            </div>
+          </div>
+
+          {!isSelectionMode && (
+            <div className="flex items-center gap-3 shrink-0 ml-4">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpen(session.id);
+                }}
+                className="group/btn relative flex items-center gap-2 text-xs font-black bg-gradient-to-r from-indigo-500 to-blue-600 text-white px-5 py-2.5 rounded-xl hover:shadow-lg hover:shadow-indigo-200 transition-all active:scale-95 overflow-hidden"
+              >
+                <span className="relative z-10">查看详情</span>
+                <ArrowRight size={14} className="relative z-10 group-hover/btn:translate-x-1 transition-transform" />
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-500 opacity-0 group-hover/btn:opacity-100 transition-opacity"></div>
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(session.id);
+                }}
+                className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
+                title="删除项目"
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Filmstrip View - Use 15 items per page for consistency */}
+        <div className="relative group/filmstrip my-2">
+          <div className="flex gap-2.5 overflow-hidden py-3 px-1 border-y border-slate-50">
+            {session.items.slice(thumbPage * 15, (thumbPage + 1) * 15).map((item, idx) => {
+              const thumbnailUrl = (item.variants && item.variants.length > 0)
+                ? item.variants[0]
+                : item.previewUrl;
+
+              return (
+                <div
+                  key={item.id}
+                  className="relative w-16 h-10 rounded-lg bg-slate-50 border border-slate-100 overflow-hidden shrink-0 flex items-center justify-center shadow-sm group/item cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (thumbnailUrl) onViewImage(thumbnailUrl);
+                  }}
+                >
+                  {thumbnailUrl ? (
+                    <img src={thumbnailUrl} className="w-full h-full object-cover group-hover/item:scale-110 transition-transform" alt={`page ${idx}`} />
+                  ) : (
+                    <div className="text-[8px] font-bold text-slate-300 uppercase">P{idx + 1}</div>
+                  )}
+                  <div className="absolute inset-0 bg-black/0 group-hover/item:bg-black/10 transition-colors pointer-events-none"></div>
+
+                  {/* Page Type Badge */}
+                  <div className="absolute bottom-0 right-0 bg-black/60 backdrop-blur-[1px] px-1 rounded-tl-md">
+                    <span className="text-[8px] font-bold text-white leading-none block py-0.5">
+                      {item.pageType === 'cover' ? '封' :
+                        item.pageType === 'directory' ? '目' :
+                          item.pageType === 'transition' ? '转' :
+                            item.pageType === 'end' ? '结' : '文'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            {/* Fill empty slots logic omitted as flex handles it well, sticking to left */}
+          </div>
+
+          {/* Pagination Controls */}
+          {session.items.length > 15 && (
+            <>
+              {thumbPage > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setThumbPage(p => p - 1); }}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-6 h-6 bg-white/90 shadow-md border border-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:scale-110 transition-all z-20 opacity-0 group-hover/filmstrip:opacity-100"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+              )}
+              {(thumbPage + 1) * 15 < session.items.length && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setThumbPage(p => p + 1); }}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-6 bg-white/90 shadow-md border border-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:scale-110 transition-all z-20 opacity-0 group-hover/filmstrip:opacity-100"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] font-medium text-slate-400 mt-auto pt-2">
+          <div className="flex items-center gap-1.5">
+            <Calendar size={13} className="text-slate-300" />
+            <span>创建于 <span className="text-slate-500">{new Date(session.createdAt).toLocaleString()}</span></span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <CheckCircle2 size={13} className="text-emerald-400" />
+            <span>完成于 <span className="text-slate-500">{new Date(session.lastModified).toLocaleString()}</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const queryClient = useQueryClient();
 
@@ -306,6 +671,29 @@ const App: React.FC = () => {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const handleCloseToast = useCallback(() => setToast(null), []);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Scrolled State for Header Animation
+  const [isScrolled, setIsScrolled] = useState(false);
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 20);
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // --- Dashboard Filter State ---
+  const [dashboardSearchQuery, setDashboardSearchQuery] = useState('');
+  const [dashboardStatusFilter, setDashboardStatusFilter] = useState<ProjectStatus | 'all'>('all');
+  const [dashboardFilterStyle, setDashboardFilterStyle] = useState<string[]>([]);
+  const [dashboardFilterRatio, setDashboardFilterRatio] = useState<string[]>([]);
+  const [dashboardFilterPalette, setDashboardFilterPalette] = useState<string[]>([]);
+  const [dashboardTimeType, setDashboardTimeType] = useState<"lastModified" | "createdAt">("lastModified");
+  const [dashboardTimeFilter, setDashboardTimeFilter] = useState<string>("");
+  const [dashboardStartDate, setDashboardStartDate] = useState<string>("");
+  const [dashboardEndDate, setDashboardEndDate] = useState<string>("");
+  const [dashboardSortOrder, setDashboardSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [dashboardSortBy, setDashboardSortBy] = useState<'createdAt' | 'lastModified' | 'progress'>('lastModified');
 
   // Settings with Persistence
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
@@ -732,16 +1120,7 @@ const App: React.FC = () => {
     new Set()
   );
 
-  // Dashboard Filter State
-  const [dashboardSearchTerm, setDashboardSearchTerm] = useState("");
-  const [dashboardFilterStatus, setDashboardFilterStatus] = useState<ProjectStatus | 'all'>('all');
-  const [dashboardFilterProgress, setDashboardFilterProgress] = useState<string>('all');
-  const [dashboardFilterTimeType, setDashboardFilterTimeType] = useState<"lastModified" | "createdAt" | "priority">("lastModified");
-  const [dashboardFilterStartDate, setDashboardFilterStartDate] = useState("");
-  const [dashboardFilterEndDate, setDashboardFilterEndDate] = useState("");
-  const [dashboardFilterTime, setDashboardFilterTime] = useState("");
-  const [dashboardSortBy, setDashboardSortBy] = useState<'createdAt' | 'lastModified' | 'progress'>('createdAt');
-  const [dashboardSortOrder, setDashboardSortOrder] = useState<"asc" | "desc">("desc");
+
 
   // Template Page State
   const [templateSearchTerm, setTemplateSearchTerm] = useState("");
@@ -990,31 +1369,31 @@ const App: React.FC = () => {
 
   // Auto-save config changes
   useEffect(() => {
-    if (!currentProjectId || isPreviewMode || !hasUserInteraction) return; // 只在用户操作后才保存
+    if (!currentProjectId || isPreviewMode) return;
 
     const timer = setTimeout(() => {
       updateProjectMutation.mutate({
         id: currentProjectId,
         data: { globalConfig: config }
       });
-    }, 200); // 缩短防抖时间至 200ms,减少数据丢失风险
+    }, 200);
 
     return () => clearTimeout(timer);
-  }, [config, currentProjectId, updateProjectMutation, hasUserInteraction]);
+  }, [config, currentProjectId, updateProjectMutation, isPreviewMode]);
 
   // Auto-save styleMap changes
   useEffect(() => {
-    if (!currentProjectId || isPreviewMode || !hasUserInteraction) return; // 只在用户操作后才保存
+    if (!currentProjectId || isPreviewMode) return;
 
     const timer = setTimeout(() => {
       updateProjectMutation.mutate({
         id: currentProjectId,
         data: { globalStyleMap: styleMap }
       });
-    }, 200); // 缩短防抖时间至 200ms,减少数据丢失风险
+    }, 200);
 
     return () => clearTimeout(timer);
-  }, [styleMap, currentProjectId, updateProjectMutation, hasUserInteraction]);
+  }, [styleMap, currentProjectId, updateProjectMutation, isPreviewMode]);
 
   // --- Auto-Save Interval (3 Minutes) ---
   // --- Auto-Save Interval (Duplicate removed) ---
@@ -1040,17 +1419,11 @@ const App: React.FC = () => {
   const flushAutoSave = useCallback(() => {
     if (!currentProjectIdRef.current || isPreviewMode) return;
 
-    // 防止在用户操作之前保存数据
-    if (!hasUserInteraction) {
-      console.log('[FlushAutoSave] Skipped: No user interaction yet');
-      return;
-    }
+    // config 和 styleMap 会在 useEffect 中防抖保存，
+    // flushAutoSave 主要是为了确保在页面卸载等紧急时刻强制执行一次
+    console.log('[FlushAutoSave] Project:', currentProjectIdRef.current);
 
-    console.log('[FlushAutoSave] Items count:', itemsRef.current.length);
-    console.log('[FlushAutoSave] Config:', configRef.current ? 'Present' : 'Empty');
-    console.log('[FlushAutoSave] StyleMap:', styleMapRef.current ? 'Present' : 'Empty');
-
-    // 同步配置
+    // 同步配置和风格
     updateProjectMutation.mutate({
       id: currentProjectIdRef.current,
       data: {
@@ -1059,11 +1432,13 @@ const App: React.FC = () => {
       }
     });
 
-    // 同步幻灯片
-    syncSlidesMutation.mutate({
-      projectId: currentProjectIdRef.current,
-      slides: itemsRef.current
-    });
+    // 同步幻灯片内容 (只有在有交互即内容发生变化时才强制同步 items)
+    if (hasUserInteraction && itemsRef.current.length > 0) {
+      syncSlidesMutation.mutate({
+        projectId: currentProjectIdRef.current,
+        slides: itemsRef.current
+      });
+    }
 
     console.log('[AutoSave] Flushed changes for project:', currentProjectIdRef.current);
   }, [updateProjectMutation, syncSlidesMutation, isPreviewMode, hasUserInteraction]);
@@ -1214,6 +1589,11 @@ const App: React.FC = () => {
       return next;
     });
     setIsPresetSaved(false);
+
+    // 只要有任何配置更新，就标记用户交互，触发自动保存
+    if (!hasUserInteraction) {
+      setHasUserInteraction(true);
+    }
   };
 
   const handleSaveSettings = (newSettings: AppSettings) => {
@@ -1371,6 +1751,7 @@ const App: React.FC = () => {
           projectId: currentProjectIdRef.current,
           slides: slidesToSync
         });
+        setHasUserInteraction(true); // 标记交互以触发保存
       } else {
         console.warn('[handleOutlineImport] No currentProjectId, skipping sync!');
       }
@@ -1397,13 +1778,12 @@ const App: React.FC = () => {
           projectId: currentProjectIdRef.current,
           slides: slidesToSync
         });
-      } else {
-        console.warn('[handleOutlineImport] No currentProjectId, skipping sync!');
+        setHasUserInteraction(true); // 标记交互以触发保存
+        setTimeout(
+          () => showToast(`已成功添加 ${slides.length} 个页面`, "success"),
+          100
+        );
       }
-      setTimeout(
-        () => showToast(`已成功添加 ${slides.length} 个页面`, "success"),
-        100
-      );
     }
   };
 
@@ -1426,6 +1806,7 @@ const App: React.FC = () => {
         // So we just remove these two lines.
 
         closeConfirm();
+        setHasUserInteraction(true); // 标记交互以触发保存
         showToast("工作台已清空", "success");
       },
       "danger"
@@ -1439,6 +1820,7 @@ const App: React.FC = () => {
       () => {
         setItems((prev) => prev.filter((i) => i.id !== id));
         closeConfirm();
+        setHasUserInteraction(true); // 标记交互以触发保存
       },
       "danger"
     );
@@ -1462,6 +1844,7 @@ const App: React.FC = () => {
     };
 
     setItems((prev) => [...prev, newItem]);
+    setHasUserInteraction(true); // 标记交互以触发保存
   };
 
   // --- Favorites Logic ---
@@ -1641,6 +2024,7 @@ const App: React.FC = () => {
         slides: slidesToSync
       });
     }
+    setHasUserInteraction(true); // 标记交互以触发保存
     setTimeout(
       () =>
         window.scrollTo({
@@ -1723,6 +2107,7 @@ const App: React.FC = () => {
         slides: slidesToSync
       });
 
+      setHasUserInteraction(true); // 标记交互以触发保存
       showToast("图片添加成功", "success");
     } catch (error: any) {
       showToast(error.message || "添加图片失败", "error");
@@ -1836,33 +2221,47 @@ const App: React.FC = () => {
   const handleApplyPresetRequest = (preset: StylePreset) => {
     showConfirm("应用预设", "确定覆盖当前设置吗？", () => {
       setConfig({ ...preset.config });
+      configRef.current = { ...preset.config };
+
       // Restore style map if available, otherwise clear or use deprecated file
+      let nextStyleMap: GlobalStyleMap;
       if (preset.styleMap) {
-        setStyleMap(preset.styleMap);
+        nextStyleMap = { ...preset.styleMap };
       } else {
         // Legacy support
-        setStyleMap({
+        nextStyleMap = {
           cover: preset.styleFile || null,
           directory: preset.styleFile || null,
           transition: preset.styleFile || null,
           content: preset.styleFile || null,
           end: preset.styleFile || null,
           custom: null,
-        });
+        };
       }
+      setStyleMap(nextStyleMap);
+      styleMapRef.current = nextStyleMap;
+
       setIsPresetSaved(true);
       setIsFavoritesModalOpen(false);
       setSelectedPresetForDetail(null);
+      setHasUserInteraction(true); // 标记交互以触发保存
       closeConfirm();
     });
   };
 
   const handleApplyTemplate = (template: StyleTemplate) => {
-    setConfig({ ...template.config });
-    if (template.styleMap) {
-      setStyleMap({ ...template.styleMap });
-    }
+    const nextConfig = { ...template.config };
+    setConfig(nextConfig);
+    configRef.current = nextConfig;
+
+    const nextStyleMap = template.styleMap || { cover: null, directory: null, transition: null, content: null, end: null, custom: null };
+    setStyleMap({ ...nextStyleMap });
+    styleMapRef.current = { ...nextStyleMap };
+
+    // Force set active template for tracking
     setActiveTemplateId(template.id);
+    setActiveTemplateId(template.id);
+    setHasUserInteraction(true); // 标记交互以触发保存
   };
 
   const handleToggleFavorite = (template: StyleTemplate) => {
@@ -1948,13 +2347,21 @@ const App: React.FC = () => {
       (items.length > 0 && items.every(i => i.status === 'success')) ? 'completed' :
         items.length === 0 ? 'generating' : currentProject?.status || 'idle';
 
+    // Check for changes
+    const configChanged = JSON.stringify(currentProject?.globalConfig) !== JSON.stringify(config);
+    const styleMapChanged = JSON.stringify(currentProject?.globalStyleMap) !== JSON.stringify(styleMap);
+    const statusChanged = currentProject?.status !== newStatus;
+    const thumbChanged = currentProject?.thumbnailUrl !== thumbUrl;
+
     // Only mutate if changed
-    if (currentProject && (currentProject.thumbnailUrl !== thumbUrl || currentProject.status !== newStatus)) {
+    if (currentProject && (statusChanged || thumbChanged || configChanged || styleMapChanged)) {
       updateProjectMutation.mutate({
         id: currentProjectId,
         data: {
           thumbnailUrl: thumbUrl,
           status: newStatus,
+          globalConfig: config,
+          globalStyleMap: styleMap,
           lastModified: Date.now()
         }
       });
@@ -1971,19 +2378,6 @@ const App: React.FC = () => {
     }
   }, [items, config, styleMap, currentProjectId]);
 
-  // Auto-sync Slides Content (Debounced 2s)
-  // This ensures text edits and other item changes are saved to the backend
-  useEffect(() => {
-    if (currentProjectId && items.length > 0) {
-      const timer = setTimeout(() => {
-        syncSlidesMutation.mutate({
-          projectId: currentProjectId,
-          slides: items
-        });
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [items, currentProjectId]);
 
   // Generation Logic
   const processItem = async (item: GeneratedSlide) => {
@@ -2007,27 +2401,21 @@ const App: React.FC = () => {
       );
       const count = item.variantCount || 1;
 
-      let selectedStyleFile = styleMap[item.pageType];
-      if (!selectedStyleFile) selectedStyleFile = styleMap["content"];
-      if (!selectedStyleFile) selectedStyleFile = styleMap["cover"];
-      if (!selectedStyleFile) {
-        const firstKey = Object.keys(styleMap).find(
-          (k) => styleMap[k as PageType]
-        ) as PageType;
-        if (firstKey) selectedStyleFile = styleMap[firstKey];
-      }
-
       const promises = [];
       for (let i = 0; i < count; i++) {
         const label = `Option ${i + 1}`;
         promises.push(
           generateSlideVariant(
             contentSource,
-            selectedStyleFile,
+            null, // styleFile由后端智能匹配逻辑处理
             config,
             label,
             item.title,
-            item.contentType // Pass 'text' or 'image'
+            item.contentType, // Pass 'text' or 'image'
+            item.pageType, // ✅ 传递页面类型
+            item.textContent, // ✅ 传递完整文本内容
+            styleMap, // ✅ 传递全局风格映射
+            items.map(i => i.title).filter(t => !!t) // ✅ 传递本项目所有页面标题作为参考
           )
         );
       }
@@ -2252,7 +2640,45 @@ const App: React.FC = () => {
     const providerName = getProviderName("image");
     showToast(`重新调用 ${providerName} API 生成中...`, "loading");
     try {
-      await processItem(item);
+      const result = await processItem(item);
+
+      // 同步到数据库
+      if (currentProjectId && result) {
+        setItems((currentItems) => {
+          const slidesToSync = currentItems.map(slide => {
+            if (slide.id === result.itemId) {
+              return {
+                ...slide,
+                variants: result.variants,
+                status: 'success' as const
+              };
+            }
+            return slide;
+          });
+
+          syncSlidesMutation.mutate({
+            projectId: currentProjectId,
+            slides: slidesToSync
+          });
+
+          return slidesToSync;
+        });
+
+        // 更新项目整体状态
+        setItems((currentItems) => {
+          const allCompleted = currentItems.length > 0 &&
+            currentItems.every(i => i.status === 'success');
+
+          if (allCompleted && currentProjectId) {
+            updateProjectMutation.mutate({
+              id: currentProjectId,
+              data: { status: 'completed' }
+            });
+          }
+          return currentItems;
+        });
+      }
+
       showToast(`调用 ${providerName} API 服务成功`, "success");
     } catch (e) {
       showToast(`调用 ${providerName} API 失败`, "error");
@@ -2294,6 +2720,7 @@ const App: React.FC = () => {
     newItems.splice(index, 0, draggedItem);
     setItems(newItems);
     setDraggedItemIndex(null);
+    setHasUserInteraction(true); // 标记交互以触发保存
   };
 
   // Helper for updates
@@ -2303,6 +2730,11 @@ const App: React.FC = () => {
       itemsRef.current = next;
       return next;
     });
+
+    // 只要有任何更新，就标记用户交互，触发自动保存
+    if (!hasUserInteraction) {
+      setHasUserInteraction(true);
+    }
   };
 
   // Paste Listener
@@ -2523,13 +2955,15 @@ const App: React.FC = () => {
     setHistorySortOrder("desc");
 
     // Dashboard Filters
-    setDashboardSearchTerm("");
-    setDashboardFilterStatus("all");
-    setDashboardFilterProgress("all");
-    setDashboardFilterTimeType("lastModified");
-    setDashboardFilterStartDate("");
-    setDashboardFilterEndDate("");
-    setDashboardFilterTime("");
+    setDashboardSearchQuery("");
+    setDashboardStatusFilter("all");
+    setDashboardFilterStyle([]);
+    setDashboardFilterRatio([]);
+    setDashboardFilterPalette([]);
+    setDashboardTimeType("lastModified");
+    setDashboardTimeFilter("");
+    setDashboardStartDate("");
+    setDashboardEndDate("");
     setDashboardSortBy("lastModified");
     setDashboardSortOrder("desc");
 
@@ -2684,46 +3118,6 @@ const App: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (currentProjectIdRef.current) {
-        // Auto-save: Call update mutation
-        // Only if we have a valid ID
-        const id = currentProjectIdRef.current;
-        if (id && itemsRef.current.length > 0) {
-          const progress = itemsRef.current.length > 0
-            ? Math.round((itemsRef.current.filter(i => i.status === 'success').length / itemsRef.current.length) * 100)
-            : 0;
-
-          updateProjectMutation.mutate({
-            id,
-            data: {
-              // We need a way to pass items to backend. 
-              // Since standard patch is for metadata, we might need a specific endpoint or field.
-              // For now, let's assume our backend helper handles it or we encoded it?
-              // Wait, our backend schema DOES NOT store JSON items yet. 
-              // Actually, PHASE 1 schema added Project and Slide.
-              // But our updateProjectMutation only sends globalConfig/styleMap stringified.
-              // Items need to be saved too!
-              // Let's assume for this transition we mainly save metadata.
-              // WAIT: If we don't save items, we lose data!
-              // The backend needs to support saving items.
-              // My previous backend implementation (project.service.ts) likely handles basic update.
-              // But does it handle items sync?
-              // Reviewing project.service.ts... NO, I need to check.
-              // Assuming for now we just log it or try to send it via globalConfig hack?
-              // NO, I must fix this.
-              // For now, let's keep the hook structure but we might need to update API.
-            }
-          });
-          // TEMPORARY: Detailed items saving logic is complex. 
-          // We'll rely on globalConfig updates for now and implementing items sync is Phase 2.1
-        }
-      }
-    }, 180000); // 3 minutes
-
-    return () => clearInterval(interval);
-  }, []);
 
 
 
@@ -2808,7 +3202,7 @@ const App: React.FC = () => {
   }, [pendingAutoBatch, currentProjectId, items]);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans">
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans overflow-y-scroll">
       {/* Global Confirmation Dialog */}
       <ConfirmDialog
         isOpen={confirmation.isOpen}
@@ -2894,100 +3288,7 @@ const App: React.FC = () => {
         )}
       </Modal>
 
-      {/* Favorite Detail Modal - Increased Z-Index to appear over the Favorites List */}
-      {selectedPresetForDetail && (
-        <Modal
-          isOpen={!!selectedPresetForDetail}
-          onClose={() => setSelectedPresetForDetail(null)}
-          title="风格详情"
-          maxWidth="max-w-4xl"
-          zIndex="z-[110]"
-          footer={
-            <div className="flex gap-2 w-full justify-end">
-              <button
-                onClick={() => setSelectedPresetForDetail(null)}
-                className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100"
-              >
-                关闭
-              </button>
-              <button
-                onClick={() =>
-                  handleApplyPresetRequest(selectedPresetForDetail)
-                }
-                className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg"
-              >
-                应用此风格
-              </button>
-            </div>
-          }
-        >
-          {/* Content remains the same */}
-          <div className="space-y-6">
-            <div className="flex flex-col lg:flex-row gap-6 lg:h-[340px]">
-              {/* Left: Images */}
-              <div className="w-full lg:w-1/3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col h-full overflow-hidden relative group">
-                {selectedPresetForDetail.styleMap?.cover ||
-                  selectedPresetForDetail.styleFile ? (
-                  <>
-                    <img
-                      src={
-                        (selectedPresetForDetail.styleMap?.cover instanceof Blob) ?
-                          URL.createObjectURL(selectedPresetForDetail.styleMap.cover) :
-                          (selectedPresetForDetail.styleFile instanceof Blob) ?
-                            URL.createObjectURL(selectedPresetForDetail.styleFile) : ''
-                      }
-                      className="w-full h-full object-contain bg-slate-50"
-                    />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100">
-                      <button
-                        onClick={() =>
-                          setLightboxImage(
-                            (selectedPresetForDetail.styleMap?.cover instanceof Blob) ?
-                              URL.createObjectURL(selectedPresetForDetail.styleMap.cover) :
-                              (selectedPresetForDetail.styleFile instanceof Blob) ?
-                                URL.createObjectURL(selectedPresetForDetail.styleFile) : undefined
-                          )
-                        }
-                        className="flex flex-col items-center justify-center gap-1 bg-white/90 hover:bg-white text-slate-800 w-16 h-16 rounded-lg backdrop-blur shadow-sm transition-all"
-                      >
-                        <ZoomIn size={24} />
-                        <span className="text-[10px] font-medium">
-                          查看大图
-                        </span>
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs p-8 text-center flex-col gap-2">
-                    <ImageIcon size={32} />
-                    <span>无参考图</span>
-                  </div>
-                )}
-              </div>
 
-              {/* Right: Controls (Read Only) */}
-              <div className="w-full lg:w-2/3 bg-white border border-slate-200 rounded-xl p-5 h-full overflow-hidden pointer-events-none opacity-90">
-                <StyleControls
-                  config={selectedPresetForDetail.config}
-                  onChange={() => { }}
-                  readOnly={true}
-                />
-              </div>
-            </div>
-            {/* Requirements */}
-            <div className="flex flex-col pointer-events-none opacity-90">
-              <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
-                <LinkIcon size={14} className="text-slate-500" /> 全局设计要求
-              </h3>
-              <textarea
-                value={selectedPresetForDetail.config.requirements}
-                readOnly
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none resize-none h-[100px]"
-              />
-            </div>
-          </div>
-        </Modal>
-      )}
 
       {/* Save Preset Modal */}
       <Modal
@@ -3081,98 +3382,89 @@ const App: React.FC = () => {
           </div>
         }
       >
-        {/* Favorites list content remains same */}
         <div className="space-y-6">
-          <div className="flex flex-col md:flex-row gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <div className="flex-1 relative">
+          {/* Top Search Bar - Clean & Wide */}
+          <div className="flex flex-col gap-4">
+            <div className="relative w-full">
               <Search
                 size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
               />
               <input
                 type="text"
-                placeholder="搜索预设..."
+                placeholder="搜索收藏的风格..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 outline-none transition-all text-sm"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <select
-                value={filterStyle}
-                onChange={(e) => setFilterStyle(e.target.value)}
-                className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-              >
-                <option value="">所有风格</option>
+
+            {/* Filter Tags - Consistent with StyleTemplateManager */}
+            <div className="space-y-4">
+              {/* Row 1: Style Presets */}
+              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center">
+                <span className="text-xs font-bold text-slate-400 whitespace-nowrap mr-1">风格:</span>
+                <FilterTag active={!filterStyle} onClick={() => setFilterStyle("")}>全部</FilterTag>
                 {STYLE_PRESETS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
+                  <FilterTag key={s} active={filterStyle === s} onClick={() => setFilterStyle(s)}>{s}</FilterTag>
                 ))}
-              </select>
-              <select
-                value={filterRatio}
-                onChange={(e) => setFilterRatio(e.target.value)}
-                className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-              >
-                <option value="">所有比例</option>
-                {RATIO_PRESETS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={filterPalette}
-                onChange={(e) => setFilterPalette(e.target.value)}
-                className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none max-w-[100px]"
-              >
-                <option value="">所有配色</option>
+              </div>
+
+              {/* Row 2: Palette */}
+              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center">
+                <span className="text-xs font-bold text-slate-400 whitespace-nowrap mr-1">配色:</span>
+                <FilterTag active={!filterPalette} onClick={() => setFilterPalette("")}>全部</FilterTag>
                 {COLOR_PRESETS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
+                  <FilterTag key={c} active={filterPalette === c} onClick={() => setFilterPalette(c)}>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full border border-black/10" style={{ backgroundColor: c.split(',')[0] }}></span>
+                      {c}
+                    </span>
+                  </FilterTag>
                 ))}
-              </select>
-              <input
-                type="text"
-                placeholder="页数"
-                value={filterPageCount}
-                onChange={(e) => setFilterPageCount(e.target.value)}
-                className="w-16 text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none text-center"
-              />
-              <select
-                value={filterTime}
-                onChange={(e) => setFilterTime(e.target.value)}
-                className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-              >
-                <option value="">所有时间</option>
-                <option value="24h">24小时内</option>
-                <option value="7d">7天内</option>
-                <option value="30d">30天内</option>
-              </select>
+              </div>
+
+              {/* Row 3: Ratio + Page Count */}
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar items-center">
+                  <span className="text-xs font-bold text-slate-400 whitespace-nowrap mr-1">比例:</span>
+                  <FilterTag active={!filterRatio} onClick={() => setFilterRatio("")}>全部</FilterTag>
+                  {RATIO_PRESETS.map((r) => (
+                    <FilterTag key={r} active={filterRatio === r} onClick={() => setFilterRatio(r)}>{r}</FilterTag>
+                  ))}
+                </div>
+
+                <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-400 whitespace-nowrap">页数:</span>
+                  <input
+                    type="text"
+                    placeholder="目标页数"
+                    value={filterPageCount}
+                    onChange={(e) => setFilterPageCount(e.target.value)}
+                    className="w-20 text-xs border border-slate-200 bg-slate-50 focus:bg-white rounded-lg py-1.5 px-2 focus:ring-2 focus:ring-indigo-100 outline-none text-center transition-all"
+                  />
+                </div>
+              </div>
             </div>
           </div>
+
           {filteredFavorites.length === 0 ? (
-            <div className="text-center py-20 text-slate-400">
+            <div className="text-center py-20 text-slate-400 bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-100">
               <Heart size={48} className="mx-auto mb-3 text-slate-200" />
               <p>没有找到匹配的风格预设</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
               {filteredFavorites.map((fav) => (
-                <div key={fav.id} className="h-[325px] w-full relative">
-                  <div className="absolute inset-0 origin-top-left" style={{ transform: 'scale(0.85)', width: '117.65%', height: '117.65%' }}>
+                <div key={fav.id} className="h-[300px] w-full relative group">
+                  <div className="absolute inset-0 origin-top-left" style={{ transform: 'scale(1)', width: '100%', height: '100%' }}>
                     <SharedStyleCard
                       item={fav}
                       onDetail={() => setSelectedPresetForDetail(fav)}
                       onApply={() => handleApplyPresetRequest(fav)}
                       onDelete={() => handleDeleteFavoriteRequest(fav.id)}
-                      onEdit={() => {
-                        setIsFavoritesModalOpen(false);
-                        setEditingTemplateId(fav.id);
-                        setViewMode('templates');
-                      }}
                       variant="favorites"
                     />
                   </div>
@@ -3181,6 +3473,48 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
+      </Modal>
+
+
+      {/* Template Detail Modal - Read-only */}
+      <Modal
+        isOpen={!!selectedPresetForDetail}
+        onClose={() => setSelectedPresetForDetail(null)}
+        title="查看模板"
+        maxWidth="max-w-6xl"
+        footer={
+          <div className="flex justify-end gap-3 w-full">
+            <button
+              onClick={() => setSelectedPresetForDetail(null)}
+              className="px-6 py-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-sm font-bold"
+            >
+              关闭
+            </button>
+            <button
+              onClick={() => {
+                const fav = selectedPresetForDetail;
+                if (fav) {
+                  setSelectedPresetForDetail(null);
+                  handleApplyPresetRequest(fav);
+                }
+              }}
+              className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg shadow-indigo-200 transition-all font-bold text-sm"
+            >
+              应用此模板
+            </button>
+          </div>
+        }
+      >
+        {selectedPresetForDetail && (
+          <StyleTemplateEditor
+            template={{ ...selectedPresetForDetail, isCustom: false }}
+            isEditing={false}
+            onUpdateConfig={() => { }}
+            onUpdateStyleMap={() => { }}
+            onStructureChange={() => { }}
+            setName={() => { }}
+          />
+        )}
       </Modal>
 
       {/* Style Reference Modal - NEW LAYOUT with 5 Slots */}
@@ -3391,161 +3725,172 @@ const App: React.FC = () => {
 
           {/* --- HEADER --- */}
           {viewMode !== 'landing' && (
-            <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 h-16 shrink-0 shadow-sm">
-              <div className="max-w-[1480px] mx-auto flex items-center justify-between relative h-full px-6">
+            <>
+              <header
+                className={`fixed z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]
+                  ${isScrolled
+                    ? "top-5 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-5xl rounded-full bg-white/75 backdrop-blur-xl border border-white/60 shadow-lg px-2 h-14"
+                    : "top-0 left-0 right-0 bg-white/80 backdrop-blur-md border-b border-slate-100 h-16 shadow-sm"
+                  }`}
+              >
+                <div className={`mx-auto flex items-center justify-between relative h-full transition-all duration-500
+                  ${isScrolled ? "px-4 w-full" : "max-w-[1480px] px-6"}`}
+                >
 
-                {/* LEFT SECTION: Logo + Context Navigation */}
-                <div className={`flex items-center gap-6 z-10 shrink-0 ${(viewMode === 'workbench' || viewMode === 'history-detail') ? '' : 'w-[300px]'}`}>
-                  <div
-                    className="flex items-center gap-2.5 cursor-pointer group"
-                    onClick={() => setViewMode('dashboard')}
-                  >
-                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform duration-500">
-                      <div className="relative flex items-center justify-center w-6 h-6">
-                        <div className="absolute w-4 h-3 bg-white/20 rounded-sm -rotate-12 translate-x-1 -translate-y-1" />
-                        <div className="absolute w-4 h-3 bg-white/40 rounded-sm rotate-12 -translate-x-1" />
-                        <div className="relative w-4.5 h-3.5 bg-white rounded-[2px] shadow-sm flex items-center justify-center z-10">
-                          <Presentation size={10} className="text-blue-600" />
-                        </div>
-                        <Sparkles size={8} className="absolute -top-1 -right-1 text-yellow-300 animate-pulse z-20" />
-                        <Sparkles size={6} className="absolute -bottom-0.5 -left-0.5 text-white/80 animate-bounce delay-75 z-20" />
-                      </div>
-                    </div>
-                    <div>
-                      <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">BananaSlides</h1>
-                      <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">GenAI PPT</span>
-                    </div>
-                  </div>
-
-                  {/* Workbench Context: Back Button & Title */}
-                  {(viewMode === 'workbench' || viewMode === 'history-detail') && (
-                    <>
-                      <div className="h-8 w-px bg-slate-200/80"></div>
-
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => {
-                            setViewMode(viewMode === 'history-detail' ? 'history' : 'dashboard');
-                            setIsHistoryOpen(false);
-                          }}
-                          className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all text-xs font-bold whitespace-nowrap"
-                        >
-                          <div className="bg-white p-1 rounded-lg shadow-sm">
-                            <ArrowLeft size={12} />
-                          </div>
-                          返回
-                        </button>
-
-                        {/* ID Badge - Moved before title */}
-                        {activeSession?.displayId && (
-                          <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap shrink-0">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID</span>
-                            <span className="text-xs font-mono font-bold text-slate-500">{activeSession.displayId}</span>
-                          </div>
-                        )}
-
-                        {/* Project Title Input/Display - Optimized */}
-                        <div className="relative group">
-                          {viewMode === 'workbench' ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                value={localTitle}
-                                onChange={(e) => setLocalTitle(e.target.value)}
-                                onBlur={handleTitleBlur}
-                                onKeyDown={handleTitleKeyDown}
-                                className="text-sm font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 hover:bg-slate-50 focus:bg-white rounded-lg px-3 py-1.5 outline-none transition-all w-[400px] placeholder:text-slate-400"
-                                placeholder="输入项目名称..."
-                              />
-                              <Edit3 size={12} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                            </div>
-                          ) : (
-                            <h2 className="text-sm font-bold text-slate-800 px-3 py-1.5 select-text cursor-default border border-transparent whitespace-nowrap max-w-[400px] truncate" title={activeSession?.title || "未命名项目"}>
-                              {activeSession?.title || "未命名项目"}
-                            </h2>
-                          )}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* CENTER SECTION: Global Navigation (3 Tabs) */}
-                {(viewMode === 'dashboard' || viewMode === 'history' || viewMode === 'templates') ? (
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                    <nav className="flex items-center bg-slate-100/50 p-1 rounded-xl border border-slate-200/50">
-                      <button
-                        onClick={() => setViewMode("dashboard")}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "dashboard"
-                          ? "bg-white text-slate-800 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800"
-                          }`}
-                      >
-                        <Home size={14} /> 创作室
-                      </button>
-                      <button
-                        onClick={() => setViewMode("history")}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "history"
-                          ? "bg-white text-slate-800 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800"
-                          }`}
-                      >
-                        <History size={14} /> 历史库
-                      </button>
-                      <button
-                        onClick={() => setViewMode("templates")}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "templates"
-                          ? "bg-white text-slate-800 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800"
-                          }`}
-                      >
-                        <BookTemplate size={14} /> 模版间
-                      </button>
-                    </nav>
-                  </div>
-                ) : (
-                  /* Placeholder for center alignment if needed in workbench, or keep empty */
-                  <div className="absolute left-1/2 -translate-x-1/2"></div>
-                )}
-
-                {/* RIGHT SECTION: Tools */}
-                <div className="flex items-center gap-3 z-10 w-[300px] justify-end">
-
-                  {viewMode === 'workbench' && (
-                    <button
-                      onClick={() => setIsHistoryOpen(true)}
-                      className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
-                      title="历史版本"
+                  {/* LEFT SECTION: Logo + Context Navigation */}
+                  <div className={`flex items-center gap-6 z-10 shrink-0 ${(viewMode === 'workbench' || viewMode === 'history-detail') ? '' : 'w-[300px]'}`}>
+                    <div
+                      className="flex items-center gap-2.5 cursor-pointer group"
+                      onClick={() => setViewMode('landing')}
                     >
-                      <History size={18} />
-                    </button>
+                      <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:scale-105 transition-transform duration-500">
+                        <div className="relative flex items-center justify-center w-6 h-6">
+                          <div className="absolute w-4 h-3 bg-white/20 rounded-sm -rotate-12 translate-x-1 -translate-y-1" />
+                          <div className="absolute w-4 h-3 bg-white/40 rounded-sm rotate-12 -translate-x-1" />
+                          <div className="relative w-4.5 h-3.5 bg-white rounded-[2px] shadow-sm flex items-center justify-center z-10">
+                            <Presentation size={10} className="text-blue-600" />
+                          </div>
+                          <Sparkles size={8} className="absolute -top-1 -right-1 text-yellow-300 animate-pulse z-20" />
+                          <Sparkles size={6} className="absolute -bottom-0.5 -left-0.5 text-white/80 animate-bounce delay-75 z-20" />
+                        </div>
+                      </div>
+                      <div>
+                        <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">BananaSlides</h1>
+                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">GenAI PPT</span>
+                      </div>
+                    </div>
+
+                    {/* Workbench Context: Back Button & Title */}
+                    {(viewMode === 'workbench' || viewMode === 'history-detail') && (
+                      <>
+                        <div className="h-8 w-px bg-slate-200/80"></div>
+
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => {
+                              setViewMode(viewMode === 'history-detail' ? 'history' : 'dashboard');
+                              setIsHistoryOpen(false);
+                            }}
+                            className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all text-xs font-bold whitespace-nowrap"
+                          >
+                            <div className="bg-white p-1 rounded-lg shadow-sm">
+                              <ArrowLeft size={12} />
+                            </div>
+                            返回
+                          </button>
+
+                          {/* ID Badge - Moved before title */}
+                          {activeSession?.displayId && (
+                            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg border border-slate-100 whitespace-nowrap shrink-0">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID</span>
+                              <span className="text-xs font-mono font-bold text-slate-500">{activeSession.displayId}</span>
+                            </div>
+                          )}
+
+                          {/* Project Title Input/Display - Optimized */}
+                          <div className="relative group">
+                            {viewMode === 'workbench' ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={localTitle}
+                                  onChange={(e) => setLocalTitle(e.target.value)}
+                                  onBlur={handleTitleBlur}
+                                  onKeyDown={handleTitleKeyDown}
+                                  className="text-sm font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 hover:bg-slate-50 focus:bg-white rounded-lg px-3 py-1.5 outline-none transition-all w-[400px] placeholder:text-slate-400"
+                                  placeholder="输入项目名称..."
+                                />
+                                <Edit3 size={12} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              </div>
+                            ) : (
+                              <h2 className="text-sm font-bold text-slate-800 px-3 py-1.5 select-text cursor-default border border-transparent whitespace-nowrap max-w-[400px] truncate" title={activeSession?.title || "未命名项目"}>
+                                {activeSession?.title || "未命名项目"}
+                              </h2>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* CENTER SECTION: Global Navigation (3 Tabs) */}
+                  {(viewMode === 'dashboard' || viewMode === 'history' || viewMode === 'templates') ? (
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                      <nav className="flex items-center bg-slate-100/50 p-1 rounded-xl border border-slate-200/50">
+                        <button
+                          onClick={() => setViewMode("dashboard")}
+                          className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "dashboard"
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                            }`}
+                        >
+                          <Home size={14} /> 创作室
+                        </button>
+                        <button
+                          onClick={() => setViewMode("history")}
+                          className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "history"
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                            }`}
+                        >
+                          <History size={14} /> 历史库
+                        </button>
+                        <button
+                          onClick={() => setViewMode("templates")}
+                          className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "templates"
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                            }`}
+                        >
+                          <BookTemplate size={14} /> 模版间
+                        </button>
+                      </nav>
+                    </div>
+                  ) : (
+                    /* Placeholder for center alignment if needed in workbench, or keep empty */
+                    <div className="absolute left-1/2 -translate-x-1/2"></div>
                   )}
 
-                  <button
-                    onClick={toggleFullscreen}
-                    className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
-                    title={isFullscreen ? "退出全屏" : "全屏模式"}
-                  >
-                    {isFullscreen ? <Minimize size={18} /> : <Maximize2 size={18} />}
-                  </button>
+                  {/* RIGHT SECTION: Tools */}
+                  <div className="flex items-center gap-3 z-10 w-[300px] justify-end">
 
-                  <button
-                    onClick={() => setIsGlobalSettingsOpen(true)}
-                    className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
-                    title="全局设置"
-                  >
-                    <Settings size={18} />
-                  </button>
+                    {viewMode === 'workbench' && (
+                      <button
+                        onClick={() => setIsHistoryOpen(true)}
+                        className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+                        title="历史版本"
+                      >
+                        <History size={18} />
+                      </button>
+                    )}
+
+                    <button
+                      onClick={toggleFullscreen}
+                      className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+                      title={isFullscreen ? "退出全屏" : "全屏模式"}
+                    >
+                      {isFullscreen ? <Minimize size={18} /> : <Maximize2 size={18} />}
+                    </button>
+
+                    <button
+                      onClick={() => setIsGlobalSettingsOpen(true)}
+                      className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
+                      title="全局设置"
+                    >
+                      <Settings size={18} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </header>
+              </header>
+              <div className="h-16 shrink-0" />
+            </>
           )}
 
           {viewMode === "landing" ? (
             <LandingPage onEnter={() => setViewMode('dashboard')} />
           ) : (
             viewMode !== 'templates' ? (
-              <main className="max-w-[1480px] mx-auto px-6 py-6 space-y-8 flex-1">
+              <main className="w-full max-w-[1480px] mx-auto px-6 py-6 space-y-8 flex-1">
                 {viewMode === "dashboard" && (
                   <Dashboard
                     projects={projects}
@@ -3556,22 +3901,28 @@ const App: React.FC = () => {
                     onTogglePin={handleTogglePin}
                     onStartProject={handleStartProjectRequest}
                     // Lifted States
-                    searchQuery={dashboardSearchTerm}
-                    setSearchQuery={setDashboardSearchTerm}
-                    statusFilter={dashboardFilterStatus}
-                    setStatusFilter={setDashboardFilterStatus}
-                    progressFilter={dashboardFilterProgress}
-                    setProgressFilter={setDashboardFilterProgress}
-                    timeTypeFilter={dashboardFilterTimeType}
-                    setTimeTypeFilter={setDashboardFilterTimeType}
-                    startDateFilter={dashboardFilterStartDate}
-                    setStartDateFilter={setDashboardFilterStartDate}
-                    endDateFilter={dashboardFilterEndDate}
-                    setEndDateFilter={setDashboardFilterEndDate}
-                    timeFilter={dashboardFilterTime}
-                    setTimeFilter={setDashboardFilterTime}
+                    searchQuery={dashboardSearchQuery}
+                    setSearchQuery={setDashboardSearchQuery}
+                    statusFilter={dashboardStatusFilter}
+                    setStatusFilter={setDashboardStatusFilter}
+                    styleFilter={dashboardFilterStyle}
+                    setStyleFilter={setDashboardFilterStyle}
+                    ratioFilter={dashboardFilterRatio}
+                    setRatioFilter={setDashboardFilterRatio}
+                    paletteFilter={dashboardFilterPalette}
+                    setPaletteFilter={setDashboardFilterPalette}
+                    timeTypeFilter={dashboardTimeType}
+                    setTimeTypeFilter={setDashboardTimeType}
+                    startDateFilter={dashboardStartDate}
+                    setStartDateFilter={setDashboardStartDate}
+                    endDateFilter={dashboardEndDate}
+                    setEndDateFilter={setDashboardEndDate}
+                    timeFilter={dashboardTimeFilter}
+                    setTimeFilter={setDashboardTimeFilter}
                     sortBy={dashboardSortBy}
                     setSortBy={setDashboardSortBy}
+                    sortOrder={dashboardSortOrder}
+                    setSortOrder={setDashboardSortOrder}
                   />
                 )}
 
@@ -3607,6 +3958,47 @@ const App: React.FC = () => {
                           className="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all font-medium shadow-sm"
                         >
                           <BookTemplate size={14} /> 我的收藏
+                        </button>
+
+                        <div className="h-4 w-px bg-slate-100 mx-1"></div>
+
+                        <button
+                          onClick={() => {
+                            showConfirm(
+                              "清空工作台设置",
+                              "确定要重置当前的所有设置（及风格参考图）为系统默认状态吗？此操作无法撤销。",
+                              () => {
+                                setConfig(DEFAULT_STYLE_CONFIG);
+                                configRef.current = DEFAULT_STYLE_CONFIG;
+                                setStyleMap({
+                                  cover: null,
+                                  directory: null,
+                                  transition: null,
+                                  content: null,
+                                  end: null,
+                                  custom: null,
+                                });
+                                styleMapRef.current = {
+                                  cover: null,
+                                  directory: null,
+                                  transition: null,
+                                  content: null,
+                                  end: null,
+                                  custom: null,
+                                };
+                                // 清除预览快照模式
+                                setPreviewSnapshot(null);
+                                setIsPresetSaved(false);
+                                closeConfirm();
+                                showToast("工作台设置已重置", "success");
+                              },
+                              "danger"
+                            );
+                          }}
+                          className="text-xs flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all font-medium shadow-sm"
+                          title="清空当前设置，恢复默认"
+                        >
+                          <RotateCcw size={14} />
                         </button>
                       </div>
 
@@ -4032,48 +4424,62 @@ const App: React.FC = () => {
 
                       {/* Filters Toolbar */}
                       <div className="flex flex-wrap gap-2 mt-2 lg:mt-0">
-                        <select
-                          value={historyFilterStyle}
-                          onChange={(e) => setHistoryFilterStyle(e.target.value)}
-                          className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-                        >
-                          <option value="">所有风格</option>
-                          {STYLE_PRESETS.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={historyFilterRatio}
-                          onChange={(e) => setHistoryFilterRatio(e.target.value)}
-                          className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-                        >
-                          <option value="">所有比例</option>
-                          {RATIO_PRESETS.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={historyFilterPalette}
-                          onChange={(e) => setHistoryFilterPalette(e.target.value)}
-                          className="text-xs border border-slate-200 rounded-md py-2 px-2 focus:ring-2 focus:ring-indigo-100 outline-none min-w-[120px]"
-                        >
-                          <option value="">所有配色</option>
-                          {COLOR_PRESETS.map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
+                        {/* Derived Data for History Filters */}
+                        {(() => {
+                          const historyStyleTags = Array.from(new Set(projects.filter(p => p.status === 'completed').map(p => p.globalConfig?.styleName).filter(Boolean))) as string[];
+                          const historyPaletteTags = Array.from(new Set(projects.filter(p => p.status === 'completed').map(p => p.globalConfig?.colorPalette).filter(Boolean))) as string[];
+
+                          return (
+                            <>
+                              <CascadingFilter
+                                label="风格"
+                                value={historyFilterStyle}
+                                active={!!historyFilterStyle}
+                                systemOptions={STYLE_PRESETS}
+                                customOptions={historyStyleTags.filter(t => !STYLE_PRESETS.includes(t))}
+                                onChange={(val) => setHistoryFilterStyle(val)}
+                              />
+                            </>
+                          );
+                        })()}
+                        <div className="relative shrink-0">
+                          <select
+                            value={historyFilterRatio}
+                            onChange={(e) => setHistoryFilterRatio(e.target.value)}
+                            className={`appearance-none flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all whitespace-nowrap outline-none pr-7 cursor-pointer ${historyFilterRatio
+                              ? 'bg-blue-50 text-blue-600 border-blue-200'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                              }`}
+                          >
+                            <option value="">所有比例</option>
+                            {RATIO_PRESETS.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+                        {(() => {
+                          const historyPaletteTags = Array.from(new Set(projects.filter(p => p.status === 'completed').map(p => p.globalConfig?.colorPalette).filter(Boolean))) as string[];
+
+                          return (
+                            <CascadingFilter
+                              label="配色"
+                              value={historyFilterPalette}
+                              active={!!historyFilterPalette}
+                              systemOptions={COLOR_PRESETS}
+                              customOptions={historyPaletteTags.filter(t => !COLOR_PRESETS.includes(t))}
+                              onChange={(val) => setHistoryFilterPalette(val)}
+                            />
+                          );
+                        })()}
                         {/* 规模筛选 */}
                         <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-md p-1 transition-all focus-within:border-indigo-200 focus-within:ring-2 focus-within:ring-indigo-50">
                           <select
                             value={historyFilterPageType}
                             onChange={(e) => setHistoryFilterPageType(e.target.value as any)}
-                            className="text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded py-0.5 px-1.5 outline-none shadow-sm cursor-pointer"
+                            className="text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded py-0.5 px-1.5 outline-none shadow-sm cursor-pointer ml-1"
                           >
                             <option value="target">规划页数</option>
                             <option value="completed">完成页数</option>
@@ -4196,152 +4602,16 @@ const App: React.FC = () => {
                     ) : (
                       <div className="space-y-4 pb-12 flex-1">
                         {filteredHistory.map((session) => (
-                          <div
+                          <HistoryProjectCard
                             key={session.id}
-                            className={`bg-white rounded-2xl shadow-sm border p-5 flex flex-col md:flex-row gap-8 transition-all hover:shadow-xl group relative ${isHistorySelectionMode &&
-                              selectedHistoryIds.has(session.id)
-                              ? "ring-2 ring-indigo-500 border-indigo-500"
-                              : "border-slate-100 hover:border-indigo-100"
-                              }`}
-                            onClick={() => {
-                              if (isHistorySelectionMode)
-                                toggleHistorySelection(session.id);
-                            }}
-                          >
-                            {/* Project ID Badge - Integrated Corner Style */}
-                            <div className="absolute top-0 left-0 z-20">
-                              <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-700/90 text-white rounded-tl-2xl rounded-br-xl shadow-sm border-r border-b border-white/10 backdrop-blur-md">
-                                <Settings2 size={8} className="text-slate-300" />
-                                <span className="text-[9px] font-bold tracking-wider uppercase">
-                                  {session.displayId ? session.displayId : `PID-${session.id.substring(0, 8)}`}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Cover Thumbnail */}
-                            <div
-                              className="w-full md:w-72 aspect-video bg-slate-50 rounded-xl overflow-hidden border border-slate-100 shrink-0 relative cursor-zoom-in group/thumb shadow-sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (session.thumbnailUrl)
-                                  setLightboxImage(session.thumbnailUrl);
-                              }}
-                            >
-                              {session.thumbnailUrl ? (
-                                <img
-                                  src={session.thumbnailUrl}
-                                  className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-105"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-slate-300 bg-slate-50">
-                                  <ImageIcon size={40} strokeWidth={1.5} />
-                                </div>
-                              )}
-
-                              {/* Page Count Overlay */}
-                              <div className="absolute bottom-3 right-3 px-2 py-1 rounded-lg bg-black/50 text-white text-[10px] font-black backdrop-blur-sm pointer-events-none border border-white/10">
-                                {session.items.length}P
-                              </div>
-
-                              <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/20 transition-all flex items-center justify-center pointer-events-none opacity-0 group-hover/thumb:opacity-100">
-                                <div className="bg-white/90 p-2 rounded-full shadow-lg transform scale-90 group-hover/thumb:scale-100 transition-transform">
-                                  <ZoomIn className="text-slate-800" size={20} />
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Content Info */}
-                            <div className="flex-1 flex flex-col min-w-0">
-                              <div className="flex justify-between items-start mb-3">
-                                <div className="min-w-0 flex-1">
-                                  <h3 className="font-black text-slate-800 text-xl mb-2 truncate group-hover:text-indigo-600 transition-colors">
-                                    {session.title}
-                                  </h3>
-                                  <div className="flex flex-wrap gap-2">
-                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md border border-slate-200/50 uppercase">
-                                      {session.globalConfig?.styleName || "默认风格"}
-                                    </span>
-                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md border border-slate-200/50">
-                                      {session.globalConfig?.aspectRatio || "16:9"}
-                                    </span>
-                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded-md border border-indigo-100">
-                                      规划 {session.globalConfig?.targetPageCount || 10} 页，完成 {session.items.filter(i => i.status === 'success' || i.status === 'completed').length} 页
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {!isHistorySelectionMode && (
-                                  <div className="flex items-center gap-3 shrink-0 ml-4">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleOpenProject(session.id);
-                                      }}
-                                      className="group/btn relative flex items-center gap-2 text-xs font-black bg-gradient-to-r from-indigo-500 to-blue-600 text-white px-5 py-2.5 rounded-xl hover:shadow-lg hover:shadow-indigo-200 transition-all active:scale-95 overflow-hidden"
-                                    >
-                                      <span className="relative z-10">查看详情</span>
-                                      <ArrowRight size={14} className="relative z-10 group-hover/btn:translate-x-1 transition-transform" />
-                                      <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-500 opacity-0 group-hover/btn:opacity-100 transition-opacity"></div>
-                                    </button>
-
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteProject(session.id);
-                                      }}
-                                      className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all border border-transparent hover:border-red-100"
-                                      title="删除项目"
-                                    >
-                                      <Trash2 size={18} />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Filmstrip View - Preview of generated slides */}
-                              <div className="flex gap-2.5 overflow-x-auto no-scrollbar py-3 border-y border-slate-50 my-2">
-                                {session.items.slice(0, 10).map((item, idx) => {
-                                  const thumbnailUrl = (item.variants && item.variants.length > 0)
-                                    ? item.variants[0]
-                                    : item.previewUrl;
-
-                                  return (
-                                    <div
-                                      key={item.id}
-                                      className="w-16 h-10 rounded-lg bg-slate-50 border border-slate-100 overflow-hidden shrink-0 flex items-center justify-center shadow-sm relative group/item"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (thumbnailUrl) setLightboxImage(thumbnailUrl);
-                                      }}
-                                    >
-                                      {thumbnailUrl ? (
-                                        <img src={thumbnailUrl} className="w-full h-full object-cover group-hover/item:scale-110 transition-transform" alt={`page ${idx}`} />
-                                      ) : (
-                                        <div className="text-[8px] font-bold text-slate-300 uppercase">P{idx + 1}</div>
-                                      )}
-                                      <div className="absolute inset-0 bg-black/0 group-hover/item:bg-black/10 transition-colors pointer-events-none"></div>
-                                    </div>
-                                  );
-                                })}
-                                {session.items.length > 10 && (
-                                  <div className="w-16 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 shadow-sm">
-                                    <span className="text-[8px] font-bold text-slate-300">+{session.items.length - 10}</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px] font-medium text-slate-400 mt-auto pt-2">
-                                <div className="flex items-center gap-1.5">
-                                  <Calendar size={13} className="text-slate-300" />
-                                  <span>创建于 <span className="text-slate-500">{new Date(session.createdAt).toLocaleString()}</span></span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <CheckCircle2 size={13} className="text-emerald-400" />
-                                  <span>完成于 <span className="text-slate-500">{new Date(session.lastModified).toLocaleString()}</span></span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                            session={session}
+                            isSelectionMode={isHistorySelectionMode}
+                            isSelected={selectedHistoryIds.has(session.id)}
+                            onToggleSelection={toggleHistorySelection}
+                            onOpen={handleOpenProject}
+                            onDelete={handleDeleteProject}
+                            onViewImage={setLightboxImage}
+                          />
                         ))}
                       </div>
                     )}
@@ -4474,7 +4744,7 @@ const App: React.FC = () => {
               <main className="flex-1">
                 {/* Style Template Manager (Full View) */}
                 {viewMode === 'templates' && (
-                  <div className="flex-1 bg-slate-50 overflow-hidden flex flex-col h-[calc(100vh-64px)]">
+                  <div className="flex-1 bg-slate-50 flex flex-col min-h-screen">
                     <StyleTemplateManager
                       isOpen={true} // Full view mode is always open
                       onClose={() => setViewMode('workbench')}
@@ -4485,6 +4755,24 @@ const App: React.FC = () => {
                       onClearEditingTemplateId={() => setEditingTemplateId(null)}
                       favorites={favorites}
                       onApplyFavorite={handleApplyPresetRequest}
+                      onToggleFavorite={(template) => {
+                        const existingFavorite = favorites.find(f => f.templateId === template.id);
+                        if (existingFavorite) {
+                          removeFavoriteMutation.mutate(existingFavorite.id, {
+                            onSuccess: () => showToast('已取消收藏', 'info')
+                          });
+                        } else {
+                          addFavoriteMutation.mutate({
+                            templateId: template.id,
+                            name: template.name,
+                            config: template.config,
+                            styleMap: template.styleMap,
+                            sampleImages: []
+                          }, {
+                            onSuccess: () => showToast('已添加到收藏', 'success')
+                          });
+                        }
+                      }}
                       appSettings={appSettings}
                       onShowToast={showToast}
                       // Lifted States
@@ -4543,9 +4831,8 @@ const App: React.FC = () => {
           }}
         />
       </ErrorBoundary >
-
-    </div >
+    </div>
   );
-}
+};
 
 export default App;

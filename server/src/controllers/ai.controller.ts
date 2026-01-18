@@ -25,7 +25,7 @@ export const handleExtractText = async (req: Request, res: Response) => {
         if (!resourcePath) throw new Error("Resource path is required");
         const settings = await getServerSettings();
         const result = await AIService.extractTextFromFile(resourcePath, fileType || 'application/octet-stream', settings);
-        
+
         // Unpack the new object result
         // if result is string (legacy/local), handle it? No, we updated service to always return object now.
         // But to be safe:
@@ -33,8 +33,8 @@ export const handleExtractText = async (req: Request, res: Response) => {
         const fallback = typeof result === 'string' ? false : result.fallback;
         const provider = typeof result === 'string' ? 'unknown' : result.provider;
 
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             data: content,
             meta: {
                 isFallback: fallback,
@@ -53,6 +53,7 @@ export const handleGenerateOutline = async (req: Request, res: Response) => {
         const result = await AIService.generateOutline(topic, configStyle, settings);
         res.json({ success: true, data: result });
     } catch (error: any) {
+        console.error('[handleGenerateOutline] Error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -69,10 +70,10 @@ export const handleGenerateSingleOutlineItem = async (req: Request, res: Respons
 };
 
 export const handleGenerateSlideDetail = async (req: Request, res: Response) => {
-    const { title, brief, topicContext } = req.body;
+    const { title, brief, topicContext, index, total, pageType } = req.body;
     try {
         const settings = await getServerSettings();
-        const result = await AIService.generateSlideDetail(title, brief, topicContext, settings);
+        const result = await AIService.generateSlideDetail(title, brief, topicContext, index, total, pageType, settings);
         res.json({ success: true, data: result });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
@@ -80,29 +81,39 @@ export const handleGenerateSlideDetail = async (req: Request, res: Response) => 
 };
 
 export const handleGenerateSlideVariant = async (req: Request, res: Response) => {
-    const { 
-        contentSource, 
-        styleFile, 
-        configStyle, 
-        variantLabel, 
-        title, 
+    const {
+        contentSource,
+        styleFile,
+        configStyle,
+        variantLabel,
+        title,
         contentType,
-        contentMimeType 
+        contentMimeType,
+        // 新增参数 ↓
+        pageType,
+        fullContent,
+        globalStyleMap,
+        allSlideTitles
     } = req.body;
 
-    console.log(`[handleGenerateSlideVariant] Request for: ${variantLabel} (Title: ${title || 'N/A'})`);
+    console.log(`[handleGenerateSlideVariant] Request for: ${variantLabel} (Title: ${title || 'N/A'}), PageType: ${pageType || 'N/A'}`);
 
     try {
         const settings = await getServerSettings();
         const result = await AIService.generateSlideVariant(
-            contentSource, 
-            styleFile, 
-            configStyle, 
-            variantLabel, 
-            title, 
-            settings, 
+            contentSource,
+            styleFile,
+            configStyle,
+            variantLabel,
+            title,
+            settings,
             contentType,
-            contentMimeType
+            contentMimeType,
+            // 传递新参数 ↓
+            pageType,
+            fullContent,
+            globalStyleMap,
+            allSlideTitles
         );
         res.json({ success: true, data: result });
     } catch (error: any) {

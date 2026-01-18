@@ -11,9 +11,9 @@ const maskApiKey = (key: string | undefined): string => {
 // Recursively mask all apiKey fields in an object
 const maskKeysInObject = (obj: any): any => {
     if (!obj || typeof obj !== 'object') return obj;
-    
+
     const result: any = Array.isArray(obj) ? [] : {};
-    
+
     for (const key of Object.keys(obj)) {
         if (key.toLowerCase() === 'apikey' && typeof obj[key] === 'string') {
             result[key] = maskApiKey(obj[key]);
@@ -23,7 +23,7 @@ const maskKeysInObject = (obj: any): any => {
             result[key] = obj[key];
         }
     }
-    
+
     return result;
 };
 
@@ -33,7 +33,7 @@ export class SettingService {
         let settings = await (prisma as any).appSettings.findFirst({
             where: { id: 'global' }
         });
-        
+
         if (!settings) {
             return null;
         }
@@ -78,17 +78,17 @@ export class SettingService {
 
         // 3. Helper to get config with fallback: SPECIFIC_KEY -> AI_KEY -> Default
         const getConfig = (specificKeySuffix: string, fallbackKey: string, defaultValue: string) => {
-             // 1. Try Provider Specific (e.g. OPENAI_BASE_URL)
-             if (prefix) {
-                 const specific = getEnv(`${prefix}_${specificKeySuffix}`);
-                 if (specific) return specific;
-             }
-             // 2. Try Generic Fallback (e.g. AI_BASE_URL)
-             const generic = getEnv(fallbackKey);
-             if (generic) return generic;
+            // 1. Try Provider Specific (e.g. OPENAI_BASE_URL)
+            if (prefix) {
+                const specific = getEnv(`${prefix}_${specificKeySuffix}`);
+                if (specific) return specific;
+            }
+            // 2. Try Generic Fallback (e.g. AI_BASE_URL)
+            const generic = getEnv(fallbackKey);
+            if (generic) return generic;
 
-             // 3. Return Default
-             return defaultValue;
+            // 3. Return Default
+            return defaultValue;
         };
 
         // 4. Default Presets (Backend-side definitions to match Frontend)
@@ -182,37 +182,37 @@ export class SettingService {
     static async updateSettings(config: any) {
         // 1. Fetch current settings to retrieve original keys
         const currentSettings = await this.getSettings();
-        
+
         // 2. Helper to recursively restore keys
         const restoreKeys = (incoming: any, original: any): any => {
-           if (!incoming || typeof incoming !== 'object' || !original) return incoming;
-           
-           if (Array.isArray(incoming)) return incoming; // Assume arrays don't hold keys directly for now
-           
-           const result = { ...incoming };
-           
-           for (const key in result) {
-               const val = result[key];
-               const originalVal = original[key];
-               
-               if (typeof val === 'string' && val.startsWith('••••')) {
-                   // If incoming is masked, restore original
-                   // Limit restoration to likely key fields to avoid false positives (though low risk with ••••)
-                   if (originalVal) {
-                       result[key] = originalVal;
-                   }
-               } else if (typeof val === 'object' && val !== null) {
-                   // Recurse
-                   result[key] = restoreKeys(val, originalVal);
-               }
-           }
-           return result;
+            if (!incoming || typeof incoming !== 'object' || !original) return incoming;
+
+            if (Array.isArray(incoming)) return incoming; // Assume arrays don't hold keys directly for now
+
+            const result = { ...incoming };
+
+            for (const key in result) {
+                const val = result[key];
+                const originalVal = original[key];
+
+                if (typeof val === 'string' && val.startsWith('••••')) {
+                    // If incoming is masked, restore original
+                    // Limit restoration to likely key fields to avoid false positives (though low risk with ••••)
+                    if (originalVal) {
+                        result[key] = originalVal;
+                    }
+                } else if (typeof val === 'object' && val !== null) {
+                    // Recurse
+                    result[key] = restoreKeys(val, originalVal);
+                }
+            }
+            return result;
         };
 
         // 3. Merge
         const finalConfig = restoreKeys(config, currentSettings);
         const configStr = JSON.stringify(finalConfig);
-        
+
         return await (prisma as any).appSettings.upsert({
             where: { id: 'global' },
             create: {
@@ -223,5 +223,28 @@ export class SettingService {
                 config: configStr
             }
         });
+    }
+    // Hot Reload .env and Sync
+    static async reloadEnv() {
+        try {
+            const envPath = require('path').resolve(process.cwd(), '.env');
+            const fs = require('fs');
+            const dotenv = require('dotenv');
+
+            if (fs.existsSync(envPath)) {
+                console.log('[SettingService] Reloading .env from:', envPath);
+                const envConfig = dotenv.parse(fs.readFileSync(envPath));
+
+                // Update process.env
+                for (const k in envConfig) {
+                    process.env[k] = envConfig[k];
+                }
+
+                // Sync to DB
+                await this.syncEnvToDatabase();
+            }
+        } catch (error) {
+            console.error('[SettingService] Failed to hot-reload .env:', error);
+        }
     }
 }

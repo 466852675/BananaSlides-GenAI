@@ -11,6 +11,167 @@ import { AssetService } from './asset.service';
 // --- Default Configuration ---
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 
+// --- AI Prompt Generation Helper Functions ---
+
+/**
+ * 根据页面类型生成专属指令
+ */
+const getPageTypeInstructions = (pageType: string): string => {
+    const commonRules = '【必须遵守】: 页面中的标题名称必须去重,保证生成的页面中只有唯一的一个标题。生成的文字、数字等务必清晰,严禁模糊化,特别是正文、列表、总结性的小字体文字,确保极高的可读性。';
+
+    const instructions: Record<string, string> = {
+        cover: `生成专业的PPT封面页。要求:标题突出醒目,背景视觉大气。${commonRules}`,
+        directory: `生成清晰的PPT目录页。要求:1)章节列表条理清晰,层级分明;2)根据提供的内容或大纲标题,智能归纳总结出合适的目录结构;3)严禁随意发挥偏离本项目主题。${commonRules}`,
+        transition: `生成章节过渡页。要求:突出显示章节标题,具有承上启下的视觉过渡效果。${commonRules}`,
+        content: `生成内容展示页。要求:1)在页面标题下方添加一句核心总结语句,让观众快速理解本页核心观点;2)内容需要有层次地展示:提炼小标题、关键要素、视觉标签;3)避免大段文字堆叠。${commonRules}`,
+        end: `生成PPT结束页。要求:严格根据提供的标题和描述内容生成,严禁包含联系电话、电子邮箱、网址、地址等占位符信息。${commonRules}`,
+        custom: `按照提供的内容和要求自定义生成专业PPT页面。${commonRules}`
+    };
+    return instructions[pageType] || instructions.custom;
+};
+
+type PageType = 'cover' | 'directory' | 'transition' | 'content' | 'end' | 'custom';
+type GlobalStyleMap = Record<PageType, string | null>;
+
+/**
+ * 视觉特征提取: 使用 Vision 模型分析风格图并返回关键词
+ */
+const analyzeStyleImage = async (
+    imageResource: string,
+    pageType: string,
+    settings?: AppSettings
+): Promise<string> => {
+    const config = getTaskConfig(settings, 'vision');
+    const base64 = await resourceToBase64(imageResource);
+
+    // 全流派适用: 通用设计语言提取 Prompt
+    const prompt = `
+        Role: 顶级 PPT 视觉分析师 & 构图专家。
+        Task: 解构这张 PPT ${pageType} 的“视觉元属性”，为 DALL-E 重建其灵魂。
+        
+        重点提取以下抽象设计属性 (禁止描述具象物品，禁止提取文字内容):
+        1. 【构图骨架】: 描述画面的几何重心分配（如：偏左重心、居中对称、大块非对称切割）。识别其引导线的方向和视觉流动感。
+        2. 【空间层级】: 识别其视觉深度（如：多层 3D 堆叠、极简扁平层级、半透明重叠感）。
+        3. 【背景肌理 & 渐变】: 描述背景是某种纹理（如：颗粒、金属拉丝、流体）、还是特定的颜色渐变方式。
+        4. 【配色灵魂】: 捕捉其核心的色彩对比逻辑（如：高对比度撞色、同色系渐变、极简灰白）。
+        
+        输出要求:
+        - 语言: 简体中文。
+        - 格式: 极简扫描指令（类似：“主体构图为...，视觉流向为...，背景呈现...肌理，色彩逻辑采用...，禁止添加任何具象装饰”）。
+        - 长度: 120 字以内。
+    `;
+
+    try {
+        if (shouldUseGeminiNative(config, settings)) {
+            const ai = createGoogleClient(config);
+            const contents = [
+                { inlineData: { mimeType: 'image/png', data: base64 } },
+                { text: prompt }
+            ];
+            const response = await ai.models.generateContent({
+                model: config.model,
+                contents: { parts: contents } as any
+            });
+            return response.text?.trim() || "";
+        } else {
+            const messages = [
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: prompt },
+                        { type: "image_url", image_url: { url: `data:image/png;base64,${base64}` } }
+                    ]
+                }
+            ];
+            return await callOpenAICompatible(config, messages);
+        }
+    } catch (e) {
+        console.warn(`[analyzeStyleImage] Style analysis failed (Model: ${config.model}), falling back to basic metadata.`, e);
+        return "";
+    }
+};
+
+/**
+ * 智能匹配风格参考图
+ */
+const getStyleReference = (
+    pageType: string,
+    globalStyleMap?: GlobalStyleMap
+): { file: string | null; matchType: 'exact' | 'fallback' | 'none' } => {
+    if (!globalStyleMap) return { file: null, matchType: 'none' };
+
+    // Level 1: 精确匹配当前页面类型
+    const exactMatch = globalStyleMap[pageType as PageType];
+    if (exactMatch) {
+        return { file: exactMatch, matchType: 'exact' };
+    }
+
+    // Level 2: 降级到其他页面类型的风格参考图
+    const otherTypes: PageType[] = ['cover', 'content', 'directory', 'transition', 'end'];
+    for (const type of otherTypes) {
+        if (type !== pageType && globalStyleMap[type]) {
+            return { file: globalStyleMap[type], matchType: 'fallback' };
+        }
+    }
+
+    return { file: null, matchType: 'none' };
+};
+
+/**
+ * 构建完整的图片生成Prompt (OpenAI兼容模式)
+ */
+const buildImageGenerationPrompt = (params: {
+    pageType: string;
+    title: string;
+    content: string;
+    styleName: string;
+    colorPalette: string;
+    requirements: string;
+    aspectRatio: string;
+    styleMatchType: 'exact' | 'fallback' | 'none';
+    allSlideTitles?: string[]; // 新增: 所有页面标题,用于目录页生成参考
+    styleKeywords?: string;  // 新增: Vision 模型解析出的风格特征
+}): string => {
+    const { pageType, title, content, styleName, colorPalette, requirements, aspectRatio, styleMatchType, allSlideTitles, styleKeywords } = params;
+
+    let prompt = '';
+
+    // 第一部分: 视觉调性定义 (Visual Language - "HOW to draw")
+    prompt += `【1. 视觉语言 & 艺术风格 (最高优先级说明书)】\n`;
+    if (styleKeywords) {
+        prompt += `- 核心视觉指纹: ${styleKeywords}\n`;
+    }
+    if (styleMatchType === 'exact') {
+        prompt += `- 构图锁定: 必须严格复刻参考图的几何骨架、色彩权重和视觉平衡感。\n`;
+    }
+
+    // 第二部分: 业务任务核心 (Business Core - "WHAT to draw")
+    prompt += `\n【2. 业务任务内容 (核心质料)】\n`;
+    prompt += `- 页面标题: "${title}"\n`;
+
+    if (pageType === 'directory' && (!content || content.length < 20) && allSlideTitles && allSlideTitles.length > 0) {
+        prompt += `- 大纲参考: "${allSlideTitles.join('、')}"\n`;
+    } else if (content) {
+        const contentPreview = content.length > 800 ? content.substring(0, 800) + '...' : content;
+        prompt += `- 详细业务描述: "${contentPreview}"\n`;
+    }
+
+    // 第三部分: 形神兼备合成指令 (Synthesized Meta-Instruction)
+    prompt += `\n【3. 形神兼备合成要求】\n`;
+    prompt += `- 任务使命: 请使用第一部分定义的【视觉语言】去重构并描绘第二部分定义的【业务任务内容】。\n`;
+    prompt += `- 深度要求: 生成的图像必须在视觉上看起来与参考图逻辑一致，但在含义和内容上必须精准对应本页面的业务主题（如：如果业务涉及风电，请将风电机组以参考图的风格化形式融入构图中）。\n`;
+
+    // 第四部分: 技术规格
+    prompt += `\n【4. 技术规格】\n`;
+    prompt += `- 宽高比: ${aspectRatio}\n`;
+    if (styleName) prompt += `- 风格流派: ${styleName}\n`;
+    if (colorPalette) prompt += `- 配色方案: ${colorPalette}\n`;
+    if (requirements) prompt += `- 用户特定偏好: ${requirements}\n`;
+    prompt += `- 画面基调: 专业商业演示, 4K 高画质, 文字严禁模糊, 线条精准。\n`;
+
+    return prompt;
+};
+
 // --- Helper Functions ---
 
 const cleanBaseUrlForGoogle = (url: string): string => {
@@ -18,8 +179,8 @@ const cleanBaseUrlForGoogle = (url: string): string => {
     if (!cleaned) return 'https://generativelanguage.googleapis.com';
     if (cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1);
     if (!cleaned.includes('googleapis.com')) {
-        if (cleaned.endsWith('/v1')) return cleaned.slice(0, -3); 
-        if (cleaned.endsWith('/openai')) return cleaned.slice(0, -7); 
+        if (cleaned.endsWith('/v1')) return cleaned.slice(0, -3);
+        if (cleaned.endsWith('/openai')) return cleaned.slice(0, -7);
     }
     return cleaned;
 };
@@ -36,7 +197,7 @@ const createGoogleClient = (config: ModelConnection) => {
     if (isCustomProxy) {
         options.customHeaders = {
             'Authorization': `Bearer ${config.apiKey}`,
-            'X-Goog-Api-Key': config.apiKey 
+            'X-Goog-Api-Key': config.apiKey
         };
     }
 
@@ -45,13 +206,13 @@ const createGoogleClient = (config: ModelConnection) => {
 
 const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image' | 'vision'): ModelConnection => {
     // console.log(`[getTaskConfig] Task: ${task}, Provider: ${settings?.ai?.provider || 'default'}`);
-    
+
     if (!settings) {
         // console.log(`[getTaskConfig] No settings provided, using defaults`);
         return {
             apiKey: DEFAULT_GEMINI_KEY,
             baseUrl: 'https://generativelanguage.googleapis.com',
-            model: 'gemini-3-pro-preview'
+            model: task === 'vision' ? 'gemini-3-flash' : 'gemini-3-pro-preview'
         };
     }
 
@@ -68,7 +229,15 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
         // Priority 2: Use general settings
         let apiKey = settings.ai.apiKey;
         const baseUrl = settings.ai.baseUrl;
-        const model = settings.ai.models[task];
+
+        // 动态模型路由：优先尊重配置值，仅在缺失时提供自适应回退
+        let model = settings.ai.models[task];
+        if (!model) {
+            if (task === 'vision') model = 'gemini-3-flash';
+            else if (task === 'image') model = 'gemini-3-pro-image';
+            else model = 'gemini-3-pro-preview';
+        }
+
         if (settings.ai.provider === 'Gemini' && !apiKey) {
             apiKey = DEFAULT_GEMINI_KEY;
         }
@@ -86,48 +255,54 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
 
 const shouldUseGeminiNative = (config: ModelConnection, settings?: AppSettings): boolean => {
     const url = config.baseUrl.toLowerCase().trim();
-    
-    // Priority 1: Local proxies always use OpenAI compatible format
-    if (url.includes('127.0.0.1') || url.includes('localhost')) {
-        console.log(`[shouldUseGeminiNative] Local proxy detected, using OpenAI compatible API`);
-        return false;
-    }
 
-    // Priority 2: Official Google APIs use Gemini Native
+    // Priority 1: Official Google APIs use Gemini Native
     if (url.includes('googleapis.com') || url.includes('generativelanguage')) {
         console.log(`[shouldUseGeminiNative] Google API detected, using Gemini Native API`);
         return true;
     }
-    
-    // Priority 3: Check provider setting for other cases
+
+    // Priority 2: URLs with /v1 endpoint are OpenAI compatible (even if model name contains 'gemini')
+    if (url.includes('/v1')) {
+        console.log(`[shouldUseGeminiNative] OpenAI compatible endpoint detected (/v1), using OpenAI API`);
+        return false;
+    }
+
+    // Priority 3: Check if model name indicates Gemini (e.g., gemini-3-pro-image, gemini-3-flash)
+    if (config.model && config.model.toLowerCase().includes('gemini')) {
+        console.log(`[shouldUseGeminiNative] Gemini model detected (${config.model}), using Gemini Native API`);
+        return true;
+    }
+
+    // Priority 4: Check provider setting
     if (settings?.ai.provider === 'Gemini') {
         console.log(`[shouldUseGeminiNative] Provider is Gemini, using Gemini Native API`);
         return true;
     }
-    
+
     // All other URLs use OpenAI compatible API
     console.log(`[shouldUseGeminiNative] Using OpenAI compatible API for ${url}`);
     return false;
 };
 
 const getClosestSupportedRatio = (inputRatio: string): string => {
-  const SUPPORTED_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
-  if (SUPPORTED_RATIOS.includes(inputRatio)) return inputRatio;
-  const [w, h] = inputRatio.split(':').map(Number);
-  if (!w || !h) return "16:9";
-  const ratio = w / h;
-  if (ratio >= 1.7) return "16:9"; 
-  if (ratio >= 1.3) return "4:3";
-  if (ratio >= 0.9) return "1:1";
-  if (ratio >= 0.7) return "3:4";
-  return "9:16";
+    const SUPPORTED_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
+    if (SUPPORTED_RATIOS.includes(inputRatio)) return inputRatio;
+    const [w, h] = inputRatio.split(':').map(Number);
+    if (!w || !h) return "16:9";
+    const ratio = w / h;
+    if (ratio >= 1.7) return "16:9";
+    if (ratio >= 1.3) return "4:3";
+    if (ratio >= 0.9) return "1:1";
+    if (ratio >= 0.7) return "3:4";
+    return "9:16";
 };
 
 // --- API Callers ---
 
 async function callOpenAICompatible(
-    config: ModelConnection, 
-    messages: any[], 
+    config: ModelConnection,
+    messages: any[],
     temperature: number = 0.7,
     jsonMode: boolean = false
 ): Promise<string> {
@@ -155,7 +330,10 @@ async function callOpenAICompatible(
 
     try {
         const response = await axios.post(url, body, { headers, timeout: 120000 });
-        return response.data.choices[0]?.message?.content || "";
+        const content = response.data.choices[0]?.message?.content || "";
+        console.log(`[OpenAI Compatible] Response received, length: ${content.length}`);
+        console.log(`[OpenAI Compatible] Response preview:`, content.substring(0, 200));
+        return content;
     } catch (error: any) {
         const errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
         const statusCode = error.response?.status || 'unknown';
@@ -181,7 +359,7 @@ async function callOpenAIImageGeneration(
     // Map aspect ratio to size (DALL-E style)
     const sizeMap: Record<string, string> = {
         "16:9": "1792x1024",
-        "4:3": "1024x768", 
+        "4:3": "1024x768",
         "1:1": "1024x1024",
         "3:4": "768x1024",
         "9:16": "1024x1792"
@@ -205,7 +383,7 @@ async function callOpenAIImageGeneration(
     try {
         const response = await axios.post(url, body, { headers, timeout: 600000 });
         const data = response.data?.data?.[0];
-        
+
         if (data?.b64_json) {
             return `data:image/png;base64,${data.b64_json}`;
         } else if (data?.url) {
@@ -214,7 +392,7 @@ async function callOpenAIImageGeneration(
             const base64 = Buffer.from(imageResponse.data, 'binary').toString('base64');
             return `data:image/png;base64,${base64}`;
         }
-        
+
         throw new Error("No image data in response");
     } catch (error: any) {
         const errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
@@ -231,10 +409,10 @@ async function callOpenAIImageGeneration(
 // --- Exported Services ---
 
 export const AIService = {
-    
+
     async smartRefine(text: string, type: 'requirement' | 'content', settings?: AppSettings): Promise<string> {
         const config = getTaskConfig(settings, 'text');
-        let contextPrompt = type === 'requirement' 
+        let contextPrompt = type === 'requirement'
             ? "Refine the following design requirements for a presentation. Make them clear, professional, specific, and actionable for a design AI. Maintain the original intent but improve clarity and terminology."
             : "Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.";
 
@@ -243,7 +421,7 @@ export const AIService = {
         if (shouldUseGeminiNative(config, settings)) {
             const ai = createGoogleClient(config);
             const response = await ai.models.generateContent({
-                model: config.model, 
+                model: config.model,
                 contents: prompt,
             });
             return response.text?.trim() || text;
@@ -265,13 +443,13 @@ export const AIService = {
             4. If no meaningful change indicated in context, return "常规保存".
             5. Return ONLY the summary text, no conversational filler.
         `;
-        
+
         console.log(`[AIService] Generating snapshot summary with model: ${config.model}`);
 
         if (shouldUseGeminiNative(config, settings)) {
             const ai = createGoogleClient(config);
             const response = await ai.models.generateContent({
-                model: config.model, 
+                model: config.model,
                 contents: prompt,
             });
             return response.text?.trim() || "常规保存";
@@ -284,38 +462,38 @@ export const AIService = {
     async extractTextFromFile(resourcePath: string, fileType: string, settings?: AppSettings): Promise<{ content: string, fallback?: boolean, provider?: string }> {
         // Handle PDF via MinerU with Fallback
         if (fileType === 'application/pdf') {
-             const mineruKey = settings?.docParser?.apiKey;
-             
-             if (mineruKey) {
-                 try {
-                     const { MinerUService } = await import('./mineru.service');
-                     
-                     console.log('[AIService] Attempting MinerU PDF Parsing...');
-                     const markdown = await MinerUService.parseFile(resourcePath, {
-                         apiKey: mineruKey,
-                         baseUrl: settings?.docParser?.baseUrl || 'https://mineru.openxlab.org.cn',
-                         provider: 'MinerU'
-                     });
-                     
-                     console.log('[AIService] MinerU Success.');
-                     return { content: markdown, provider: 'MinerU' };
-                     
-                 } catch (mineruError: any) {
-                     console.warn(`[AIService] MinerU Failed (Falling back to Vision): ${mineruError.message}`);
-                     // Proceed to Vision Model logic below, but mark as fallback
-                     // We continue execution...
-                 }
-             } else {
-                 console.log('[AIService] MinerU API Key missing. Skipping to Vision Model.');
-             }
+            const mineruKey = settings?.docParser?.apiKey;
+
+            if (mineruKey) {
+                try {
+                    const { MinerUService } = await import('./mineru.service');
+
+                    console.log('[AIService] Attempting MinerU PDF Parsing...');
+                    const markdown = await MinerUService.parseFile(resourcePath, {
+                        apiKey: mineruKey,
+                        baseUrl: settings?.docParser?.baseUrl || 'https://mineru.openxlab.org.cn',
+                        provider: 'MinerU'
+                    });
+
+                    console.log('[AIService] MinerU Success.');
+                    return { content: markdown, provider: 'MinerU' };
+
+                } catch (mineruError: any) {
+                    console.warn(`[AIService] MinerU Failed (Falling back to Vision): ${mineruError.message}`);
+                    // Proceed to Vision Model logic below, but mark as fallback
+                    // We continue execution...
+                }
+            } else {
+                console.log('[AIService] MinerU API Key missing. Skipping to Vision Model.');
+            }
         }
 
         const config = getTaskConfig(settings, 'vision');
 
         // Simple Text
         if (fileType === 'text/plain' || resourcePath.endsWith('.md') || resourcePath.endsWith('.txt')) {
-             const buffer = await readResourceBuffer(resourcePath);
-             return { content: buffer.toString('utf-8'), provider: 'Local' };
+            const buffer = await readResourceBuffer(resourcePath);
+            return { content: buffer.toString('utf-8'), provider: 'Local' };
         }
 
         // Word
@@ -327,86 +505,135 @@ export const AIService = {
 
         // AI Vision
         const base64 = await resourceToBase64(resourcePath);
-        
+
         // Determine whether this was a fallback from PDF
         const isFallback = (fileType === 'application/pdf');
 
         if (shouldUseGeminiNative(config, settings)) {
             const ai = createGoogleClient(config);
             const contents = [
-                 { inlineData: { mimeType: fileType, data: base64 } },
-                 { text: "Please analyze this file and extract the main content, key topics, and detailed information. Summarize it into a comprehensive text format that can be used to generate a presentation outline. Language: Simplified Chinese (简体中文)." }
+                { inlineData: { mimeType: fileType, data: base64 } },
+                { text: "Please analyze this file and extract the main content, key topics, and detailed information. Summarize it into a comprehensive text format that can be used to generate a presentation outline. Language: Simplified Chinese (简体中文)." }
             ];
             const response = await ai.models.generateContent({
                 model: config.model,
                 contents: { parts: contents } as any
             });
-            return { 
-                content: response.text?.trim() || "", 
+            return {
+                content: response.text?.trim() || "",
                 fallback: isFallback,
                 provider: 'Gemini Vision'
             };
         } else {
             // OpenAI Vision
-             const messages = [
-                 {
-                     role: "user",
-                     content: [
-                         { type: "text", text: "Please analyze this image/file and extract the main content, key topics, and detailed information. Summarize it into a comprehensive text format. Language: Simplified Chinese." },
-                         { type: "image_url", image_url: { url: `data:${fileType};base64,${base64}` } }
-                     ]
-                 }
-             ];
-             const text = await callOpenAICompatible(config, messages);
-             return { 
-                 content: text, 
-                 fallback: isFallback, 
-                 provider: 'OpenAI Vision' 
+            const messages = [
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: "Please analyze this image/file and extract the main content, key topics, and detailed information. Summarize it into a comprehensive text format. Language: Simplified Chinese." },
+                        { type: "image_url", image_url: { url: `data:${fileType};base64,${base64}` } }
+                    ]
+                }
+            ];
+            const text = await callOpenAICompatible(config, messages);
+            return {
+                content: text,
+                fallback: isFallback,
+                provider: 'OpenAI Vision'
             };
         }
     },
 
     async generateOutline(topic: string, configStyle: StyleConfig, settings: AppSettings): Promise<OutlineItem[]> {
         const config = getTaskConfig(settings, 'text');
-        
-        // ... (Outline logic similar to frontend)
-        // For brevity, using simplified prompt construction
-        const totalPages = configStyle.targetPageCount || 10;
-         const prompt = `Generate a structured PowerPoint outline for: "${topic}". 
-            Structure (Total ${totalPages} pages):
-            1. Cover
-            2. Directory
-            ...Content...
-            Last. End/Thank You
+
+        const { targetPageCount, pageStructure } = configStyle;
+        const structure = { ...(pageStructure || { cover: 1, directory: 1, transition: 0, content: 7, end: 1 }) };
+
+        // 自动校准正文页数,确保总数一致
+        const fixedSum = (structure.cover || 0) + (structure.directory || 0) + (structure.transition || 0) + (structure.end || 0);
+        structure.content = Math.max(1, targetPageCount - fixedSum);
+
+        const prompt = `
+            Task: 为主题 "${topic}" 生成一份结构化的 PPT 演示大纲。
             
-            Return JSON array of objects: { "title": string, "brief": string, "pageType": "cover"|"directory"|"transition"|"content"|"end" }
-            Language: Simplified Chinese.
-            No markdown. Raw JSON.
+            【严格限制】:
+            1. 总页数必须正好为: ${targetPageCount} 页。
+            2. 页面组成结构必须严格遵守以下配比:
+               - 封面页 (cover): ${structure.cover} 页
+               - 目录页 (directory): ${structure.directory} 页
+               - 章节过渡页 (transition): ${structure.transition} 页
+               - 内容正文页 (content): ${structure.content} 页
+               - 结束页 (end): ${structure.end} 页
+            
+            【推荐页面顺序指南 (必须遵守)】:
+            ${(() => {
+                const seq: string[] = [];
+                const targetSequence: string[] = [];
+                for (let i = 0; i < (structure.cover || 0); i++) targetSequence.push('cover');
+                for (let i = 0; i < (structure.directory || 0); i++) targetSequence.push('directory');
+
+                const transitions = structure.transition || 0;
+                const contents = structure.content || 0;
+                if (transitions === 0) {
+                    for (let i = 0; i < contents; i++) targetSequence.push('content');
+                } else {
+                    const groupSize = Math.floor(contents / (transitions + 1));
+                    let remC = contents;
+                    for (let i = 0; i < transitions; i++) {
+                        const curG = (i === transitions - 1) ? remC : groupSize;
+                        for (let j = 0; j < curG; j++) { targetSequence.push('content'); remC--; }
+                        targetSequence.push('transition');
+                    }
+                    while (remC > 0) { targetSequence.push('content'); remC--; }
+                }
+                for (let i = 0; i < (structure.end || 0); i++) targetSequence.push('end');
+
+                return targetSequence.map((t, i) => `第 ${i + 1} 页: ${t}`).join(', ');
+            })()}
+
+            【关键规则】:
+            - 如果某个页面类型的数量为 0,则 **严禁** 生成该类型的页面。
+            - 生成的页面总数必须与上述配比的总和(${structure.cover + structure.directory + structure.transition + structure.content + structure.end})以及设定的总页数(${targetPageCount})完全一致。
+            
+            【内容要求】:
+            1. 逻辑清晰: 内容正文应围绕主题展开,如果有章节过渡页,请在章节开始前插入。
+            2. 简洁有力: 每页的 brief (简介) 应当提炼核心观点,不宜过长。
+            3. 输出语言: 简体中文。
+            
+            【输出格式】:
+            返回一个 JSON 数组,数组长度必须为 ${targetPageCount}。
+            每个对象包含以下字段:
+            - title: 页面标题
+            - brief: 页面内容简介 (作为生成正文的参考)
+            - pageType: 必须是 "cover" | "directory" | "transition" | "content" | "end" 中的一个。
+            
+            注意: 严禁返回任何 Markdown 代码块标签,只返回原始 JSON。
         `;
 
         let jsonStr = "";
         try {
             if (shouldUseGeminiNative(config, settings)) {
-                 // Native JSON mode
-                 const ai = createGoogleClient(config);
-                 const response = await ai.models.generateContent({
+                // Native JSON mode
+                const ai = createGoogleClient(config);
+                const response = await ai.models.generateContent({
                     model: config.model,
                     contents: prompt,
                     // Note: Skipping complex schema config for brevity in this migration step, relying on prompt
-                 });
-                 jsonStr = response.text?.trim() || "[]";
+                });
+                jsonStr = response.text?.trim() || "[]";
             } else {
-                 const messages = [{ role: "user", content: prompt }];
-                 jsonStr = await callOpenAICompatible(config, messages, 0.7, true);
+                const messages = [{ role: "user", content: prompt }];
+                jsonStr = await callOpenAICompatible(config, messages, 0.7, true);
             }
             jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
             const parsed = JSON.parse(jsonStr);
-             return parsed.map((item: any, index: number) => ({
+            return parsed.map((item: any, index: number) => ({
                 id: Math.random().toString(36).substr(2, 9),
                 index: index + 1,
                 title: item.title,
                 brief: item.brief,
-                pageType: item.pageType || 'content', 
+                pageType: item.pageType || 'content',
                 status: 'idle'
             }));
         } catch (e) {
@@ -415,7 +642,7 @@ export const AIService = {
         }
     },
 
-    async generateSingleOutlineItem(topic: string, index: number, total: number, settings?: AppSettings): Promise<{title: string, brief: string}> {
+    async generateSingleOutlineItem(topic: string, index: number, total: number, settings?: AppSettings): Promise<{ title: string, brief: string }> {
         const config = getTaskConfig(settings, 'text');
         const prompt = `
             Context: Generating a PowerPoint outline for topic "${topic}".
@@ -429,20 +656,20 @@ export const AIService = {
         try {
             let jsonStr = "";
             if (shouldUseGeminiNative(config, settings)) {
-                 const ai = createGoogleClient(config);
-                 const response = await ai.models.generateContent({
+                const ai = createGoogleClient(config);
+                const response = await ai.models.generateContent({
                     model: config.model,
                     contents: prompt,
                     config: {
-                         responseMimeType: "application/json",
-                         responseSchema: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
                             type: Type.OBJECT,
                             properties: {
                                 title: { type: Type.STRING },
                                 brief: { type: Type.STRING }
                             },
                             required: ["title", "brief"]
-                         }
+                        }
                     }
                 });
                 jsonStr = response.text?.trim() || "{}";
@@ -461,11 +688,23 @@ export const AIService = {
         }
     },
 
-    async generateSlideDetail(title: string, brief: string, topicContext: string, settings?: AppSettings): Promise<string> {
+    async generateSlideDetail(
+        title: string,
+        brief: string,
+        topicContext: string,
+        index: number,
+        total: number,
+        pageType: string,
+        settings?: AppSettings
+    ): Promise<string> {
         const config = getTaskConfig(settings, 'text');
         const prompt = `Topic Context: ${topicContext}
             Slide Title: ${title}
             Slide Intent: ${brief}
+            
+            Structural Context:
+            - This is slide ${index} of ${total} in the entire presentation.
+            - Page Type: ${pageType}
             
             Task: Write the full, detailed content for this slide.
             
@@ -473,19 +712,19 @@ export const AIService = {
             1. Language: Strictly Simplified Chinese (简体中文).
             2. Include bullet points, key arguments, or data placeholders.
             3. Use a professional tone.
-            4. Content length: 150-250 words.`;
+            4. Content length: ${pageType === 'content' ? '150-250' : '50-100'} words.`;
 
         try {
             if (shouldUseGeminiNative(config, settings)) {
-                 const ai = createGoogleClient(config);
-                 const response = await ai.models.generateContent({
+                const ai = createGoogleClient(config);
+                const response = await ai.models.generateContent({
                     model: config.model,
                     contents: prompt,
                 });
                 return response.text?.trim() || "";
             } else {
-                 const messages = [{ role: "user", content: prompt }];
-                 return await callOpenAICompatible(config, messages);
+                const messages = [{ role: "user", content: prompt }];
+                return await callOpenAICompatible(config, messages);
             }
         } catch (error) {
             console.error("Generate Detail Error", error);
@@ -494,95 +733,121 @@ export const AIService = {
     },
 
     async generateSlideVariant(
-      contentSource: string, // URL or Path
-      styleFile: string | null,
-      configStyle: StyleConfig,
-      variantLabel: string,
-      title: string,
-      settings: AppSettings,
-      contentType: 'text' | 'image',
-      contentMimeType?: string
+        contentSource: string, // URL or Path
+        styleFile: string | null,
+        configStyle: StyleConfig,
+        variantLabel: string,
+        title: string,
+        settings: AppSettings,
+        contentType: 'text' | 'image',
+        contentMimeType?: string,
+        pageType?: string,
+        fullContent?: string,
+        globalStyleMap?: GlobalStyleMap,
+        allSlideTitles?: string[]
     ): Promise<string> {
         const config = getTaskConfig(settings, 'image');
         const targetRatio = configStyle.aspectRatio || "16:9";
 
-        // Logic for image generation...
-        
-        if (shouldUseGeminiNative(config, settings)) {
-             const ai = createGoogleClient(config);
-             const apiRatio = getClosestSupportedRatio(targetRatio);
-             const parts: any[] = [];
+        // 1. 智能拾取最佳风格参考图
+        const effectivePageType = (pageType || 'content') as PageType;
+        let { file: styleRef, matchType } = getStyleReference(effectivePageType, globalStyleMap);
 
-             if (contentType === 'image') {
-                 const base64 = await resourceToBase64(contentSource);
-                 // Fallback mime type if not provided, or detect?
-                 // resourceToBase64 reads buffer, we can guess. 
-                 // For now hardcode or use contentMimeType from Controller if sent.
-                 const mime = contentMimeType || 'image/png';
-                 parts.push({ inlineData: { mimeType: mime, data: base64 } });
-                 parts.push({ text: "Create a presentation slide based on this visual." });
-             } else {
-                 parts.push({ text: `Create a presentation slide. Title: "${title}". Content: "${contentSource}"` });
-             }
-             
-             if (styleFile) {
-                 const styleBase64 = await resourceToBase64(styleFile);
-                 parts.push({ inlineData: { mimeType: 'image/png', data: styleBase64 } });
-                 parts.push({ text: "Reference this style." });
-             }
+        // 优先使用 globalStyleMap 中的匹配, 其次是旧参数 styleFile
+        if (!styleRef && styleFile) {
+            styleRef = styleFile;
+            matchType = 'fallback';
+        }
 
-             // Add global constraints
-             parts.push({ text: `Style: ${configStyle.styleName}. Ratio: ${targetRatio}. Language: Simplified Chinese.` });
-
-             const response = await ai.models.generateContent({
-                model: config.model,
-                contents: { parts },
-                generationConfig: {
-                    candidateCount: 1, // Gemini 3 supports 1
-                    imageConfig: { aspectRatio: apiRatio as any }
-                 } 
-             } as any);
-
-             const candidate = response.candidates?.[0];
-             let imageBase64: string | undefined;
-             if (candidate?.content?.parts) {
-                 for (const p of candidate.content.parts) {
-                     if (p.inlineData && p.inlineData.data) {
-                         imageBase64 = p.inlineData.data;
-                         break;
-                     }
-                 }
-             }
-
-              if (!imageBase64) return ""; 
-              
-              // Save to local file system instead of returning Base64
-              const base64WithPrefix = `data:image/png;base64,${imageBase64}`;
-              const savedUrl = await AssetService.save(base64WithPrefix, 'png');
-              console.log(`[generateSlideVariant] Saved Gemini image to: ${savedUrl}`);
-              
-              return savedUrl;
-        } else {
-            // OpenAI Image Gen (for local proxies and OpenAI-compatible APIs)
-            // Construct text prompt for image generation
-            let imagePrompt = `Create a professional presentation slide background. `;
-            if (title) imagePrompt += `Title: "${title}". `;
-            if (contentType === 'text' && contentSource) {
-                // Use first 500 chars of content as context
-                const contentPreview = contentSource.substring(0, 500);
-                imagePrompt += `Content theme: "${contentPreview}". `;
+        // 2. Vision 预解析: 提取风格特征描述
+        let styleKeywords = "";
+        if (styleRef) {
+            try {
+                styleKeywords = await analyzeStyleImage(styleRef, effectivePageType, settings);
+                console.log(`[generateSlideVariant] Vision Analysis Results for ${effectivePageType}: ${styleKeywords.substring(0, 50)}...`);
+            } catch (err) {
+                console.warn(`[generateSlideVariant] Vision analysis failed, continuing with prompt only.`, err);
             }
-            if (configStyle.styleName) imagePrompt += `Style: ${configStyle.styleName}. `;
-            imagePrompt += `Aspect ratio: ${targetRatio}. High quality, modern design, suitable for presentation.`;
-            
-            console.log(`[generateSlideVariant] Using OpenAI Image API with prompt length: ${imagePrompt.length}`);
-            const base64Result = await callOpenAIImageGeneration(config, imagePrompt, targetRatio);
-            
-            // Save to local file system
-            const savedUrl = await AssetService.save(base64Result, 'png');
-            console.log(`[generateSlideVariant] Saved OpenAI image to: ${savedUrl}`);
-            
-            return savedUrl;
+        }
+
+        // 3. 构建智能 Prompt
+        const prompt = buildImageGenerationPrompt({
+            pageType: effectivePageType,
+            title: title || '',
+            content: fullContent || (contentType === 'text' ? contentSource : ""),
+            styleName: configStyle.styleName,
+            colorPalette: configStyle.colorPalette,
+            requirements: configStyle.requirements,
+            aspectRatio: targetRatio,
+            styleMatchType: matchType,
+            allSlideTitles,
+            styleKeywords
+        });
+
+        // 4. 执行模型请求
+        try {
+            if (shouldUseGeminiNative(config, settings)) {
+                // --- Gemini 原生分支 ---
+                const ai = createGoogleClient(config);
+                const apiRatio = getClosestSupportedRatio(targetRatio);
+                const parts: any[] = [];
+
+                // 4.1 内容参考 (如有)
+                if (contentType === 'image') {
+                    const base64 = await resourceToBase64(contentSource);
+                    const mime = contentMimeType || 'image/png';
+                    parts.push({ inlineData: { mimeType: mime, data: base64 } });
+                    parts.push({ text: "内容参考图：请基于此构图生成 PPT 页面。" });
+                }
+
+                // 4.2 风格参考图 (赋予 Gemini 直接观察能力)
+                if (styleRef) {
+                    const styleBase64 = await resourceToBase64(styleRef);
+                    parts.push({ inlineData: { mimeType: 'image/png', data: styleBase64 } });
+                    parts.push({ text: "风格参考图：请严格学习该图的调色板、视觉元素、UI质感和装饰风格。" });
+                }
+
+                // 4.3 混合 Prompt (文字指令 + 视觉分析结果)
+                parts.push({ text: prompt });
+
+                const response = await ai.models.generateContent({
+                    model: config.model,
+                    contents: { parts },
+                    generationConfig: {
+                        candidateCount: 1,
+                        imageConfig: { aspectRatio: apiRatio as any }
+                    }
+                } as any);
+
+                const candidate = response.candidates?.[0];
+                let imageBase64: string | undefined;
+                if (candidate?.content?.parts) {
+                    for (const p of candidate.content.parts) {
+                        if (p.inlineData && p.inlineData.data) {
+                            imageBase64 = p.inlineData.data;
+                            break;
+                        }
+                    }
+                }
+
+                if (!imageBase64) throw new Error("Gemini returned no image data");
+
+                const savedUrl = await AssetService.save(`data:image/png;base64,${imageBase64}`, 'png');
+                console.log(`[generateSlideVariant] Gemini Image Saved: ${savedUrl}`);
+                return savedUrl;
+
+            } else {
+                // --- OpenAI/DALL-E 分支 ---
+                // DALL-E 无法“看到”图片，但我们通过 styleKeywords (从 Vision 提取) 将视觉特征转化为了强指令
+                console.log(`[generateSlideVariant] DALL-E Prompt length: ${prompt.length}`);
+                const base64Result = await callOpenAIImageGeneration(config, prompt, targetRatio);
+                const savedUrl = await AssetService.save(base64Result, 'png');
+                console.log(`[generateSlideVariant] OpenAI Image Saved: ${savedUrl}`);
+                return savedUrl;
+            }
+        } catch (error) {
+            console.error("[generateSlideVariant] Core Error:", error);
+            throw error;
         }
     }
 };

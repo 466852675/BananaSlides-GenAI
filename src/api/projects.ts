@@ -39,22 +39,28 @@ export interface SlideDTO {
 // Priority: workbench slides (cover > directory > transition > content > end)
 // Fallback: styleMap reference images (same order)
 const calculateThumbnail = (items: any[], styleMap: any): string | undefined => {
-    const pageTypePriority: Array<'cover' | 'directory' | 'transition' | 'content' | 'end'> = 
+    const pageTypePriority: Array<'cover' | 'directory' | 'transition' | 'content' | 'end'> =
         ['cover', 'directory', 'transition', 'content', 'end'];
-    
-    // Try to find first successful slide with image in priority order
+
+    // Try to find first priority slide with image
     for (const pageType of pageTypePriority) {
-        const slide = items.find(item => 
-            item.pageType === pageType && 
-            item.status === 'success' && 
-            item.variants && 
-            item.variants.length > 0
-        );
+        const slide = items.find(item => item.pageType === pageType);
         if (slide) {
-            return slide.variants[0];
+            // Priority 1: Generated variant
+            if (slide.variants && slide.variants.length > 0) {
+                return slide.variants[0];
+            }
+            // Priority 2: Original preview/upload
+            if (slide.previewUrl) {
+                return slide.previewUrl;
+            }
         }
     }
-    
+
+    // Fallback try ANY slide with image
+    const anySlide = items.find(item => (item.variants && item.variants.length > 0) || item.previewUrl);
+    if (anySlide) return (anySlide.variants && anySlide.variants.length > 0) ? anySlide.variants[0] : anySlide.previewUrl;
+
     // Fallback to styleMap reference images
     if (styleMap) {
         for (const pageType of pageTypePriority) {
@@ -63,7 +69,7 @@ const calculateThumbnail = (items: any[], styleMap: any): string | undefined => 
             }
         }
     }
-    
+
     return undefined;
 };
 
@@ -79,7 +85,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
             globalConfig = dto.globalConfig ? JSON.parse(dto.globalConfig as string) : {};
         } catch { globalConfig = {} }
     }
-    
+
     let globalStyleMap;
     if (typeof dto.styleMap === 'object' && dto.styleMap !== null) {
         globalStyleMap = dto.styleMap;  // Already parsed
@@ -90,46 +96,46 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
     }
 
     const transformedItems = (dto.items || []).map(slide => {
-             let variants = [];
-             try { variants = JSON.parse(slide.variants); } catch {}
-             
-             // originalFileRef might be object or string or null
-             // Backend stores string (JSON). Frontend expects StoredResource (File | string)
-             // But 'File' is impossible from backend. So it will be string (URL) or null.
-             // Wait, logic says originalFileRef is JSON string.
-             // If it stores a URL directly? 
-             // Let's assume for now it's null or a URL string.
-             let originalFile = null;
-             if (slide.originalFileRef) {
-                 try {
-                     originalFile = JSON.parse(slide.originalFileRef); // "http://..."
-                 } catch {
-                     originalFile = slide.originalFileRef;
-                 }
-             }
+        let variants = [];
+        try { variants = JSON.parse(slide.variants); } catch { }
 
-             return {
-                 id: slide.id,
-                 projectId: slide.projectId,
-                 contentType: slide.contentType as 'image'|'text',
-                 pageType: slide.pageType as any,
-                 originalFile, // string | null
-                 title: slide.title,
-                 textContent: slide.content, // Map content -> textContent
-                 // Priority for left-side display: 
-                 // 1. Database previewUrl (user's original upload)
-                 // 2. originalFile (also user's upload)
-                 // 3. Empty string (no image on left side if nothing uploaded)
-                 // DO NOT use variants[0] here - that's the generated image for right side
-                 previewUrl: slide.previewUrl || (slide.contentType === 'image' && originalFile ? originalFile : ''),
-                 variants,
-                 variantCount: slide.variantCount || 2, // Use database value, not variants.length
-                 // Reset 'generating' status to 'idle' on load.
-                 // This prevents "Stuck in AI Design" if the user refreshed during generation.
-                 status: slide.status === 'generating' ? 'idle' : slide.status as any,
-                 createdAt: new Date(slide.createdAt).getTime(),
-             }
-        });
+        // originalFileRef might be object or string or null
+        // Backend stores string (JSON). Frontend expects StoredResource (File | string)
+        // But 'File' is impossible from backend. So it will be string (URL) or null.
+        // Wait, logic says originalFileRef is JSON string.
+        // If it stores a URL directly? 
+        // Let's assume for now it's null or a URL string.
+        let originalFile = null;
+        if (slide.originalFileRef) {
+            try {
+                originalFile = JSON.parse(slide.originalFileRef); // "http://..."
+            } catch {
+                originalFile = slide.originalFileRef;
+            }
+        }
+
+        return {
+            id: slide.id,
+            projectId: slide.projectId,
+            contentType: slide.contentType as 'image' | 'text',
+            pageType: slide.pageType as any,
+            originalFile, // string | null
+            title: slide.title,
+            textContent: slide.content, // Map content -> textContent
+            // Priority for left-side display: 
+            // 1. Database previewUrl (user's original upload)
+            // 2. originalFile (also user's upload)
+            // 3. Empty string (no image on left side if nothing uploaded)
+            // DO NOT use variants[0] here - that's the generated image for right side
+            previewUrl: slide.previewUrl || (slide.contentType === 'image' && originalFile ? originalFile : ''),
+            variants,
+            variantCount: slide.variantCount || 2, // Use database value, not variants.length
+            // Reset 'generating' status to 'idle' on load.
+            // This prevents "Stuck in AI Design" if the user refreshed during generation.
+            status: slide.status === 'generating' ? 'idle' : slide.status as any,
+            createdAt: new Date(slide.createdAt).getTime(),
+        }
+    });
 
     // Calculate progress dynamically
     const targetPageCount = globalConfig?.targetPageCount || Math.max(transformedItems.length, 1);
@@ -141,7 +147,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
 
     // Determine effective status
     let effectiveStatus = dto.status;
-    
+
     // 1. If no items, the project is 'idle' (Not Started / 未开始)
     if (transformedItems.length === 0) {
         effectiveStatus = 'idle';
@@ -153,7 +159,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
     // 3. If any item is generating, the project is 'generating' (生成中)
     else if (transformedItems.some(i => i.status === 'generating')) {
         effectiveStatus = 'generating';
-    } 
+    }
     // 4. If ALL items are completed (success), mark as 'completed' (已完成)
     else if (transformedItems.length > 0 && transformedItems.every(i => i.status === 'success')) {
         effectiveStatus = 'completed';
@@ -171,7 +177,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
         createdAt: new Date(dto.createdAt).getTime(),
         lastModified: new Date(dto.updatedAt).getTime(),
         isPinned: dto.isPinned,
-        methods: [], 
+        methods: [],
         progress,
         globalConfig,
         globalStyleMap,
@@ -184,14 +190,14 @@ export const useProjects = () => {
     return useQuery({
         queryKey: ['projects'],
         queryFn: async () => {
-             try {
-                 const dtos = await client.get<ProjectDTO[]>('/projects');
-                 // @ts-ignore
-                 return dtos.map(transformProject);
-             } catch (error) {
-                 console.error('[useProjects] Error fetching projects:', error);
-                 throw error;
-             }
+            try {
+                const dtos = await client.get<ProjectDTO[]>('/projects');
+                // @ts-ignore
+                return dtos.map(transformProject);
+            } catch (error) {
+                console.error('[useProjects] Error fetching projects:', error);
+                throw error;
+            }
         }
     });
 };
@@ -263,7 +269,7 @@ export const useUpdateProject = () => {
                 const serializedMap = await serializeStyleMap(data.globalStyleMap);
                 payload.styleMap = JSON.stringify(serializedMap);
             }
-            
+
             // Backend update doesn't support nested items update yet via 'project patch'
             // We might need a separate call for items or handle it in backend.
             // For now, let's assume metadata update.

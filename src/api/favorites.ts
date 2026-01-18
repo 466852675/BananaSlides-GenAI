@@ -4,6 +4,7 @@ import { StylePreset, StyleConfig, GlobalStyleMap } from '../types';
 
 export interface FavoriteDTO {
     id: string;
+    templateId?: string;
     name: string;
     config: any;
     styleMap?: any;
@@ -15,6 +16,7 @@ export interface FavoriteDTO {
 const transformFavorite = (dto: FavoriteDTO): StylePreset => {
     return {
         id: dto.id,
+        templateId: dto.templateId,
         name: dto.name,
         config: (typeof dto.config === 'string' ? JSON.parse(dto.config) : dto.config) as StyleConfig,
         styleMap: dto.styleMap ? (typeof dto.styleMap === 'string' ? JSON.parse(dto.styleMap) : dto.styleMap) as GlobalStyleMap : undefined,
@@ -37,7 +39,7 @@ export const useFavorites = () => {
 export const useAddFavorite = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (preset: Omit<StylePreset, "id" | "createdAt">) => {
+        mutationFn: async (preset: Omit<StylePreset, "id" | "createdAt"> & { templateId?: string }) => {
             const res = await client.post('/favorites', preset);
             return transformFavorite(res as any);
         },

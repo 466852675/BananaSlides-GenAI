@@ -20,7 +20,7 @@ export const smartRefine = async (text: string, type: 'requirement' | 'content')
             text,
             type
         });
-        return response.data.data || text;
+        return (response as any).data || text;
     } catch (error) {
         console.error("Smart Refine Error:", error);
         throw error;
@@ -29,11 +29,11 @@ export const smartRefine = async (text: string, type: 'requirement' | 'content')
 
 export const refinePrompt = async (rawText: string): Promise<string> => {
     try {
-        const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', { 
-             text: rawText,
-             type: 'requirement', // Reuse requirement type for prompt refinement
+        const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', {
+            text: rawText,
+            type: 'requirement'
         });
-        return response.data.data || rawText;
+        return (response as any).data || rawText;
     } catch (error) {
         console.error("Refine Prompt Error:", error);
         return rawText;
@@ -44,17 +44,17 @@ export const extractTextFromFile = async (file: File): Promise<{ text: string, i
     try {
         // 1. Upload first
         const resourcePath = await uploadFile(file);
-        
+
         // 2. Call AI Extract
         const response = await client.post<{ success: boolean, data: string, meta?: { isFallback: boolean, provider: string } }>('/ai/extract-text', {
             resourcePath,
             fileType: file.type
         });
-        
+
         return {
-            text: response.data.data,
-            isFallback: response.data.meta?.isFallback || false,
-            provider: response.data.meta?.provider
+            text: (response as any).data,
+            isFallback: (response as any).meta?.isFallback || false,
+            provider: (response as any).meta?.provider
         };
     } catch (error) {
         console.error("Extract Text Error:", error);
@@ -64,57 +64,89 @@ export const extractTextFromFile = async (file: File): Promise<{ text: string, i
 
 export const generateOutline = async (topic: string, configStyle?: StyleConfig): Promise<OutlineItem[]> => {
     try {
+        // axios interceptor already unwraps response.data, so we get { success, data } directly
         const response = await client.post<{ success: boolean, data: OutlineItem[] }>('/ai/generate-outline', {
             topic,
             configStyle
         });
-        return response.data.data;
+        // response is already { success, data }, not { data: { success, data } }
+        return (response as any).data;
     } catch (error) {
         console.error("Generate Outline Error:", error);
         throw error;
     }
 };
 
-export const generateSingleOutlineItem = async (topic: string, index: number, total: number): Promise<{title: string, brief: string}> => {
-     try {
-        const response = await client.post<{ success: boolean, data: {title: string, brief: string} }>('/ai/generate-single-outline-item', {
+export const generateSingleOutlineItem = async (topic: string, index: number, total: number): Promise<{ title: string, brief: string }> => {
+    try {
+        const response = await client.post<{ success: boolean, data: { title: string, brief: string } }>('/ai/generate-single-outline-item', {
             topic,
             index,
             total
         });
-        return response.data.data;
+        return (response as any).data;
     } catch (error) {
         console.error("Generate Single Item Error:", error);
         throw error;
     }
 };
 
-export const generateSlideDetail = async (title: string, brief: string, topicContext: string): Promise<string> => {
-     try {
+export const generateSlideDetail = async (
+    title: string,
+    brief: string,
+    topicContext: string,
+    index: number,
+    total: number,
+    pageType: string
+): Promise<string> => {
+    try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/generate-slide-detail', {
             title,
             brief,
-            topicContext
+            topicContext,
+            index,
+            total,
+            pageType
         });
-        return response.data.data;
+        return (response as any).data;
     } catch (error) {
         console.error("Generate Slide Detail Error:", error);
         throw error;
     }
 };
 
+const ensureMapUploaded = async (map?: any): Promise<any> => {
+    if (!map) return map;
+    const result: any = {};
+    for (const [key, value] of Object.entries(map)) {
+        if (value instanceof File || (typeof value === 'string' && value.startsWith('blob:'))) {
+            result[key] = await ensureUploaded(value as any);
+        } else {
+            result[key] = value;
+        }
+    }
+    return result;
+};
+
 export const generateSlideVariant = async (
-  contentSource: StoredResource, 
-  styleFile: StoredResource | null,
-  configStyle: StyleConfig,
-  variantLabel: string,
-  title?: string,
-  contentType: 'text' | 'image' = 'text' 
+    contentSource: StoredResource,
+    styleFile: StoredResource | null,
+    configStyle: StyleConfig,
+    variantLabel: string,
+    title?: string,
+    contentType: 'text' | 'image' = 'text',
+    // 新增参数 ↓
+    pageType?: string,
+    fullContent?: string,
+    globalStyleMap?: any,
+    allSlideTitles?: string[]
 ): Promise<string> => {
     try {
         const contentUrl = await ensureUploaded(contentSource);
         let styleUrl = null;
         if (styleFile) styleUrl = await ensureUploaded(styleFile);
+
+        const uploadedStyleMap = await ensureMapUploaded(globalStyleMap);
 
         const response = await client.post<{ success: boolean, data: string }>('/ai/generate-slide-variant', {
             contentSource: contentUrl,
@@ -122,11 +154,16 @@ export const generateSlideVariant = async (
             configStyle,
             variantLabel,
             title,
-            contentType
+            contentType,
+            // 传递新参数 ↓
+            pageType,
+            fullContent,
+            globalStyleMap: uploadedStyleMap,
+            allSlideTitles
         });
-        return response.data.data;
+        return (response as any).data;
     } catch (error) {
-         console.error("Generate Variant Error:", error);
-         throw error;
+        console.error("Generate Variant Error:", error);
+        throw error;
     }
 };

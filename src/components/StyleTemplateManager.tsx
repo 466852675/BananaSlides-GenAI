@@ -19,17 +19,20 @@ import {
   Star,
   Eye,
   Layout,
-  Calendar
+  Calendar,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import { StyleConfig, StyleTemplate, GlobalStyleMap, PageType, StylePreset, AppSettings, StoredResource } from '../types';
-import { STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from './StyleControls';
 import { ImageUploader } from './ImageUploader';
 import { SharedStyleCard, SharedStyleItem } from './SharedStyleCard';
 import { Home, LayoutList, BookOpen, Flag, Type, Wand2, Edit3, Loader2 } from 'lucide-react';
 import { smartRefine } from '../services/geminiService';
+import { StyleTemplateEditor } from './StyleTemplateEditor';
 import { useSaveTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/templates';
 import { useAddFavorite, useRemoveFavorite } from '../api/favorites';
-import { Filter, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
+import { Filter, ArrowUpNarrowWide, ArrowDownWideNarrow, ChevronDown, ChevronUp } from 'lucide-react';
+import { STYLE_PRESETS, RATIO_PRESETS, COLOR_PRESETS } from '../constants';
 
 const PAGE_TYPES: { type: PageType; label: string }[] = [
   { type: 'cover', label: '封面页' },
@@ -39,7 +42,54 @@ const PAGE_TYPES: { type: PageType; label: string }[] = [
   { type: 'end', label: '结束页' },
 ];
 
-const FilterTag: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
+// --- Copied Modal Component for Consistency ---
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  variant?: "default" | "lightbox";
+  maxWidth?: string;
+  zIndex?: string;
+}
+
+const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  footer,
+  variant = "default",
+  maxWidth = "max-w-2xl",
+  zIndex = "z-[100]",
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className={`fixed inset-0 flex items-center justify-center p-4 ${zIndex}`}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${maxWidth} overflow-hidden flex flex-col max-h-[90vh]`}>
+        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white">
+          <h3 className="font-semibold text-lg text-slate-800">{title}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-all">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+          {children}
+        </div>
+        {footer && (
+          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export const FilterTag: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
   <button
     onClick={onClick}
     className={`px-3.5 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all duration-300 ${active
@@ -59,6 +109,74 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; children: Reac
     {children}
   </button>
 );
+
+const ExpandableTagGroup: React.FC<{
+  label: string;
+  allTags: string[];
+  presets: string[];
+  activeTags: string[];
+  onToggle: (tag: string) => void;
+  onClear: () => void;
+}> = ({ label, allTags, presets, activeTags, onToggle, onClear }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Separate tags
+  const presetTags = presets.filter(t => allTags.includes(t));
+  const customTags = allTags.filter(t => !presets.includes(t));
+
+  // Determine if expansion is needed (simple heuristic: > 1 line roughly or based on count)
+  // Since we can't easily measure width in SSR/without refs, we'll use a count threshold for "potential overflow" logic,
+  // OR we use the CSS max-height trick with a button that is always shown if count is high, or just allow user to expand.
+  // User asked: "if not fit, show more". 
+  // Let's use a CSS approach: container has logic. 
+  // Actually, we can just check if total tags > threshold (e.g. 8).
+  const hasManyTags = (presetTags.length + customTags.length) > 6;
+
+  return (
+    <div className={`flex items-start gap-4 px-4 transition-all duration-300 ${isExpanded ? 'h-auto py-2' : 'h-9 items-center'}`}>
+      <div className="flex items-center gap-3 shrink-0 h-9">
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight shrink-0 w-8 text-right">{label}</span>
+      </div>
+
+      <div className={`flex-1 flex flex-wrap items-center gap-1.5 ${!isExpanded ? 'h-9 overflow-hidden' : ''}`}>
+        <FilterTag active={activeTags.length === 0} onClick={onClear}>全部</FilterTag>
+
+        {/* Presets */}
+        {presetTags.map(tag => (
+          <FilterTag
+            key={tag}
+            active={activeTags.includes(tag)}
+            onClick={() => onToggle(tag)}
+          >{tag}</FilterTag>
+        ))}
+
+        {/* Separator and Custom Tags */}
+        {customTags.length > 0 && (
+          <>
+            <div className="w-px h-3 bg-slate-200 mx-1 shrink-0" />
+            {customTags.map(tag => (
+              <FilterTag
+                key={tag}
+                active={activeTags.includes(tag)}
+                onClick={() => onToggle(tag)}
+              >{tag}</FilterTag>
+            ))}
+          </>
+        )}
+      </div>
+
+      {hasManyTags && (
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="shrink-0 p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-blue-500 transition-colors"
+          title={isExpanded ? "收起" : "更多"}
+        >
+          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      )}
+    </div>
+  );
+};
 
 interface StyleTemplateManagerProps {
   isOpen: boolean;
@@ -106,7 +224,16 @@ export const STYLE_TAGS = STYLE_PRESETS;
 export const RATIO_TAGS = RATIO_PRESETS;
 export const PALETTE_TAGS = COLOR_PRESETS;
 
+const generateTemplateId = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const monthDay = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const random = Math.random().toString(36).substring(2, 7).toUpperCase();
+  return `MB-${year}-${monthDay}-${random}`;
+};
+
 export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
+  // ... props ... (keep same)
   isOpen,
   templates,
   onApplyTemplate,
@@ -147,6 +274,52 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   setSortOrder
 }) => {
   const [view, setView] = useState<'gallery' | 'creator'>('gallery');
+  // ... (keep state)
+  const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+
+  // Confirmation State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmLabel?: string;
+    variant?: 'danger' | 'primary';
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => { } });
+
+  const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+
+  const confirmAction = (title: string, message: string, action: () => Promise<void> | void, variant: 'danger' | 'primary' = 'primary') => {
+    setConfirmDialog({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: async () => {
+        await action();
+        closeConfirm();
+      },
+      confirmLabel: '确定',
+      variant
+    });
+  };
+
+  // Debounced search logic
+  React.useEffect(() => {
+    setLocalSearchTerm(searchTerm);
+  }, [searchTerm]);
+
+  React.useEffect(() => {
+    if (localSearchTerm !== searchTerm) {
+      setIsSearching(true);
+      const timer = setTimeout(() => {
+        setSearchQuery(localSearchTerm);
+        setIsSearching(false);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [localSearchTerm, searchTerm, setSearchQuery]);
   const [editingTemplate, setEditingTemplate] = useState<StyleTemplate | null>(null);
   const [isOpeningInEditMode, setIsOpeningInEditMode] = useState(false);
 
@@ -156,69 +329,175 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   const deleteTemplateMutation = useDeleteTemplate();
   const addFavoriteMutation = useAddFavorite();
   const removeFavoriteMutation = useRemoveFavorite();
+  // ... (keep helpers)
 
-  const handleToggleFavoriteInternal = (template: StyleTemplate) => {
-    const existing = favorites.find(f => f.id === template.id);
-    if (existing) {
-      removeFavoriteMutation.mutate(template.id, {
-        onSuccess: () => onShowToast('已取消收藏', 'info')
-      });
-    } else {
-      addFavoriteMutation.mutate({
-        name: template.name,
-        config: template.config,
-        styleMap: template.styleMap,
-        sampleImages: []
-      }, {
-        onSuccess: () => onShowToast('已添加到收藏', 'success')
-      });
-    }
+  const formatDateTime = (timestamp?: number) => {
+    if (!timestamp) return '-';
+    const date = new Date(timestamp);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
   };
 
-  // Sync initial editing ID from props
+  const handleToggleFavoriteInternal = (template: StyleTemplate) => {
+    const existingFavorite = favorites.find(f => f.templateId === template.id);
+    const isFavorited = !!existingFavorite;
+
+    confirmAction(
+      isFavorited ? '取消收藏' : '收藏模版',
+      isFavorited ? `确定要取消收藏 "${template.name}" 吗？` : `确定要收藏 "${template.name}" 吗？`,
+      async () => {
+        try {
+          if (isFavorited) {
+            await removeFavoriteMutation.mutateAsync(existingFavorite.id);
+            onShowToast('已取消收藏', 'info');
+          } else {
+            await addFavoriteMutation.mutateAsync({
+              templateId: template.id,
+              name: template.name,
+              config: template.config,
+              styleMap: template.styleMap,
+              sampleImages: []
+            });
+            onShowToast('已添加到收藏', 'success');
+          }
+
+          if (template.id) {
+            await updateTemplateMutation.mutateAsync({
+              id: template.id,
+              updates: {
+                favoriteCount: Math.max(0, (template.favoriteCount || 0) + (isFavorited ? -1 : 1))
+              }
+            });
+          }
+        } catch (e) {
+          onShowToast('操作失败', 'error');
+        }
+      },
+      isFavorited ? 'danger' : 'primary'
+    );
+  };
+
+  const handleRemoveFavoriteDirectly = (preset: StylePreset) => {
+    confirmAction(
+      '取消收藏',
+      `确定要取消收藏 "${preset.name}" 吗？`,
+      async () => {
+        try {
+          await removeFavoriteMutation.mutateAsync(preset.id);
+          onShowToast('已取消收藏', 'info');
+
+          if (preset.templateId) {
+            const relatedTemplate = templates.find(t => t.id === preset.templateId);
+            if (relatedTemplate) {
+              await updateTemplateMutation.mutateAsync({
+                id: preset.templateId,
+                updates: {
+                  favoriteCount: Math.max(0, (relatedTemplate.favoriteCount || 0) - 1)
+                }
+              });
+            }
+          }
+        } catch (e) {
+          onShowToast('操作失败', 'error');
+        }
+      },
+      'danger'
+    );
+  };
+
+  // Sync initial editing ID
   React.useEffect(() => {
     if (isOpen && initialEditingTemplateId) {
       const target = templates.find(t => t.id === initialEditingTemplateId)
         || favorites.find(f => f.id === initialEditingTemplateId);
 
       if (target) {
-        // Ensure it's treated as a template for editing
         const templateToEdit = { ...target, isCustom: true } as StyleTemplate;
         setEditingTemplate(templateToEdit);
         setView('creator');
         setIsOpeningInEditMode(true);
       }
 
-      // Clear the prop from parent to avoid re-triggering
       if (onClearEditingTemplateId) {
         onClearEditingTemplateId();
       }
     }
   }, [isOpen, initialEditingTemplateId, templates, favorites, onClearEditingTemplateId]);
 
-  const handleToggleRecommend = async (template: StyleTemplate) => {
+  const handleToggleRecommend = (template: StyleTemplate) => {
+    const isRecommended = !template.isRecommended;
+    confirmAction(
+      isRecommended ? '推荐模版' : '取消推荐',
+      isRecommended ? `确定要将 "${template.name}" 设为推荐模版吗？` : `确定要取消 "${template.name}" 的推荐状态吗？`,
+      async () => {
+        try {
+          await updateTemplateMutation.mutateAsync({
+            id: template.id,
+            updates: {
+              isRecommended,
+              recommendCount: (template.recommendCount || 0) + (isRecommended ? 1 : -1)
+            }
+          });
+          onShowToast(isRecommended ? '已加入推荐' : '已取消推荐', 'success');
+        } catch (e) {
+          onShowToast('操作失败', 'error');
+        }
+      },
+      isRecommended ? 'primary' : 'danger'
+    );
+  };
+
+  const handleApplyTemplateEnhanced = async (template: StyleTemplate) => {
+    onApplyTemplate(template);
     try {
-      const isRecommended = !template.isRecommended;
       await updateTemplateMutation.mutateAsync({
         id: template.id,
         updates: {
-          isRecommended,
-          recommendCount: (template.recommendCount || 0) + (isRecommended ? 1 : -1)
+          usageCount: (template.usageCount || 0) + 1
         }
       });
-      onShowToast(isRecommended ? '已加入推荐' : '已取消推荐', 'success');
     } catch (e) {
-      onShowToast('操作失败', 'error');
+      console.error('更新使用次数失败:', e);
+    }
+    const isAlreadyFavorited = favorites.some(f => f.templateId === template.id);
+    if (!isAlreadyFavorited && activeTab === 'market') {
+      setTimeout(() => {
+        if (window.confirm('模版应用成功！是否收藏此模版以便下次快速访问？')) {
+          handleToggleFavoriteInternal(template);
+        }
+      }, 500);
     }
   };
 
-  if (!isOpen) return null;
+  const handleApplyFavoriteEnhanced = async (preset: StylePreset) => {
+    onApplyFavorite(preset);
+    if (preset.templateId) {
+      try {
+        const relatedTemplate = templates.find(t => t.id === preset.templateId);
+        if (relatedTemplate) {
+          await updateTemplateMutation.mutateAsync({
+            id: preset.templateId,
+            updates: {
+              usageCount: (relatedTemplate.usageCount || 0) + 1
+            }
+          });
+        }
+      } catch (e) {
+        console.error('更新使用次数失败:', e);
+      }
+    }
+  };
 
-  // Filtering Logic
+  // ... (keep filterList) ...
   const filterList = (list: StyleTemplate[]) => {
     return list
       .filter(t => {
-        const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase()) || t.id.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStyle = styleFilter.length === 0 || styleFilter.includes(t.config.styleName);
         const matchesRatio = ratioFilter.length === 0 || ratioFilter.includes(t.config.aspectRatio);
         const matchesPalette = paletteFilter.length === 0 || paletteFilter.includes(t.config.colorPalette);
@@ -269,15 +548,13 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
       });
   };
 
-  // 确保标签始终有默认预设，并合并已有模版的特定标签
   const styleTags = Array.from(new Set([...STYLE_TAGS, ...templates.map(t => t.config.styleName)])).filter(Boolean);
   const ratioTags = Array.from(new Set([...RATIO_TAGS, ...templates.map(t => t.config.aspectRatio)])).filter(Boolean);
   const paletteTags = Array.from(new Set([...PALETTE_TAGS, ...templates.map(t => t.config.colorPalette)])).filter(Boolean);
 
   const handleCreateNew = () => {
-    // ... existing create logic (omitted for brevity, keep existing implementation in mind if not replacing fully)
     const newTemplate: StyleTemplate = {
-      id: `style_${Date.now()}`,
+      id: generateTemplateId(),
       name: '',
       isCustom: true,
       createdAt: Date.now(),
@@ -298,6 +575,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
       }
     };
     setEditingTemplate(newTemplate);
+    setIsOpeningInEditMode(true);
     setView('creator');
   };
 
@@ -321,312 +599,458 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
 
 
   const handleDeleteTemplate = (id: string) => {
-    if (window.confirm('确定要删除这个模板吗？')) {
-      deleteTemplateMutation.mutate(id, {
-        onSuccess: () => onShowToast('模板已删除', 'success'),
-        onError: () => onShowToast('删除失败', 'error')
-      });
-    }
+    confirmAction(
+      '删除模板',
+      '确定要删除这个模板吗？此操作不可恢复。',
+      () => {
+        deleteTemplateMutation.mutate(id, {
+          onSuccess: () => onShowToast('模板已删除', 'success'),
+          onError: () => onShowToast('删除失败', 'error')
+        });
+      },
+      'danger'
+    );
   };
 
-  const filteredTemplates = filterList(templates);
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setLocalSearchTerm('');
+    setStyleFilter([]);
+    setRatioFilter([]);
+    setPaletteFilter([]);
+    setPageRangeFilter('all');
+    setTimeFilter('');
+    setStartDateFilter('');
+    setEndDateFilter('');
+  };
+
+  // 根据标签页预过滤模版列表
+  const baseTemplates = activeTab === 'popular'
+    ? templates.filter(t => t.isRecommended)
+    : templates;
+  const filteredTemplates = filterList(baseTemplates);
 
   return (
-    <div className="w-full h-full flex flex-col bg-slate-50">
+    <div className="w-full flex flex-col bg-slate-50">
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f8fafc;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 10px;
+          border: 2px solid #f8fafc;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+      `}</style>
 
-      <div className="flex-1 w-full max-w-7xl mx-auto flex flex-col bg-white shadow-sm border border-slate-200/60 my-6 rounded-[24px] overflow-hidden">
-        {/* Header */}
-        <div className="bg-white sticky top-0 z-10 flex flex-col">
-          {/* Top Row: Title & Close - SIMPLIFIED FOR VIEW MODE */}
-          <div className="px-8 py-5 flex justify-between items-start border-b border-slate-100">
-            <div className="flex items-center gap-3 flex-1">
-              {view === 'creator' && (
-                <button
-                  onClick={() => setView('gallery')}
-                  className="p-2 hover:bg-slate-100 rounded-xl transition-colors mr-1"
-                >
-                  <ArrowLeft size={20} />
-                </button>
-              )}
-              {view === 'creator' ? (
-                <div>
-                  <h3 className="text-xl font-black text-slate-800 tracking-tight">
+      <div className="flex-1 w-full max-w-[1480px] mx-auto flex flex-col my-6 px-6 min-h-0">
+        {/* Header & Filters Container - Now separated */}
+        <div className="flex flex-col gap-4 mb-8 shrink-0">
+          <div className="bg-white shadow-sm border border-slate-200/60 rounded-[24px] overflow-hidden z-10 flex flex-col">
+            {/* Top Row: Title & Close - SIMPLIFIED FOR VIEW MODE */}
+            <div className="px-8 py-5 flex justify-between items-start shrink-0">
+              <div className="flex items-center gap-3 flex-1">
+                {view === 'creator' && (
+                  <button
+                    onClick={() => setView('gallery')}
+                    className="p-2 hover:bg-slate-100 rounded-xl transition-colors mr-1"
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
+                )}
+                {view === 'creator' ? (
+                  <div>
+                    <h3 className="text-xl font-black text-slate-800 tracking-tight">
+                      {isOpeningInEditMode ? (
+                        (templates.some(t => t.id === editingTemplate?.id) || favorites.some(f => f.templateId === editingTemplate?.id || f.id === editingTemplate?.id))
+                          ? "编辑模板"
+                          : "创建模板"
+                      ) : "查看模板"}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-medium mt-1">
+                      {isOpeningInEditMode
+                        ? (templates.some(t => t.id === editingTemplate?.id) ? "调整模板视觉与结构参数" : "定义完整的 PPT 生成视觉与结构参数")
+                        : "预览模板详情与设计规范"}
+                    </p>
+                  </div>
+                ) : (
+                  /* Gallery View: Tabs as Title */
+                  <div className="flex flex-col gap-1 items-start">
+                    <div className="bg-slate-100/50 p-1 rounded-xl flex items-center gap-1">
+                      <button
+                        onClick={() => setActiveTab('market')}
+                        className={`px-5 py-2 rounded-lg text-sm font-black transition-all ${activeTab === 'market'
+                          ? 'bg-white text-blue-600 shadow-lg'
+                          : 'text-slate-400 hover:text-slate-600'
+                          }`}
+                      >
+                        集市模版
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('popular')}
+                        className={`px-5 py-2 rounded-lg text-sm font-black transition-all ${activeTab === 'popular'
+                          ? 'bg-white text-blue-600 shadow-lg'
+                          : 'text-slate-400 hover:text-slate-600'
+                          }`}
+                      >
+                        热门推荐
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('favorites')}
+                        className={`px-5 py-2 rounded-lg text-sm font-black transition-all ${activeTab === 'favorites'
+                          ? 'bg-white text-rose-500 shadow-lg'
+                          : 'text-slate-400 hover:text-slate-600'
+                          }`}
+                      >
+                        我的收藏
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-4">
+                {view === 'gallery' && (
+                  <button
+                    onClick={handleCreateNew}
+                    className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-black shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
+                  >
+                    <Plus size={18} strokeWidth={3} />
                     创建模板
-                  </h3>
-                  <p className="text-xs text-slate-400 font-medium mt-1">
-                    定义完整的 PPT 生成视觉与结构参数
-                  </p>
-                </div>
-              ) : (
-                /* Gallery View: Tabs as Title */
-                <div className="flex flex-col gap-1 items-start">
-                  <div className="bg-slate-100/50 p-1 rounded-xl flex items-center gap-1">
-                    <button
-                      onClick={() => setActiveTab('market')}
-                      className={`px-5 py-2 rounded-lg text-sm font-black transition-all ${activeTab === 'market'
-                        ? 'bg-white text-blue-600 shadow-lg'
-                        : 'text-slate-400 hover:text-slate-600'
-                        }`}
-                    >
-                      集市模版
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('popular')}
-                      className={`px-5 py-2 rounded-lg text-sm font-black transition-all ${activeTab === 'popular'
-                        ? 'bg-white text-blue-600 shadow-lg'
-                        : 'text-slate-400 hover:text-slate-600'
-                        }`}
-                    >
-                      热门推荐
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('favorites')}
-                      className={`px-5 py-2 rounded-lg text-sm font-black transition-all ${activeTab === 'favorites'
-                        ? 'bg-white text-rose-500 shadow-lg'
-                        : 'text-slate-400 hover:text-slate-600'
-                        }`}
-                    >
-                      我的收藏
-                    </button>
-                  </div>
-                </div>
-              )}
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleCreateNew}
-                className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-black shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
-              >
-                <Plus size={18} strokeWidth={3} />
-                创建模板
-              </button>
-            </div>
-          </div>
+            {/* --- Search & Enhanced Filters (Compact 3-Row Layout) --- */}
+            {view === 'gallery' && (
+              <div className="bg-white px-2 pt-2 pb-4 shadow-sm border border-slate-200/60 rounded-[24px] shrink-0 flex flex-col gap-3">
 
-          {/* --- Search & Enhanced Filters (Multi-row) --- */}
-          {view === 'gallery' && (
-            <div className="bg-white border-b border-slate-100 p-6 flex flex-col gap-5 px-8">
-              {/* Header Row: Dedicated Search Bar */}
-              <div className="w-full">
-                <div className="relative group w-full md:w-96">
-                  <div className={`relative w-full bg-slate-100/40 border border-slate-100/50 rounded-2xl pl-11 pr-4 flex items-center group-focus-within:bg-white group-focus-within:border-blue-200 group-focus-within:shadow-lg group-focus-within:shadow-blue-500/5 transition-all duration-300`}>
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
-                    <input
-                      type="text"
-                      placeholder="搜索模板名称..."
-                      className="w-full bg-transparent border-none py-2.5 text-sm focus:ring-0 transition-all outline-none font-medium"
-                      value={searchTerm}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Filter Section: Stacked Rows for perfect alignment */}
-              <div className="flex flex-col gap-4">
-                {/* Style Row */}
-                <div className="flex items-start gap-4">
-                  <span className="w-12 text-[10px] font-black text-slate-400 uppercase tracking-tight py-2 shrink-0">风格</span>
-                  <div className="flex flex-wrap items-center gap-1.5 min-h-[32px]">
-                    <FilterTag active={styleFilter.length === 0} onClick={() => setStyleFilter([])}>全部</FilterTag>
-                    {styleTags.map(tag => (
-                      <FilterTag
-                        key={tag}
-                        active={styleFilter.includes(tag)}
-                        onClick={() => setStyleFilter(styleFilter.includes(tag) ? styleFilter.filter(s => s !== tag) : [...styleFilter, tag])}
-                      >{tag}</FilterTag>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Ratio Row */}
-                <div className="flex items-start gap-4">
-                  <span className="w-12 text-[10px] font-black text-slate-400 uppercase tracking-tight py-2 shrink-0">比例</span>
-                  <div className="flex flex-wrap items-center gap-1.5 min-h-[32px]">
-                    <FilterTag active={ratioFilter.length === 0} onClick={() => setRatioFilter([])}>全部</FilterTag>
-                    {ratioTags.map(tag => (
-                      <FilterTag
-                        key={tag}
-                        active={ratioFilter.includes(tag)}
-                        onClick={() => setRatioFilter(ratioFilter.includes(tag) ? ratioFilter.filter(s => s !== tag) : [...ratioFilter, tag])}
-                      >{tag}</FilterTag>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Palette Row */}
-                <div className="flex items-start gap-4">
-                  <span className="w-12 text-[10px] font-black text-slate-400 uppercase tracking-tight py-2 shrink-0">配色</span>
-                  <div className="flex flex-wrap items-center gap-1.5 min-h-[32px]">
-                    <FilterTag active={paletteFilter.length === 0} onClick={() => setPaletteFilter([])}>全部</FilterTag>
-                    {paletteTags.map(tag => (
-                      <FilterTag
-                        key={tag}
-                        active={paletteFilter.includes(tag)}
-                        onClick={() => setPaletteFilter(paletteFilter.includes(tag) ? paletteFilter.filter(s => s !== tag) : [...paletteFilter, tag])}
-                      >{tag}</FilterTag>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Page Range Row - Moved here for consistent spacing */}
-                <div className="flex items-start gap-4">
-                  <span className="w-12 text-[10px] font-black text-slate-400 uppercase tracking-tight py-2 shrink-0">页数</span>
-                  <div className="flex flex-wrap items-center gap-1.5 min-h-[32px]">
-                    <FilterTag active={pageRangeFilter === 'all'} onClick={() => setPageRangeFilter('all')}>全部</FilterTag>
-                    <FilterTag active={pageRangeFilter === 'under5'} onClick={() => setPageRangeFilter('under5')}>精炼</FilterTag>
-                    <FilterTag active={pageRangeFilter === '5-10'} onClick={() => setPageRangeFilter('5-10')}>中等</FilterTag>
-                    <FilterTag active={pageRangeFilter === 'over10'} onClick={() => setPageRangeFilter('over10')}>详尽</FilterTag>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Row: Time, Sorting, Reset - Cleanly separated */}
-              <div className="flex flex-wrap items-center gap-x-8 gap-y-4 pt-5 border-t border-slate-50 mt-1">
-
-                <div className="w-px h-6 bg-slate-100 hidden sm:block" />
-
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100/50 shrink-0">
-                    <select
-                      className="text-[11px] font-bold bg-white border-none rounded-lg py-1 pl-2 pr-7 focus:ring-1 focus:ring-blue-100 shadow-sm"
-                      value={timeTypeFilter}
-                      onChange={(e) => setTimeTypeFilter(e.target.value as any)}
-                    >
-                      <option value="lastModified">更新时间</option>
-                      <option value="createdAt">创建时间</option>
-                      <option value="priority">推荐权值</option>
-                    </select>
-                    <div className="flex items-center gap-1 px-1">
-                      <FilterTag active={timeFilter === ''} onClick={() => setTimeFilter('')}>全部</FilterTag>
-                      <FilterTag active={timeFilter === '24h'} onClick={() => setTimeFilter('24h')}>24h</FilterTag>
-                      <FilterTag active={timeFilter === '7d'} onClick={() => setTimeFilter('7d')}>7d</FilterTag>
+                {/* Row 1: Search + Time + Sort + Reset */}
+                <div className="flex items-center gap-4 px-4 h-12">
+                  {/* Search */}
+                  <div className="relative group w-64 shrink-0">
+                    <div className={`relative w-full bg-slate-50 hover:bg-slate-100 border border-transparent hover:border-slate-200 rounded-xl pl-9 pr-3 py-1.5 flex items-center transition-all duration-300 focus-within:bg-white focus-within:border-blue-200 focus-within:shadow-sm`}>
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                      <input
+                        type="text"
+                        placeholder="搜索模板名称或ID..."
+                        className="w-full bg-transparent border-none text-xs focus:ring-0 transition-all outline-none font-bold text-slate-600 placeholder:text-slate-400 placeholder:font-medium"
+                        value={localSearchTerm}
+                        onChange={(e) => setLocalSearchTerm(e.target.value)}
+                      />
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 px-1">
-                    <input
-                      type="date"
-                      className="text-[10px] bg-slate-50 border-none rounded-lg py-1.5 px-2 focus:ring-1 focus:ring-blue-100 font-bold text-slate-600"
-                      value={startDateFilter}
-                      onChange={(e) => setStartDateFilter(e.target.value)}
-                    />
-                    <span className="text-slate-300">-</span>
-                    <input
-                      type="date"
-                      className="text-[10px] bg-slate-50 border-none rounded-lg py-1.5 px-2 focus:ring-1 focus:ring-blue-100 font-bold text-slate-600"
-                      value={endDateFilter}
-                      onChange={(e) => setEndDateFilter(e.target.value)}
-                    />
-                  </div>
-                </div>
+                  <div className="w-px h-6 bg-slate-100 shrink-0" />
 
-                <div className="flex-1" />
-
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl">
-                    <button
-                      onClick={() => setSortBy('recommended')}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${sortBy === 'recommended' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                    >综合</button>
-                    <button
-                      onClick={() => setSortBy('usage')}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition-all ${sortBy === 'usage' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                    >热度</button>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-                    }}
-                    className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 transition-all active:scale-90"
-                    title={sortOrder === 'asc' ? '正序' : '倒序'}
-                  >
-                    {sortOrder === 'asc' ? <ArrowUpNarrowWide size={16} strokeWidth={3} /> : <ArrowDownWideNarrow size={16} strokeWidth={3} />}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setSearchQuery("");
-                      setStyleFilter([]);
-                      setRatioFilter([]);
-                      setPaletteFilter([]);
-                      setPageRangeFilter("all");
-                      setTimeFilter("");
-                      setStartDateFilter("");
-                      setEndDateFilter("");
-                      setSortBy("recommended");
-                      setSortOrder("desc");
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-blue-500 transition-all font-black group"
-                  >
-                    <RotateCcw size={14} className="group-active:rotate-180 transition-transform duration-500" />
-                    <span className="text-[10px] uppercase tracking-widest">重置</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-
-          {/* Content Area */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
-            {view === 'gallery' ? (
-              <div className="space-y-8">
-                {activeTab === 'favorites' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {favorites.length === 0 ? (
-                      <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
-                        <Heart size={48} className="mb-4 opacity-20" />
-                        <p className="text-sm font-medium">暂无收藏的预设</p>
-                        <button onClick={() => setActiveTab('market')} className="text-blue-500 font-bold mt-2 text-sm hover:underline">去集市看看</button>
+                  {/* Time Controls */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg border border-slate-100/50">
+                      <select
+                        className="text-[10px] font-bold bg-white border-none rounded-md py-1 pl-2 pr-6 focus:ring-1 focus:ring-blue-100 shadow-sm outline-none cursor-pointer"
+                        value={timeTypeFilter}
+                        onChange={(e) => setTimeTypeFilter(e.target.value as any)}
+                      >
+                        <option value="lastModified">更新时间</option>
+                        <option value="createdAt">创建时间</option>
+                        <option value="priority">推荐权重</option>
+                      </select>
+                      <div className="flex items-center px-1">
+                        <FilterTag active={timeFilter === ''} onClick={() => setTimeFilter('')}>全部</FilterTag>
+                        <FilterTag active={timeFilter === '24h'} onClick={() => setTimeFilter('24h')}>24h</FilterTag>
+                        <FilterTag active={timeFilter === '7d'} onClick={() => setTimeFilter('7d')}>7d</FilterTag>
                       </div>
-                    ) : (
-                      favorites.map((preset, index) => (
-                        <div key={index} className="group relative bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-                          <div className="aspect-[16/10] bg-slate-50 relative overflow-hidden">
-                            {preset.sampleImages && preset.sampleImages.length > 0 ? (
-                              <img src={preset.sampleImages[0]} alt={preset.name} className="w-full h-full object-cover" />
-                            ) : (
+                    </div>
+
+                    <div className="flex items-center gap-2 px-1">
+                      <input
+                        type="date"
+                        className="text-[10px] bg-slate-50 border-none rounded-lg py-1 px-2 focus:ring-1 focus:ring-blue-100 font-bold text-slate-600 outline-none w-24"
+                        value={startDateFilter}
+                        onChange={(e) => setStartDateFilter(e.target.value)}
+                      />
+                      <span className="text-slate-300">-</span>
+                      <input
+                        type="date"
+                        className="text-[10px] bg-slate-50 border-none rounded-lg py-1 px-2 focus:ring-1 focus:ring-blue-100 font-bold text-slate-600 outline-none w-24"
+                        value={endDateFilter}
+                        onChange={(e) => setEndDateFilter(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex-1" />
+
+                  {/* Right Actions: Sort & Reset */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg">
+                      <button
+                        onClick={() => setSortBy('recommended')}
+                        className={`px-3 py-1 rounded-md text-[10px] font-black transition-all ${sortBy === 'recommended' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >综合</button>
+                      <button
+                        onClick={() => setSortBy('usage')}
+                        className={`px-3 py-1 rounded-md text-[10px] font-black transition-all ${sortBy === 'usage' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >热度</button>
+                    </div>
+
+                    <button
+                      onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                      className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 transition-all active:scale-90"
+                    >
+                      {sortOrder === 'asc' ? <ArrowUpNarrowWide size={14} strokeWidth={3} /> : <ArrowDownWideNarrow size={14} strokeWidth={3} />}
+                    </button>
+
+                    <div className="w-px h-4 bg-slate-100" />
+
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setStyleFilter([]);
+                        setRatioFilter([]);
+                        setPaletteFilter([]);
+                        setPageRangeFilter("all");
+                        setTimeFilter("");
+                        setStartDateFilter("");
+                        setEndDateFilter("");
+                        setSortBy("recommended");
+                        setSortOrder("desc");
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-slate-50 rounded-lg text-slate-400 hover:text-rose-500 transition-all font-black group"
+                    >
+                      <RotateCcw size={12} className="group-active:rotate-180 transition-transform duration-500" />
+                      <span className="text-[10px]">重置</span>
+                    </button>
+
+                    <div className="w-px h-4 bg-slate-100" />
+
+                    <button
+                      onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
+                      className="flex items-center gap-1 px-2 py-1.5 hover:bg-slate-50 rounded-lg text-slate-400 hover:text-blue-600 transition-all"
+                      title={isFiltersExpanded ? "收起筛选" : "更多筛选"}
+                    >
+                      {isFiltersExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      <span className="text-[10px] font-bold">{isFiltersExpanded ? "收起" : "更多"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Advanced Filters: Collapsible Section */}
+                {isFiltersExpanded && (
+                  <div className="animate-in slide-in-from-top-2 fade-in duration-300 border-t border-slate-50 pt-2 flex flex-col gap-0">
+
+                    {/* Row 2: Style */}
+                    <ExpandableTagGroup
+                      label="风格"
+                      allTags={styleTags}
+                      presets={STYLE_PRESETS}
+                      activeTags={styleFilter}
+                      onToggle={(tag) => setStyleFilter(styleFilter.includes(tag) ? styleFilter.filter(s => s !== tag) : [...styleFilter, tag])}
+                      onClear={() => setStyleFilter([])}
+                    />
+
+                    {/* Row 3: Palette */}
+                    <ExpandableTagGroup
+                      label="配色"
+                      allTags={paletteTags}
+                      presets={COLOR_PRESETS}
+                      activeTags={paletteFilter}
+                      onToggle={(tag) => setPaletteFilter(paletteFilter.includes(tag) ? paletteFilter.filter(s => s !== tag) : [...paletteFilter, tag])}
+                      onClear={() => setPaletteFilter([])}
+                    />
+
+                    {/* Row 4: Ratio + Pages */}
+                    <div className="flex items-center gap-8 px-4 h-9">
+                      {/* Ratio */}
+                      <div className="flex items-center gap-4 shrink-0">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight shrink-0 w-8 text-right">比例</span>
+                        <div className="flex items-center gap-1.5">
+                          <FilterTag active={ratioFilter.length === 0} onClick={() => setRatioFilter([])}>全部</FilterTag>
+                          {ratioTags.map(tag => (
+                            <FilterTag
+                              key={tag}
+                              active={ratioFilter.includes(tag)}
+                              onClick={() => setRatioFilter(ratioFilter.includes(tag) ? ratioFilter.filter(s => s !== tag) : [...ratioFilter, tag])}
+                            >{tag}</FilterTag>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="w-px h-4 bg-slate-100 shrink-0" />
+
+                      {/* Pages */}
+                      <div className="flex items-center gap-4 shrink-0">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight shrink-0 w-8 text-right">页数</span>
+                        <div className="flex items-center gap-1.5">
+                          <FilterTag active={pageRangeFilter === 'all'} onClick={() => setPageRangeFilter('all')}>全部</FilterTag>
+                          <FilterTag active={pageRangeFilter === 'under5'} onClick={() => setPageRangeFilter('under5')}>精炼</FilterTag>
+                          <FilterTag active={pageRangeFilter === '5-10'} onClick={() => setPageRangeFilter('5-10')}>中等</FilterTag>
+                          <FilterTag active={pageRangeFilter === 'over10'} onClick={() => setPageRangeFilter('over10')}>详尽</FilterTag>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
+          </div>
+        </div>
+
+
+        {/* Content Area - Separated from Header */}
+        <div className="flex-1 min-h-0">
+          {view === 'gallery' ? (
+            <div className="space-y-8">
+              {activeTab === 'favorites' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                  {favorites.length === 0 ? (
+                    <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400 bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200">
+                      <div className="w-24 h-24 bg-white rounded-3xl shadow-sm flex items-center justify-center mb-6 ring-4 ring-white">
+                        <Heart size={32} className="text-slate-200" fill="currentColor" />
+                      </div>
+                      <h3 className="text-2xl font-black text-slate-800 mb-2">暂无收藏模版</h3>
+                      <p className="text-slate-400 text-sm mb-8 text-center max-w-xs font-medium">
+                        浏览集市寻找心仪设计，<br />建立属于你的专属素材库。
+                      </p>
+                      <button
+                        onClick={() => setActiveTab('market')}
+                        className="flex items-center gap-2.5 px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-sm transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+                      >
+                        <LayoutTemplate size={18} />
+                        去集市看看
+                      </button>
+                    </div>
+                  ) : (
+                    favorites.map((preset, index) => (
+                      <div key={index} className="group relative bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+                        <div className="aspect-[16/10] bg-slate-50 relative overflow-hidden">
+                          {(() => {
+                            const previewUrl = preset.styleMap?.cover || preset.styleMap?.content || (preset.sampleImages && (preset as any).sampleImages[0]);
+                            if (previewUrl) {
+                              return <img src={previewUrl as string} alt={preset.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />;
+                            }
+                            return (
                               <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                <Monitor size={48} className="opacity-20" />
+                                <Monitor size={48} className="opacity-20 translate-y-2 group-hover:scale-110 transition-transform duration-700" />
                               </div>
-                            )}
-                            <div className="absolute top-3 left-3 bg-rose-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-lg">
-                              My Favorite
-                            </div>
+                            );
+                          })()}
+                          <div className="absolute top-3 left-3 bg-rose-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold shadow-lg">
+                            My Favorite
                           </div>
-                          <div className="p-4">
-                            <h4 className="text-sm font-black text-slate-800 mb-1">{preset.name}</h4>
-                            <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded-md">{preset.config.aspectRatio}</span>
-                              <span className="bg-slate-100 px-2 py-0.5 rounded-md">{preset.config.styleName}</span>
-                            </div>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center gap-3 bg-blue-600/90 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => onApplyFavorite(preset)} className="flex items-center gap-2 bg-white text-blue-600 px-5 py-2.5 rounded-xl text-sm font-black shadow-xl hover:scale-105 transition-transform active:scale-95">
-                              <Sparkles size={16} /> 应用预设
+                          <div className="absolute top-3 right-3 z-20">
+                            <button
+                              onClick={() => handleRemoveFavoriteDirectly(preset)}
+                              className="p-2 bg-rose-500 text-white rounded-full shadow-lg transition-all scale-110"
+                              title="取消收藏"
+                            >
+                              <Heart size={14} fill="currentColor" />
                             </button>
-                            {onDeleteFavorite && (
-                              <button onClick={() => onDeleteFavorite(preset.id)} className="p-2.5 bg-white/20 hover:bg-rose-500 text-white rounded-xl transition-colors">
-                                <Trash2 size={16} />
-                              </button>
-                            )}
                           </div>
                         </div>
-                      ))
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {filteredTemplates.map((template) => (
-                        <div key={template.id} className="group relative bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2 transition-all duration-500 overflow-hidden">
-                          <div className="aspect-[16/10] bg-slate-100 relative overflow-hidden">
-                            <div className="w-full h-full flex items-center justify-center text-slate-300">
-                              <LayoutTemplate size={48} className="opacity-20 translate-y-2 group-hover:scale-110 transition-transform duration-700" />
+                        <div className="p-4">
+                          <div className="text-[10px] font-mono text-slate-400 mb-0.5 select-all">{preset.templateId || preset.id}</div>
+                          <h4 className="text-sm font-black text-slate-800 mb-1">{preset.name}</h4>
+                          <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">
+                            <span className="bg-slate-100 px-2 py-0.5 rounded-md">{preset.config.aspectRatio}</span>
+                            <span className="bg-slate-100 px-2 py-0.5 rounded-md">{preset.config.styleName}</span>
+                          </div>
+                          <div className="mt-auto pt-2 border-t border-slate-50 flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span className="flex items-center gap-1"><Calendar size={10} className="shrink-0 opacity-50" /> 创建时间</span>
+                              <span className="font-medium">{formatDateTime(preset.templateCreatedAt || preset.createdAt)}</span>
                             </div>
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span className="flex items-center gap-1"><Clock size={10} className="shrink-0 opacity-50" /> 更新时间</span>
+                              <span className="font-medium">{formatDateTime(preset.templateUpdatedAt || preset.createdAt)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-rose-500 bg-rose-50/50 p-1 rounded">
+                              <span className="flex items-center gap-1 font-bold"><Heart size={10} className="shrink-0" /> 收藏时间</span>
+                              <span className="font-bold">{formatDateTime(preset.createdAt)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-blue-600/90 opacity-0 group-hover:opacity-100 transition-opacity p-6">
+                          <button onClick={() => handleApplyFavoriteEnhanced(preset)} className="flex items-center justify-center gap-2 bg-white text-blue-600 px-5 py-2.5 rounded-xl text-sm font-black shadow-xl hover:scale-105 transition-transform active:scale-95 w-full">
+                            <Sparkles size={16} /> 应用预设
+                          </button>
+                          <button onClick={() => {
+                            // For favorites in this manager, we can simply open the editor in read-only mode
+                            // We need to convert Preset to Template for the editor
+                            const templateFromPreset: StyleTemplate = {
+                              id: preset.templateId || preset.id,
+                              name: preset.name,
+                              config: preset.config,
+                              styleMap: preset.styleMap,
+                              isCustom: false, // Treat as read-only view
+                              createdAt: preset.templateCreatedAt || preset.createdAt,
+                              updatedAt: preset.templateUpdatedAt
+                            };
+                            handleEditTemplate(templateFromPreset, false);
+                          }} className="flex items-center justify-center gap-2 bg-white/20 hover:bg-white/30 text-white px-5 py-2 rounded-xl text-xs font-bold backdrop-blur-md transition-all border border-white/20 w-full">
+                            <Eye size={14} /> 查看详情
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <>
+                  {/* Headers removed as requested */}
+
+                  {filteredTemplates.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200">
+                      <div className="w-24 h-24 bg-white rounded-3xl shadow-sm flex items-center justify-center mb-6 ring-4 ring-white">
+                        <Search size={32} className="text-slate-200" />
+                      </div>
+                      <h3 className="text-2xl font-black text-slate-800 mb-2">未找到匹配模板</h3>
+                      <p className="text-slate-400 text-sm mb-8 text-center max-w-xs font-medium">
+                        尝试调整关键词或重置筛选条件，<br />开启更广阔的设计可能。
+                      </p>
+                      <button
+                        onClick={handleResetFilters}
+                        className="flex items-center gap-2.5 px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-sm transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+                      >
+                        <RotateCcw size={18} />
+                        重置所有筛选
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-8">
+                      {filteredTemplates.map((template) => (
+                        <div key={template.id} className="group relative bg-white rounded-[32px] border border-slate-100 shadow-sm hover:shadow-[0_20px_50px_-12px_rgba(59,130,246,0.15)] hover:ring-2 hover:ring-blue-500/10 hover:-translate-y-3 transition-all duration-500 overflow-hidden">
+                          <div className="aspect-[16/10] bg-slate-100 relative overflow-hidden group/img">
+                            {(() => {
+                              const previewUrl = template.styleMap?.cover || template.styleMap?.content || ((template as any).sampleImages && (template as any).sampleImages[0]);
+                              if (previewUrl) {
+                                return (
+                                  <div className="w-full h-full relative">
+                                    <div className="absolute inset-0 bg-slate-200 animate-pulse z-0" /> {/* Skeleton */}
+                                    <img
+                                      src={previewUrl as string}
+                                      alt={template.name}
+                                      className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110 relative z-10 opacity-0 bg-white"
+                                      onLoad={(e) => (e.currentTarget.style.opacity = '1')}
+                                    />
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                  <LayoutTemplate size={48} className="opacity-20 translate-y-2 group-hover:scale-110 transition-transform duration-700" />
+                                </div>
+                              );
+                            })()}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                             <div className="absolute top-3 left-3 flex flex-col gap-2">
                               {template.isOfficial && (
@@ -640,96 +1064,200 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                                 </div>
                               )}
                             </div>
-                            <div className="absolute top-3 right-3 flex gap-2">
+                            <div className="absolute top-3 right-3 flex gap-2 z-20">
                               <button
                                 onClick={() => handleToggleRecommend(template)}
-                                className={`p-2 rounded-full shadow-lg transition-all ${template.isRecommended ? 'bg-blue-500 text-white scale-110' : 'bg-white/80 text-slate-400 hover:text-blue-500'}`}
+                                className={`p-2 rounded-full shadow-lg transition-all ${template.isRecommended
+                                  ? 'bg-blue-500 text-white scale-110 ring-2 ring-blue-400 ring-offset-2 ring-offset-white/50'
+                                  : 'bg-white text-slate-400 hover:text-blue-500 hover:bg-blue-50 hover:scale-105'
+                                  }`}
                                 title={template.isRecommended ? '取消推荐' : '热门推荐'}
                               >
-                                <Star size={14} fill={template.isRecommended ? "currentColor" : "none"} />
+                                <Star size={14} fill={template.isRecommended ? "currentColor" : "none"} strokeWidth={2.5} />
                               </button>
-                              <button
-                                onClick={() => onToggleFavorite?.(template)}
-                                className="p-2 bg-white/80 text-slate-400 hover:text-rose-500 rounded-full shadow-lg transition-all"
-                                title="收藏模版"
-                              >
-                                <Heart size={14} />
-                              </button>
+                              {activeTab === 'market' && (
+                                <button
+                                  onClick={() => handleToggleFavoriteInternal(template)}
+                                  className={`p-2 rounded-full shadow-lg transition-all ${favorites.some(f => f.templateId === template.id)
+                                    ? 'bg-rose-500 text-white scale-110 ring-2 ring-rose-400 ring-offset-2 ring-offset-white/50'
+                                    : 'bg-white text-slate-400 hover:text-rose-500 hover:bg-rose-50 hover:scale-105'
+                                    }`}
+                                  title={favorites.some(f => f.templateId === template.id) ? "取消收藏" : "收藏模版"}
+                                >
+                                  <Heart size={14} fill={favorites.some(f => f.templateId === template.id) ? "currentColor" : "none"} strokeWidth={2.5} />
+                                </button>
+                              )}
                             </div>
-                            <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-                              <div className="flex items-center gap-4 text-white">
-                                <div className="flex items-center gap-1.5"><Layout size={12} className="opacity-70" /><span className="text-xs font-black">{template.usageCount || 0}</span></div>
-                                <div className="flex items-center gap-1.5"><Star size={12} className="opacity-70" /><span className="text-xs font-black">{template.recommendCount || 0}</span></div>
-                                <div className="flex items-center gap-1.5"><Heart size={12} className="opacity-70" /><span className="text-xs font-black">{template.favoriteCount || 0}</span></div>
-                              </div>
-                              <span className="text-[10px] text-white/60 font-medium">{new Date(template.createdAt).toLocaleDateString()}</span>
-                            </div>
+
                           </div>
-                          <div className="p-4">
-                            <h4 className="text-sm font-black text-slate-800 mb-2">{template.name || template.config.styleName}</h4>
-                            <div className="flex flex-wrap items-center gap-2">
+                          <div className="p-4 flex-1 flex flex-col">
+                            <div className="text-[10px] font-mono text-slate-400 mb-1 select-all">{template.id}</div>
+                            <div className="flex items-start justify-between mb-2">
+                              <h4 className="text-sm font-black text-slate-800 line-clamp-1">{template.name || template.config.styleName}</h4>
+                              {activeTab === 'market' && favorites.some(f => f.templateId === template.id) && (
+                                <span className="bg-rose-50 text-rose-500 text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-tighter shrink-0 ml-2">已收藏</span>
+                              )}
+                              {template.isRecommended && activeTab !== 'popular' && (
+                                <span className="bg-blue-50 text-blue-500 text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-tighter shrink-0 ml-2">已推荐</span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mb-3">
                               <span className="bg-slate-50 text-slate-500 text-[10px] px-2 py-0.5 rounded-md font-bold">{template.config.aspectRatio}</span>
                               <span className="bg-blue-50 text-blue-600 text-[10px] px-2 py-0.5 rounded-md font-bold">{template.config.styleName}</span>
-                              <span className="bg-rose-50 text-rose-500 text-[10px] px-2 py-0.5 rounded-md font-bold">{template.config.colorPalette}</span>
-                              <span className="ml-auto text-slate-400 text-[10px] font-bold">{template.config.targetPageCount}P</span>
+                            </div>
+
+
+
+                            {/* 统计信息 - 仅集市显示 */}
+                            {activeTab !== 'popular' && (
+                              <div className="flex items-center gap-3 mb-3 pb-3 border-b border-slate-100">
+                                <div className="flex items-center gap-1.5" title="应用次数">
+                                  <Layout size={12} className="text-slate-400" />
+                                  <span className="text-xs font-black text-slate-600">{template.usageCount || 0}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5" title="推荐次数">
+                                  <Star size={12} className="text-blue-400" />
+                                  <span className="text-xs font-black text-slate-600">{template.recommendCount || 0}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5" title="收藏次数">
+                                  <Heart size={12} className="text-rose-400" />
+                                  <span className="text-xs font-black text-slate-600">{template.favoriteCount || 0}</span>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="mt-auto space-y-1.5">
+                              <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                <span className="flex items-center gap-1"><Calendar size={10} className="shrink-0 opacity-50" /> 创建时间</span>
+                                <span className="font-medium">{formatDateTime(template.createdAt)}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                <span className="flex items-center gap-1"><Clock size={10} className="shrink-0 opacity-50" /> 更新时间</span>
+                                <span className="font-medium">{formatDateTime(template.updatedAt || template.createdAt)}</span>
+                              </div>
+                              {(activeTab === 'popular' || (activeTab === 'market' && template.isRecommended)) && (
+                                <div className="flex items-center justify-between text-[10px] text-blue-500 bg-blue-50/50 p-1 rounded">
+                                  <span className="flex items-center gap-1 font-bold"><Sparkles size={10} className="shrink-0" /> 推荐时间</span>
+                                  <span className="font-bold">{formatDateTime(template.recommendedAt || template.updatedAt || template.createdAt)}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
-                          <div className="absolute inset-0 flex items-center justify-center gap-3 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px]">
-                            <button onClick={() => onApplyTemplate(template)} className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-black shadow-xl hover:scale-105 hover:bg-blue-700 transition-all">
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-10">
+                            <button onClick={() => handleApplyTemplateEnhanced(template)} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-black shadow-xl hover:scale-105 hover:bg-blue-700 transition-all w-48 justify-center">
                               <Sparkles size={16} /> 应用此模版
                             </button>
+                            <div className="flex gap-2 w-48">
+                              <button
+                                onClick={() => {
+                                  // We only view details
+                                  // But currently we don't have a "View Detail" state that is NOT edit mode in this component?
+                                  // Actually App.tsx has one. 
+                                  // In StyleTemplateManager, 'editingTemplate' triggers StyleEditor. 
+                                  // We can use handleEditTemplate(template, false) if it supports readOnly?
+                                  // The StyleEditor component has `initialEditMode`. 
+                                  // Let's check handleEditTemplate.
+                                  // It calls setEditingTemplate(template) and setIsOpeningInEditMode(isEdit).
+                                  handleEditTemplate(template, false);
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-xl text-xs font-bold backdrop-blur-md transition-all border border-white/20"
+                              >
+                                <Eye size={14} /> 查看详情
+                              </button>
+                            </div>
+                            {activeTab === 'market' && template.isCustom && (
+                              <div className="flex gap-2 w-48">
+                                <button
+                                  onClick={() => handleEditTemplate(template, true)}
+                                  className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-xl text-xs font-bold backdrop-blur-md transition-all border border-white/20"
+                                >
+                                  <Edit3 size={14} /> 编辑
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteTemplate(template.id)}
+                                  className="flex-1 flex items-center justify-center gap-2 bg-rose-500/20 hover:bg-rose-500 text-white px-3 py-2 rounded-xl text-xs font-bold backdrop-blur-md transition-all border border-rose-500/30"
+                                >
+                                  <Trash2 size={14} /> 删除
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
-                      {filteredTemplates.length === 0 && (
-                        <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400 bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200">
-                          <Sparkles size={48} className="mb-4 opacity-20" />
-                          <p className="text-sm font-medium">暂无匹配的模版</p>
-                          {activeTab === 'market' && (
-                            <button onClick={handleCreateNew} className="mt-6 flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">
-                              <Plus size={16} /> 创建首个模版
-                            </button>
-                          )}
-                        </div>
-                      )}
                     </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              editingTemplate && (
-                <StyleEditor
-                  template={editingTemplate}
-                  onSave={(updated) => {
-                    if (updated.id && templates.some(t => t.id === updated.id)) {
-                      updateTemplateMutation.mutate({ id: updated.id, updates: updated }, {
-                        onSuccess: () => {
-                          onShowToast('模板更新成功', 'success');
-                          setView('gallery');
-                        },
-                        onError: () => onShowToast('更新失败', 'error')
-                      });
-                    } else {
-                      saveTemplateMutation.mutate(updated, {
-                        onSuccess: () => {
-                          onShowToast('模板保存成功', 'success');
-                          setView('gallery');
-                        },
-                        onError: () => onShowToast('保存失败', 'error')
-                      });
-                    }
-                  }}
-                  onCancel={() => setView('gallery')}
-                  initialEditMode={isOpeningInEditMode || !templates.some(t => t.id === editingTemplate.id)}
-                  appSettings={appSettings}
-                  onShowToast={onShowToast}
-                />
-              )
-            )}
-          </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            editingTemplate && (
+              <StyleEditor
+                template={editingTemplate}
+                onSave={(updated) => {
+                  if (updated.id && templates.some(t => t.id === updated.id)) {
+                    updateTemplateMutation.mutate({ id: updated.id, updates: updated }, {
+                      onSuccess: () => {
+                        onShowToast('模板更新成功', 'success');
+                        setView('gallery');
+                      },
+                      onError: () => onShowToast('更新失败', 'error')
+                    });
+                  } else {
+                    saveTemplateMutation.mutate(updated, {
+                      onSuccess: () => {
+                        onShowToast('模板保存成功', 'success');
+                        setView('gallery');
+                      },
+                      onError: () => onShowToast('保存失败', 'error')
+                    });
+                  }
+                }}
+                onCancel={() => setView('gallery')}
+                initialEditMode={isOpeningInEditMode || !templates.some(t => t.id === editingTemplate.id)}
+                appSettings={appSettings}
+                onShowToast={onShowToast}
+              />
+            )
+          )}
         </div>
       </div>
-    </div>
+      {/* Global Confirmation Modal */}
+      <Modal
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirm}
+        title={confirmDialog.title}
+        maxWidth="max-w-md"
+        footer={
+          <div className="flex gap-2 w-full justify-end">
+            <button
+              onClick={closeConfirm}
+              className="px-4 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-sm font-medium"
+            >
+              取消
+            </button>
+            <button
+              onClick={confirmDialog.onConfirm}
+              className={`px-6 py-2 text-white rounded-lg shadow-lg transition-all text-sm font-bold ${confirmDialog.variant === 'danger'
+                ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-200'
+                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
+                }`}
+            >
+              {confirmDialog.confirmLabel || '确定'}
+            </button>
+          </div>
+        }
+      >
+        <div className="flex flex-col items-center justify-center p-4 text-center">
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${confirmDialog.variant === 'danger' ? 'bg-rose-100 text-rose-500' : 'bg-blue-100 text-blue-500'
+            }`}>
+            {confirmDialog.variant === 'danger' ? <AlertCircle size={24} /> : <AlertTriangle size={24} />}
+          </div>
+          <p className="text-slate-700 font-medium leading-relaxed">
+            {confirmDialog.message}
+          </p>
+        </div>
+      </Modal>
+    </div >
   );
 };
 
@@ -806,6 +1334,17 @@ const StyleEditor: React.FC<{
     }
   };
 
+  // 计算当前结构总页数
+  const currentStructureSum =
+    (localTemplate.config.pageStructure?.cover || 0) +
+    (localTemplate.config.pageStructure?.directory || 0) +
+    (localTemplate.config.pageStructure?.transition || 0) +
+    (localTemplate.config.pageStructure?.content || 0) +
+    (localTemplate.config.pageStructure?.end || 0);
+
+  const isOverLimit = currentStructureSum > localTemplate.config.targetPageCount;
+  const isUnderLimit = currentStructureSum < localTemplate.config.targetPageCount;
+
   const updateConfig = (key: keyof StyleConfig, value: any) => {
     setLocalTemplate(prev => ({
       ...prev,
@@ -852,241 +1391,50 @@ const StyleEditor: React.FC<{
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        {/* Left: Visual & Style Config */}
-        <div className="space-y-8">
-          {/* Template Info */}
-          <section className="space-y-4">
-            <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Sparkles size={16} /> 基础信息
-            </h5>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-600 block px-1">模板名称</label>
-              <input
-                type="text"
-                placeholder="例如：科技蓝商务演示..."
-                className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all font-bold disabled:opacity-60 disabled:cursor-not-allowed"
-                value={localTemplate.name}
-                disabled={!isEditing}
-                onChange={(e) => setLocalTemplate({ ...localTemplate, name: e.target.value })}
-              />
-            </div>
-          </section>
+    <div className="w-full max-w-5xl mx-auto flex flex-col space-y-6 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <StyleTemplateEditor
+        template={localTemplate}
+        isEditing={isEditing}
+        onUpdateConfig={updateConfig}
+        onUpdateStyleMap={updateStyleMap}
+        onStructureChange={handleStructureChange}
+        onSmartRefine={handleSmartRefine}
+        isRefining={isRefining}
+        setName={(name) => setLocalTemplate({ ...localTemplate, name })}
+      />
 
-          {/* Style Reference Uploads - NEW */}
-          <section className="space-y-4">
-            <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Monitor size={16} /> 视觉参考 (Style References)
-            </h5>
-            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 text-xs text-indigo-700 flex items-start gap-2">
-              <Sparkles size={14} className="mt-0.5 shrink-0" />
-              <p>为不同页面类型上传参考图，AI 将精准复刻设计风格。未上传的类型将自动使用“正文页”风格。</p>
-            </div>
-            <div className={`grid grid-cols-3 gap-3 ${!isEditing ? 'opacity-80 pointer-events-none' : ''}`}>
-              {PAGE_TYPES.map(pt => (
-                <div key={pt.type} className="space-y-1">
-                  <div className="text-[10px] font-bold text-slate-500 flex items-center gap-1 uppercase">
-                    {pt.type === 'cover' ? <Home size={10} /> :
-                      pt.type === 'directory' ? <LayoutList size={10} /> :
-                        pt.type === 'transition' ? <BookOpen size={10} /> :
-                          pt.type === 'end' ? <Flag size={10} /> : <FileDigit size={10} />}
-                    {pt.label}
-                  </div>
-                  <div className="h-24">
-                    <ImageUploader
-                      variant="style-ref"
-                      files={localTemplate.styleMap?.[pt.type] ? [localTemplate.styleMap[pt.type] as any] : []}
-                      onFilesSelected={(files) => updateStyleMap(pt.type, files[0])}
-                      onRemoveFile={() => updateStyleMap(pt.type, null)}
-                      label="上传"
-                      subLabel=""
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Style Params */}
-          <section className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-600 block px-1">风格描述</label>
-              <div className={`flex flex-wrap gap-2 mb-2 ${!isEditing ? 'opacity-60 pointer-events-none' : ''}`}>
-                {STYLE_PRESETS.map(s => (
-                  <button
-                    key={s}
-                    onClick={() => updateConfig('styleName', s)}
-                    className={`text-[10px] px-3 py-1.5 rounded-full font-bold transition-all ${localTemplate.config.styleName === s ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                      }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="text"
-                placeholder="输入自定义风格描述..."
-                className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
-                value={localTemplate.config.styleName}
-                disabled={!isEditing}
-                onChange={(e) => updateConfig('styleName', e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-600 block px-1">画面比例</label>
-                <select
-                  className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
-                  value={localTemplate.config.aspectRatio}
-                  disabled={!isEditing}
-                  onChange={(e) => updateConfig('aspectRatio', e.target.value)}
-                >
-                  {RATIO_PRESETS.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-600 block px-1">配色方案</label>
-                <div className="space-y-2">
-                  <select
-                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
-                    value={COLOR_PRESETS.includes(localTemplate.config.colorPalette) ? localTemplate.config.colorPalette : '自定义'}
-                    disabled={!isEditing}
-                    onChange={(e) => {
-                      if (e.target.value !== '自定义') {
-                        updateConfig('colorPalette', e.target.value);
-                        setCustomColor('');
-                      } else {
-                        updateConfig('colorPalette', '自定义');
-                      }
-                    }}
-                  >
-                    {COLOR_PRESETS.map(c => <option key={c} value={c}>{c}</option>)}
-                    <option value="自定义">自定义...</option>
-                  </select>
-                  {(!COLOR_PRESETS.includes(localTemplate.config.colorPalette) || localTemplate.config.colorPalette === '自定义') && (
-                    <div className={`flex gap-2 animate-in fade-in slide-in-from-top-1 ${!isEditing ? 'opacity-60 pointer-events-none' : ''}`}>
-                      <Palette className="text-slate-400 mt-2" size={16} />
-                      <input
-                        type="text"
-                        placeholder="例如: #FF5733 或 莫兰迪粉..."
-                        className="w-full px-4 py-2 bg-slate-50 border-b-2 border-slate-200 focus:border-blue-500 outline-none text-sm"
-                        value={COLOR_PRESETS.includes(localTemplate.config.colorPalette) ? customColor : localTemplate.config.colorPalette}
-                        onChange={(e) => {
-                          setCustomColor(e.target.value);
-                          updateConfig('colorPalette', e.target.value);
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* Right: Structure Config */}
-        <div className="space-y-4 h-full flex flex-col">
-          <section className="space-y-3">
-            <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <FileDigit size={16} /> 结构规划
-            </h5>
-
-            <div className={`bg-slate-50 rounded-2xl p-4 space-y-3 border border-slate-100 ${!isEditing ? 'opacity-80 pointer-events-none' : ''}`}>
-              <div className="flex justify-between items-center px-1">
-                <span className="text-xs font-bold text-slate-600">默认生成总页数</span>
-                <input
-                  type="number"
-                  className="w-14 text-center bg-white py-1.5 rounded-lg text-sm font-black text-blue-600 shadow-sm outline-none"
-                  value={localTemplate.config.targetPageCount}
-                  onChange={(e) => updateConfig('targetPageCount', parseInt(e.target.value) || 10)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <StructureItem label="章节过渡" value={localTemplate.config.pageStructure.transition} onChange={(v) => handleStructureChange('transition', v)} />
-                <StructureItem label="内容正文" value={localTemplate.config.pageStructure.content} onChange={(v) => handleStructureChange('content', v)} />
-                <div className="flex justify-between items-center p-2 bg-white/50 border border-slate-200/50 rounded-xl opacity-60">
-                  <span className="text-[10px] font-bold text-slate-400 italic">封面、目录、结束页 (默认为 1P)</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-2 flex-1 flex flex-col">
-            <h5 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <LayoutTemplate size={16} /> AI 视觉指令预设 (Style Prompt)
-            </h5>
-            <div className="relative group flex-1">
-              <textarea
-                placeholder="在此预设该风格的特定提示词或排版要求..."
-                className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all resize-none h-[420px] custom-scrollbar disabled:opacity-60 disabled:cursor-not-allowed leading-relaxed"
-                value={localTemplate.config.requirements}
-                disabled={!isEditing}
-                onChange={(e) => updateConfig('requirements', e.target.value)}
-              />
-              {isEditing && (
-                <button
-                  onClick={handleSmartRefine}
-                  disabled={isRefining || !localTemplate.config.requirements}
-                  className="absolute bottom-3 right-3 z-10 p-2 bg-white/80 backdrop-blur-sm rounded-xl text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-all shadow-sm border border-blue-100 group-hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="AI 智能润色"
-                >
-                  {isRefining ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                </button>
-              )}
-            </div>
-          </section>
-
-          <div className="bg-blue-50/50 p-6 rounded-[32px] border border-blue-100/50">
-            <div className="flex gap-4">
-              <div className="shrink-0 p-3 bg-white rounded-2xl shadow-sm h-fit">
-                <AlertCircle className="text-blue-500" size={20} />
-              </div>
-              <div>
-                <h6 className="text-sm font-bold text-blue-900 mb-1">模板提示</h6>
-                <p className="text-xs text-blue-700 leading-relaxed font-medium">
-                  完善的视觉参考图和结构规划能让 AI 更好地理解您的设计意图。保存后，您可以在创建新项目时一键应用此模板。
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer Actions */}
-      <div className="pt-8 border-t border-slate-100 flex justify-end gap-4">
+      {/* Footer Actions - Fixed Bottom */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t border-slate-200 flex justify-center items-center gap-4 z-[50] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
         {isEditing ? (
           <>
             <button
               onClick={() => initialEditMode ? onCancel() : setIsEditing(false)}
-              className="px-8 py-3 rounded-2xl font-bold text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+              className="px-6 py-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-sm font-bold active:scale-95"
             >
               取消
             </button>
             <button
               onClick={handleSaveTemplate}
               disabled={!localTemplate.name || isSaving}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 text-white px-10 py-3 rounded-2xl font-bold transition-all shadow-xl shadow-blue-500/20 enabled:active:scale-95"
+              className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg shadow-lg shadow-indigo-200 transition-all font-bold active:scale-95 text-sm"
             >
-              {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-              {isSaving ? '保存中...' : '保存模板'}
+              {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              {isSaving ? '正在保存...' : '保存模板'}
             </button>
           </>
         ) : (
           <>
             <button
               onClick={onCancel}
-              className="px-8 py-3 rounded-2xl font-bold text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+              className="px-6 py-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-sm font-bold active:scale-95"
             >
               关闭
             </button>
             <button
               onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-10 py-3 rounded-2xl font-bold transition-all shadow-xl shadow-slate-900/20 active:scale-95"
+              className="flex items-center gap-2 px-8 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg shadow-lg shadow-slate-200 transition-all font-bold active:scale-95 text-sm"
             >
-              <Edit3 size={18} />
+              <Edit3 size={16} />
               编辑模板
             </button>
           </>
@@ -1094,27 +1442,4 @@ const StyleEditor: React.FC<{
       </div>
     </div>
   );
-
 };
-
-const StructureItem: React.FC<{ label: string; value: number; onChange: (v: number) => void }> = ({ label, value, onChange }) => (
-  <div className="flex justify-between items-center p-4 bg-white rounded-2xl shadow-sm">
-    <span className="text-sm font-bold text-slate-700">{label}</span>
-    <div className="flex items-center gap-3">
-      <button
-        onClick={() => onChange(Math.max(0, value - 1))}
-        className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200"
-      >
-        <Plus size={14} className="rotate-45" />
-      </button>
-      <span className="text-sm font-black text-slate-800 w-4 text-center">{value}</span>
-      <button
-        onClick={() => onChange(value + 1)}
-        className="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200"
-      >
-        <Plus size={14} />
-      </button>
-      <span className="text-xs font-bold text-slate-300">P</span>
-    </div>
-  </div>
-);

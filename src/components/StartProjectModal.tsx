@@ -37,7 +37,7 @@ export const StartProjectModal: React.FC<StartProjectModalProps> = ({
               </p>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"
           >
@@ -56,22 +56,21 @@ export const StartProjectModal: React.FC<StartProjectModalProps> = ({
             {pendingItems.map((item, index) => (
               <div key={item.id} className="flex items-center gap-4 p-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-slate-50 transition-all group">
                 <span className="w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-500 rounded-lg text-xs font-bold font-mono">
-                  {item.pageNumber || index + 1}
+                  {index + 1}
                 </span>
-                
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                      item.pageType === 'cover' ? 'bg-indigo-50 text-indigo-600' :
-                      item.pageType === 'directory' ? 'bg-purple-50 text-purple-600' :
-                      item.pageType === 'transition' ? 'bg-pink-50 text-pink-600' :
-                      item.pageType === 'end' ? 'bg-slate-100 text-slate-600' :
-                      'bg-blue-50 text-blue-600'
-                    }`}>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${item.pageType === 'cover' ? 'bg-indigo-50 text-indigo-600' :
+                        item.pageType === 'directory' ? 'bg-purple-50 text-purple-600' :
+                          item.pageType === 'transition' ? 'bg-pink-50 text-pink-600' :
+                            item.pageType === 'end' ? 'bg-slate-100 text-slate-600' :
+                              'bg-blue-50 text-blue-600'
+                      }`}>
                       {item.pageType === 'cover' ? '封面页' :
-                       item.pageType === 'directory' ? '目录页' :
-                       item.pageType === 'transition' ? '过渡页' :
-                       item.pageType === 'end' ? '结束页' : '正文页'}
+                        item.pageType === 'directory' ? '目录页' :
+                          item.pageType === 'transition' ? '过渡页' :
+                            item.pageType === 'end' ? '结束页' : '正文页'}
                     </span>
                     <h4 className="text-sm font-bold text-slate-700 truncate">
                       {item.title || "未命名页面"}
@@ -79,14 +78,14 @@ export const StartProjectModal: React.FC<StartProjectModalProps> = ({
                   </div>
                   <div className="flex items-center gap-3 text-xs text-slate-400">
                     {item.textContent && (
-                       <span className="flex items-center gap-1">
-                         <FileText size={10} /> 包含文本描述
-                       </span>
+                      <span className="flex items-center gap-1">
+                        <FileText size={10} /> 包含文本描述
+                      </span>
                     )}
                     {(item.originalFile || item.previewUrl) && (
-                       <span className="flex items-center gap-1">
-                         <ImageIcon size={10} /> 包含参考图
-                       </span>
+                      <span className="flex items-center gap-1">
+                        <ImageIcon size={10} /> 包含参考图
+                      </span>
                     )}
                   </div>
                 </div>

@@ -14,8 +14,8 @@ interface HistorySidebarProps {
     showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-export const HistorySidebar: React.FC<HistorySidebarProps> = ({ 
-    isOpen, onClose, currentProject, liveProjectData, settings, onPreview, showToast 
+export const HistorySidebar: React.FC<HistorySidebarProps> = ({
+    isOpen, onClose, currentProject, liveProjectData, settings, onPreview, showToast
 }) => {
     const { createSnapshot, listSnapshots, getSnapshot, deleteSnapshot } = useHistory();
     const queryClient = useQueryClient();
@@ -28,10 +28,10 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
     const saveMutation = useMutation({
         mutationFn: async () => {
-             if (!currentProject || !liveProjectData) return;
-             // console.log('[HistorySidebar] Saving snapshot...');
-             // Use liveProjectData which contains real-time items with variants (images)
-             return createSnapshot(currentProject.id, liveProjectData, settings);
+            if (!currentProject || !liveProjectData) return;
+            // console.log('[HistorySidebar] Saving snapshot...');
+            // Use liveProjectData which contains real-time items with variants (images)
+            return createSnapshot(currentProject.id, liveProjectData, settings);
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['snapshots'] });
@@ -39,7 +39,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         },
         onError: () => showToast("保存失败", 'error')
     });
-    
+
     const deleteMutation = useMutation({
         mutationFn: deleteSnapshot,
         onSuccess: () => {
@@ -52,30 +52,30 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     const handlePreview = async (snapshotId: string) => {
         // Simple loading feedback
         const btn = document.getElementById(`preview-btn-${snapshotId}`);
-        if(btn) btn.innerText = "读取中...";
-        
+        if (btn) btn.innerText = "读取中...";
+
         try {
             const fullSnapshot = await getSnapshot(snapshotId);
             onPreview(fullSnapshot);
-            onClose(); 
-        } catch(e: any) {
+            onClose();
+        } catch (e: any) {
             console.error(`[HistorySidebar] Failed to load snapshot ${snapshotId}:`, e);
-            const errorMsg = e.response?.status === 404 
-                ? "快照不存在,可能已被删除" 
+            const errorMsg = e.response?.status === 404
+                ? "快照不存在,可能已被删除"
                 : `加载失败: ${e.response?.status || e.message}`;
             showToast(errorMsg, 'error');
-            if(btn) btn.innerText = "查看详情";
+            if (btn) btn.innerText = "查看详情";
         }
     }
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-y-0 right-0 w-80 bg-white shadow-2xl z-50 border-l border-zinc-200 flex flex-col animate-in slide-in-from-right duration-300">
+        <div className="fixed inset-y-0 right-0 w-80 bg-white shadow-2xl z-[60] border-l border-zinc-200 flex flex-col animate-in slide-in-from-right duration-300">
             {/* Header */}
             <div className="p-4 border-b flex justify-between items-center bg-zinc-50">
                 <h2 className="font-semibold text-zinc-800 flex items-center gap-2">
-                    <History className="w-5 h-5 text-indigo-600" /> 
+                    <History className="w-5 h-5 text-indigo-600" />
                     <span>版本历史</span>
                 </h2>
                 <button onClick={onClose} className="p-1 hover:bg-zinc-200 rounded-full transition-colors">
@@ -85,8 +85,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
             {/* Actions */}
             <div className="p-4 border-b bg-white">
-                <button 
-                    onClick={() => saveMutation.mutate()} 
+                <button
+                    onClick={() => saveMutation.mutate()}
                     disabled={saveMutation.isPending || !currentProject}
                     className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white py-2.5 rounded-lg transition-all font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -97,7 +97,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                         </>
                     ) : (
                         <>
-                            <Save className="w-4 h-4" /> 
+                            <Save className="w-4 h-4" />
                             <span>保存当前版本</span>
                         </>
                     )}
@@ -117,33 +117,33 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                 ) : snapshots && snapshots.length > 0 ? (
                     snapshots.map((snap) => (
                         <div key={snap.id} className="group bg-white border border-zinc-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all hover:border-indigo-200 relative">
-                             <div className="flex justify-between items-start mb-2">
-                                 <div className="flex items-center gap-2">
-                                     <span className="bg-indigo-50 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
-                                         V{snap.version}
-                                     </span>
-                                     <span className="text-xs text-zinc-400 flex items-center gap-1">
-                                         <Clock className="w-3 h-3" />
-                                         {new Date(snap.createdAt).toLocaleString(undefined, {
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="bg-indigo-50 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+                                        V{snap.version}
+                                    </span>
+                                    <span className="text-xs text-zinc-400 flex items-center gap-1">
+                                        <Clock className="w-3 h-3" />
+                                        {new Date(snap.createdAt).toLocaleString(undefined, {
                                             month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric'
-                                         })}
-                                     </span>
-                                 </div>
-                             </div>
-                             
-                             <p className="text-sm text-zinc-700 font-medium leading-relaxed mb-3 whitespace-pre-wrap">
-                                 {snap.summary || "常规保存"}
-                             </p>
-                             
-                             <div className="flex gap-2">
-                                 <button 
-                                     id={`preview-btn-${snap.id}`}
-                                     onClick={() => handlePreview(snap.id)} 
-                                     className="flex-1 h-8 text-xs bg-zinc-50 text-zinc-700 border border-zinc-200 rounded-lg hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-colors flex items-center justify-center gap-1.5 font-medium"
-                                 >
-                                     <Eye className="w-3.5 h-3.5" /> 查看详情
-                                 </button>
-                                 <button 
+                                        })}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <p className="text-sm text-zinc-700 font-medium leading-relaxed mb-3 whitespace-pre-wrap">
+                                {snap.summary || "常规保存"}
+                            </p>
+
+                            <div className="flex gap-2">
+                                <button
+                                    id={`preview-btn-${snap.id}`}
+                                    onClick={() => handlePreview(snap.id)}
+                                    className="flex-1 h-8 text-xs bg-zinc-50 text-zinc-700 border border-zinc-200 rounded-lg hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-colors flex items-center justify-center gap-1.5 font-medium"
+                                >
+                                    <Eye className="w-3.5 h-3.5" /> 查看详情
+                                </button>
+                                <button
                                     onClick={() => {
                                         if (confirm('确定要删除这条历史记录吗？')) {
                                             deleteMutation.mutate(snap.id);
@@ -151,10 +151,10 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                                     }}
                                     className="h-8 w-8 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
                                     title="删除"
-                                 >
-                                     <Trash2 className="w-3.5 h-3.5" />
-                                 </button>
-                             </div>
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
                         </div>
                     ))
                 ) : (

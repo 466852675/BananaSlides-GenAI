@@ -8,6 +8,11 @@ export interface StyleTemplateDTO {
     config: any; // backend sends Object or JSON
     styleMap?: any;
     isCustom: boolean;
+    isOfficial?: boolean;
+    isRecommended?: boolean;
+    usageCount?: number;
+    favoriteCount?: number;
+    recommendCount?: number;
     createdAt: string;
     updatedAt: string;
 }
@@ -20,7 +25,13 @@ const transformTemplate = (dto: StyleTemplateDTO): StyleTemplate => {
         config: (typeof dto.config === 'string' ? JSON.parse(dto.config) : dto.config) as StyleConfig,
         styleMap: dto.styleMap ? (typeof dto.styleMap === 'string' ? JSON.parse(dto.styleMap) : dto.styleMap) as GlobalStyleMap : undefined,
         isCustom: dto.isCustom,
-        createdAt: new Date(dto.createdAt).getTime()
+        isOfficial: dto.isOfficial,
+        isRecommended: dto.isRecommended,
+        usageCount: dto.usageCount,
+        favoriteCount: dto.favoriteCount,
+        recommendCount: dto.recommendCount,
+        createdAt: new Date(dto.createdAt).getTime(),
+        updatedAt: dto.updatedAt ? new Date(dto.updatedAt).getTime() : undefined
     };
 };
 
@@ -56,7 +67,7 @@ export const useUpdateTemplate = () => {
             return transformTemplate(res as any);
         },
         onSuccess: () => {
-             queryClient.invalidateQueries({ queryKey: ['templates'] });
+            queryClient.invalidateQueries({ queryKey: ['templates'] });
         }
     });
 };

@@ -38,8 +38,9 @@ export const getFavorites = async (req: Request, res: Response) => {
 
 export const createFavorite = async (req: Request, res: Response) => {
     try {
-        const { name, config, styleMap, sampleImages } = req.body;
+        const { templateId, name, config, styleMap, sampleImages } = req.body;
         const data = {
+            templateId,
             name,
             config: safeJSONStringify(config) || "{}",
             styleMap: safeJSONStringify(styleMap),

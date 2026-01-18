@@ -26,7 +26,7 @@ export const useAppSettingsMasked = () => {
             // @ts-ignore
             return res.data;
         },
-        staleTime: 1000 * 60 * 5, // 5 minutes
+        staleTime: 0, // 0 to ensure Refetch on Window Focus (Real-time sync feeling)
     });
 };
 
@@ -38,8 +38,8 @@ export const useResetSettings = () => {
             await client.post('/settings/reset');
         },
         onSuccess: () => {
-             queryClient.invalidateQueries({ queryKey: ['settings'] });
-             queryClient.invalidateQueries({ queryKey: ['settings-masked'] });
+            queryClient.invalidateQueries({ queryKey: ['settings'] });
+            queryClient.invalidateQueries({ queryKey: ['settings-masked'] });
         }
     });
 };
@@ -51,8 +51,8 @@ export const useUpdateAppSettings = () => {
             await client.post('/settings', { config });
         },
         onSuccess: () => {
-             queryClient.invalidateQueries({ queryKey: ['settings'] });
-             queryClient.invalidateQueries({ queryKey: ['settings-masked'] });
+            queryClient.invalidateQueries({ queryKey: ['settings'] });
+            queryClient.invalidateQueries({ queryKey: ['settings-masked'] });
         }
     });
 };
