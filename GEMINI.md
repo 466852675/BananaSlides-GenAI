@@ -32,6 +32,9 @@
 
 所有配置均位于前端界面的 **"全局设置 (Global Settings)"** 面板中。配置数据将安全存储在本地 SQLite 数据库中。
 
+![引擎配置](./image/04-智算管理底座/01-引擎配置-全协议AI模型配置+模型自由自由切换+助您整合全球最顶尖智力资源.gif)
+*支持全协议 AI 模型配置，实现智力资源的全球化整合。*
+
 ### A. Google Gemini (Native Mode)
 直接调用 Google 原生 API，支持高级参数控制（如 Safety Settings）。
 - **API Key**: 前往 [Google AI Studio](https://aistudio.google.com/) 免费申请。
@@ -49,6 +52,9 @@
 ## 4. 性能调优 (Performance Tuning)
 
 在 "Performance" 选项卡中，您可以微调引擎的“油门”与“刹车”。
+
+![参数调优](./image/04-智算管理底座/02-参数调优-高性能参数自定义+极致生成效率调优+让您的AI引擎完美适配硬件实力.png)
+*通过高性能参数自定义，让 AI 引擎完美适配您的硬件实力。*
 
 ### 🚀 并发控制 (Concurrency)
 - **Text Concurrency (Default: 3)**: 同时生成多少页的正文。建议保持在 3-5 之间。
