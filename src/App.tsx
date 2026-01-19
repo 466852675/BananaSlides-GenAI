@@ -458,8 +458,28 @@ const HistoryProjectCard: React.FC<{
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
   onViewImage: (url: string) => void;
-}> = ({ session, isSelectionMode, isSelected, onToggleSelection, onOpen, onDelete, onViewImage }) => {
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+}> = ({ session, isSelectionMode, isSelected, onToggleSelection, onOpen, onDelete, onViewImage, showToast }) => {
   const [thumbPage, setThumbPage] = useState(0);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+
+  const handleExport = async (type: 'zip' | 'pdf' | 'pptx') => {
+    setIsExportMenuOpen(false);
+    try {
+      showToast(`${type.toUpperCase()} 导出中...`, 'info');
+      if (type === 'zip') {
+        await exportToZip(session.items, session.title);
+      } else if (type === 'pdf') {
+        await exportToPdf(session.items, session.title);
+      } else {
+        await exportToPptx(session.items, session.title);
+      }
+      showToast("导出成功", 'success');
+    } catch (error: any) {
+      console.error("Export failed", error);
+      showToast(error.message || "导出失败", 'error');
+    }
+  };
 
   return (
     <div
@@ -536,6 +556,55 @@ const HistoryProjectCard: React.FC<{
 
           {!isSelectionMode && (
             <div className="flex items-center gap-3 shrink-0 ml-4">
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsExportMenuOpen(!isExportMenuOpen);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border ${isExportMenuOpen
+                    ? "bg-slate-100 text-slate-600 border-slate-200"
+                    : "bg-white text-slate-500 border-transparent hover:bg-indigo-50 hover:text-indigo-600"
+                    }`}
+                  title="导出项目"
+                >
+                  <Download size={16} />
+                  <span className="hidden xl:inline">导出</span>
+                </button>
+
+                {isExportMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsExportMenuOpen(false);
+                      }}
+                    />
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleExport('zip'); }}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 text-xs font-medium text-slate-700 flex items-center gap-2 transition-colors"
+                      >
+                        <ImageIcon size={14} className="text-blue-500" /> 导出图片 (ZIP)
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleExport('pdf'); }}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 text-xs font-medium text-slate-700 flex items-center gap-2 border-t border-slate-100 transition-colors"
+                      >
+                        <FileDown size={14} className="text-rose-500" /> 导出 PDF
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleExport('pptx'); }}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 text-xs font-medium text-slate-700 flex items-center gap-2 border-t border-slate-100 transition-colors"
+                      >
+                        <Presentation size={14} className="text-orange-500" /> 导出 PPTX
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -4608,6 +4677,7 @@ const App: React.FC = () => {
                             onOpen={handleOpenProject}
                             onDelete={handleDeleteProject}
                             onViewImage={setLightboxImage}
+                            showToast={showToast}
                           />
                         ))}
                       </div>
