@@ -1,16 +1,21 @@
 
 import express from 'express';
-import { 
-    handleSmartRefine, 
-    handleExtractText, 
-    handleGenerateOutline, 
+import {
+    handleSmartRefine,
+    handleExtractText,
+    handleGenerateOutline,
     handleGenerateSlideVariant,
     handleGenerateSingleOutlineItem,
-    handleGenerateSlideDetail
+    handleGenerateSlideDetail,
+    // New Handlers
+    handleAnalyzeTemplateConcept,
+    handleGenerateStyleReference
 } from '../controllers/ai.controller';
 
 const router = express.Router();
 
+router.post('/analyze-template-concept', handleAnalyzeTemplateConcept);
+router.post('/generate-style-reference', handleGenerateStyleReference);
 router.post('/smart-refine', handleSmartRefine);
 router.post('/extract-text', handleExtractText);
 router.post('/generate-outline', handleGenerateOutline);

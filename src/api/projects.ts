@@ -263,7 +263,6 @@ export const useUpdateProject = () => {
             if (data.status) payload.status = data.status;
             if (data.isPinned !== undefined) payload.isPinned = data.isPinned;
             if (data.globalConfig) payload.globalConfig = JSON.stringify(data.globalConfig);
-            if (data.globalConfig) payload.globalConfig = JSON.stringify(data.globalConfig);
             if (data.globalStyleMap) {
                 // Ensure any File objects are uploaded before saving
                 const serializedMap = await serializeStyleMap(data.globalStyleMap);
@@ -275,9 +274,46 @@ export const useUpdateProject = () => {
             // For now, let's assume metadata update.
             return client.patch(`/projects/${id}`, payload);
         },
-        onSuccess: (data, variables) => {
+        onMutate: async ({ id, data }) => {
+            // Cancel any outgoing refetches
+            await queryClient.cancelQueries({ queryKey: ['projects'] });
+            await queryClient.cancelQueries({ queryKey: ['project', id] });
+
+            // Snapshot the previous value
+            const previousProjects = queryClient.getQueryData<ProjectSession[]>(['projects']);
+            const previousProject = queryClient.getQueryData<ProjectSession>(['project', id]);
+
+            // Optimistically update to the new value
+            if (previousProjects) {
+                queryClient.setQueryData<ProjectSession[]>(['projects'], (old) => {
+                    return old?.map(project =>
+                        project.id === id ? { ...project, ...data } : project
+                    ) || [];
+                });
+            }
+
+            if (previousProject) {
+                queryClient.setQueryData<ProjectSession>(['project', id], (old: ProjectSession | undefined) => {
+                    return old ? { ...old, ...data } : old;
+                });
+            }
+
+            // Return a context object with the snapshotted value
+            return { previousProjects, previousProject };
+        },
+        onError: (_err, { id }, context) => {
+            // If the mutation fails, use the context returned from onMutate to roll back
+            if (context?.previousProjects) {
+                queryClient.setQueryData(['projects'], context.previousProjects);
+            }
+            if (context?.previousProject) {
+                queryClient.setQueryData(['project', id], context.previousProject);
+            }
+        },
+        onSettled: (_data, _error, { id }) => {
+            // Always refetch after error or success:
             queryClient.invalidateQueries({ queryKey: ['projects'] });
-            queryClient.invalidateQueries({ queryKey: ['project', variables.id] });
+            queryClient.invalidateQueries({ queryKey: ['project', id] });
         }
     });
 };

@@ -1,0 +1,57 @@
+@keyframes spin-flow {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.ai-border-flow {
+    position: relative !important;
+    z-index: 0;
+    overflow: hidden;
+    border-color: transparent !important;
+    background-color: transparent !important;
+}
+
+/* The spinning gradient border */
+.ai-border-flow::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: conic-gradient(from 180deg,
+            transparent 0deg,
+            transparent 240deg,
+            /* 240 deg Gap (Longer beam: 120deg arc) */
+            #a855f7 270deg,
+            /* 30 deg Purple Tail */
+            #3b82f6 310deg,
+            /* 40 deg Blue Body */
+            #06b6d4 350deg,
+            /* 40 deg Cyan Head */
+            #ffffff 360deg
+            /* 10 deg White Tip */
+        );
+    animation: spin-flow 3s linear infinite;
+    /* Slightly faster spin for energy */
+    z-index: -2;
+}
+
+/* The inner card background (simulating the card body) */
+.ai-border-flow::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    /* Slightly thicker border (was 2px) */
+    background: #f8fafc;
+    /* Match bg-slate-50 */
+    border-radius: inherit;
+    z-index: -1;
+}
+
+/* Dark mode adjustment if needed, but for now fixed to slate-50 */

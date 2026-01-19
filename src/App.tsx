@@ -1403,7 +1403,7 @@ const App: React.FC = () => {
   // CRITICAL: Must use syncSlidesMutation, NOT updateProjectMutation
   // updateProjectMutation doesn't support items update (see projects.ts line 281-283)
   useEffect(() => {
-    if (!currentProjectId || isPreviewMode || !hasUserInteraction) return; // 只在用户操作后才保存
+    if (!currentProjectId || isPreviewMode || !hasUserInteraction || isProcessing) return; // Wait until processing finishes
 
     const timer = setTimeout(() => {
       syncSlidesMutation.mutate({
@@ -2531,11 +2531,6 @@ const App: React.FC = () => {
         });
 
 
-        syncSlidesMutation.mutate({
-          projectId: currentProjectId,
-          slides: slidesToSync
-        });
-
         return slidesToSync;
       });
     } else {
@@ -2686,26 +2681,26 @@ const App: React.FC = () => {
   };
 
   // Export Logic
-  const handleBatchExport = (type: "zip" | "pdf" | "pptx") => {
+  const handleBatchExport = async (type: "zip" | "pdf" | "pptx") => {
     const title = config.styleName || "bananaslides-genai";
     const timestamp = new Date().toISOString().slice(0, 10);
     const filename = `${title}_${timestamp}`;
 
-    showToast("正在准备导出文件...", "loading");
+    showToast("正在准备并下载导出文件...", "loading");
 
     try {
       if (type === "zip") {
-        exportToZip(items, filename);
+        await exportToZip(items, filename);
       } else if (type === "pdf") {
-        exportToPdf(items, filename);
+        await exportToPdf(items, filename);
       } else if (type === "pptx") {
-        exportToPptx(items, filename);
+        await exportToPptx(items, filename);
       }
       setIsExportMenuOpen(false);
-      showToast("导出成功开始下载", "success");
-    } catch (e) {
+      showToast("导出成功", "success");
+    } catch (e: any) {
       console.error(e);
-      showToast("导出失败，请重试", "error");
+      showToast(e.message || "导出失败，请重试", "error");
     }
   };
 
@@ -3513,6 +3508,8 @@ const App: React.FC = () => {
             onUpdateStyleMap={() => { }}
             onStructureChange={() => { }}
             setName={() => { }}
+            onShowToast={showToast}
+            appSettings={appSettings}
           />
         )}
       </Modal>

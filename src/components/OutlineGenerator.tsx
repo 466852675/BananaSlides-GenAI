@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser, Eye, Edit3 } from 'lucide-react';
-import { refinePrompt, generateOutline, generateSlideDetail, generateSingleOutlineItem } from '../services/geminiService';
+import { refinePrompt, smartRefine, generateOutline, generateSlideDetail, generateSingleOutlineItem } from '../services/geminiService';
 import { OutlineItem, GeneratedSlide, StyleConfig, PageType, AppSettings } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { AIGlowContainer } from './AIGlowContainer';
 import { ToastMessage } from './Toast';
 import ReactMarkdown from 'react-markdown';
 
@@ -175,7 +176,8 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         onShowToast(`调用 ${providerName} API 服务修饰主题中...`, 'loading');
 
         try {
-            const refined = await refinePrompt(topic);
+            // Use 'content' type for topic/content refinement, NOT 'requirement' (which is for visual styles)
+            const refined = await smartRefine(topic, 'content');
             if (refined && refined.trim()) {
                 setTopic(refined);
                 onShowToast(`调用 ${providerName} API 服务成功`, 'success');
@@ -427,7 +429,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         });
     };
 
-    const handleBatchGenerateDetails = async () => {
+    const executeBatchGeneration = async (force: boolean = false) => {
         setIsGeneratingDetails(true);
         const providerName = getProviderName('text');
         onShowToast(`批量调用 ${providerName} API 生成详细描述中...`, 'loading');
@@ -438,15 +440,18 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         const CONCURRENCY = appSettings.performance.textConcurrency || 10;
         const activePromises = new Set<Promise<void>>();
         let failureCount = 0;
+        let successCount = 0; // Track actual generations
 
         for (const item of pendingItems) {
-            if (item.status === 'success' && item.fullContent) continue;
+            // If NOT forced, skip already successful items
+            if (!force && item.status === 'success' && item.fullContent) continue;
 
             while (activePromises.size >= CONCURRENCY) {
                 await Promise.race(activePromises);
             }
 
             const p = generateDetailForId(item.id).then(() => {
+                successCount++;
                 activePromises.delete(p);
             }).catch(() => {
                 failureCount++;
@@ -460,8 +465,31 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
 
         if (failureCount > 0) {
             onShowToast(`调用 ${providerName} API 完成，但有 ${failureCount} 页失败`, 'error');
+        } else if (successCount === 0 && !force) {
+            // Should not happen if logic is correct, but safe check
+            onShowToast(`没有需要生成的页面`, 'info');
         } else {
             onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+        }
+    };
+
+    const handleBatchGenerateDetails = () => {
+        const hasPending = outlineItems.some(i => i.status !== 'success' || !i.fullContent);
+
+        if (hasPending) {
+            // Normal mode: only generate missing ones
+            executeBatchGeneration(false);
+        } else {
+            // All done mode: ask for confirmation to regenerate all
+            setConfirmState({
+                isOpen: true,
+                title: "重新生成所有内容",
+                message: "检测到所有页面均已拥有详细内容。是否确定要覆盖现有内容，根据当前大纲全部重新生成？",
+                onConfirm: () => {
+                    setConfirmState(prev => ({ ...prev, isOpen: false }));
+                    executeBatchGeneration(true);
+                }
+            });
         }
     };
 
@@ -482,7 +510,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                     textContent: item.fullContent || item.brief,
                     previewUrl: '',
                     variants: [],
-                    variantCount: 2,
+                    variantCount: config.defaultVariantCount || 2,
                     status: 'idle',
                     createdAt: Date.now()
                 }));
@@ -589,12 +617,22 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                         )}
                                     </div>
                                 ) : (
-                                    <textarea
-                                        value={topic}
-                                        onChange={(e) => setTopic(e.target.value)}
-                                        placeholder="请输入 PPT 主题，例如：'关于2025年人工智能发展趋势的商业路演'，或者上传文件后在此处查看识别内容..."
-                                        className="w-full h-64 p-4 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl bg-slate-50 border border-slate-100 focus:bg-white transition-colors"
-                                    />
+                                    <AIGlowContainer
+                                        isActive={isRefining || isGeneratingOutline}
+                                        className="h-64 rounded-xl"
+                                        colorFrom="#4f46e5"
+                                        colorTo="#8b5cf6"
+                                    >
+                                        <textarea
+                                            value={topic}
+                                            onChange={(e) => setTopic(e.target.value)}
+                                            placeholder="请输入 PPT 主题，例如：'关于2025年人工智能发展趋势的商业路演'，或者上传文件后在此处查看识别内容..."
+                                            className={`w-full h-full p-4 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl transition-colors ${(isRefining || isGeneratingOutline)
+                                                ? 'bg-slate-50 border-transparent'
+                                                : 'bg-slate-50 border border-slate-100 focus:bg-white'
+                                                }`}
+                                        />
+                                    </AIGlowContainer>
                                 )}
 
                                 <div className="flex justify-between items-center mt-4">
@@ -758,12 +796,20 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                                     <MarkdownPreview content={item.fullContent} />
                                                 </div>
                                             ) : (
-                                                <textarea
-                                                    value={item.fullContent || ''}
-                                                    onChange={(e) => handleUpdateOutlineItem(item.id, { fullContent: e.target.value })}
-                                                    placeholder={item.status === 'generating' ? "AI 正在思考中..." : "等待生成详细内容..."}
-                                                    className="w-full h-full min-h-[200px] resize-none focus:outline-none bg-transparent text-sm text-slate-600 leading-relaxed custom-scrollbar"
-                                                />
+                                                <AIGlowContainer
+                                                    isActive={item.status === 'generating'}
+                                                    className="w-full h-full flex-1"
+                                                    colorFrom="#4f46e5"
+                                                    colorTo="#8b5cf6"
+                                                >
+                                                    <textarea
+                                                        value={item.fullContent || ''}
+                                                        onChange={(e) => handleUpdateOutlineItem(item.id, { fullContent: e.target.value })}
+                                                        placeholder={item.status === 'generating' ? "AI 正在思考中..." : "等待生成详细内容..."}
+                                                        className={`w-full h-full min-h-[200px] resize-none focus:outline-none bg-transparent text-sm text-slate-600 leading-relaxed custom-scrollbar p-2 rounded-lg transition-all ${item.status === 'generating' ? 'bg-slate-50/50' : ''
+                                                            }`}
+                                                    />
+                                                </AIGlowContainer>
                                             )}
                                         </div>
                                     </div>

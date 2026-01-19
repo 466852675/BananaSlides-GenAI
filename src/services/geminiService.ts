@@ -167,3 +167,35 @@ export const generateSlideVariant = async (
         throw error;
     }
 };
+
+export const analyzeTemplateConcept = async (input: string | File): Promise<StyleConfig> => {
+    const payload: any = {};
+    if (typeof input === 'string') {
+        payload.input = input;
+    } else {
+        const resourcePath = await uploadFile(input);
+        payload.input = { path: resourcePath, mimeType: input.type };
+    }
+
+    try {
+        const response = await client.post<{ success: boolean, data: StyleConfig }>('/ai/analyze-template-concept', payload);
+        return (response as any).data;
+    } catch (error) {
+        console.error("Analyze Template Concept Error:", error);
+        throw error;
+    }
+};
+
+export const generateStyleReference = async (configStyle: StyleConfig, pageType: string, settings?: AppSettings): Promise<string> => {
+    try {
+        const response = await client.post<{ success: boolean, data: string }>('/ai/generate-style-reference', {
+            configStyle,
+            pageType,
+            settings // Pass client-side settings to backend
+        });
+        return (response as any).data;
+    } catch (error) {
+        console.error("Generate Style Reference Error:", error);
+        throw error;
+    }
+};

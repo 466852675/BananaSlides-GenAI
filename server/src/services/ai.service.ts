@@ -7,6 +7,7 @@ import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AssetService } from './asset.service';
+import { saveBase64Image } from '../utils/imageSaver';
 
 // --- Default Configuration ---
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || "";
@@ -118,6 +119,66 @@ const getStyleReference = (
 };
 
 /**
+ * 智能 Prompt 过滤器: 从完整的 Markdown 需求中提取特定页面的指令
+ */
+const extractPageSpecificRequirements = (fullRequirements: string, pageType: string): string => {
+    if (!fullRequirements) return "";
+
+    try {
+        // 1. 提取全局规范 (Section 2)
+        // 匹配 "## 2. 总体视觉规范" 开始，直到下一个 "##" (通常是 Section 3)
+        const globalSpecMatch = fullRequirements.match(/## 2\. 总体视觉规范([\s\S]*?)(?=## \d|\z)/);
+        const globalSpec = globalSpecMatch ? globalSpecMatch[1].trim() : "";
+
+        // 2. 提取页面专属指令 (Section 3 中的子项)
+        // 映射 pageType 到 Markdown 标题关键词
+        const typeMap: Record<string, string> = {
+            'cover': '封面页',
+            'directory': '目录页',
+            'transition': '章节过渡页',
+            'content': '内容页',
+            'end': '结束页'
+        };
+
+        const targetKeyword = typeMap[pageType];
+        let pageSpec = "";
+
+        if (targetKeyword) {
+            // 匹配 "### [关键词]" 开始，直到下一个 "###" 或 "##" 或 结束
+            // 注意：Markdown 标题可能包含额外的文字，如 "### [封面页] (Cover Page)"
+            // 正则解释: 
+            // ###\s*\[?       -> 匹配 "### [" (可选左方括号)
+            // ${targetKeyword} -> 匹配关键词
+            // \]?             -> 匹配可选右方括号
+            // [^\n]*          -> 匹配标题行的剩余部分
+            // ([\s\S]*?)      -> 捕获内容
+            // (?=###|##|\z)   -> 向后查找，直到下一个标题或结束
+            const regex = new RegExp(`###\\s*\\[?${targetKeyword}\\]?[^\\n]*([\\s\\S]*?)(?=###|##|\\z)`, 'i');
+            const pageMatch = fullRequirements.match(regex);
+
+            if (pageMatch) {
+                pageSpec = pageMatch[1].trim();
+            } else {
+                console.warn(`[SmartPrompt] No specific instructions found for type: ${pageType} (${targetKeyword})`);
+            }
+        }
+
+        // 3. 组合
+        if (globalSpec || pageSpec) {
+            console.log(`[SmartPrompt] Successfully filtered requirements for ${pageType}.`);
+            return `【全局视觉规范】\n${globalSpec}\n\n【本页专属指令 (${pageType})】\n${pageSpec}`;
+        }
+
+        // Fallback
+        return fullRequirements;
+
+    } catch (e) {
+        console.warn("[SmartPrompt] Regex parsing failed, using full requirements.", e);
+        return fullRequirements;
+    }
+};
+
+/**
  * 构建完整的图片生成Prompt (OpenAI兼容模式)
  */
 const buildImageGenerationPrompt = (params: {
@@ -136,6 +197,9 @@ const buildImageGenerationPrompt = (params: {
 
     let prompt = '';
 
+    // 0. 智能过滤需求 (Smart Prompt Filter)
+    const effectiveRequirements = extractPageSpecificRequirements(requirements, pageType);
+
     // 第一部分: 视觉调性定义 (Visual Language - "HOW to draw")
     prompt += `【1. 视觉语言 & 艺术风格 (最高优先级说明书)】\n`;
     if (styleKeywords) {
@@ -143,6 +207,11 @@ const buildImageGenerationPrompt = (params: {
     }
     if (styleMatchType === 'exact') {
         prompt += `- 构图锁定: 必须严格复刻参考图的几何骨架、色彩权重和视觉平衡感。\n`;
+    }
+
+    // Inject filtered requirements here
+    if (effectiveRequirements) {
+        prompt += `- 详细设计规范:\n${effectiveRequirements}\n`;
     }
 
     // 第二部分: 业务任务核心 (Business Core - "WHAT to draw")
@@ -159,14 +228,15 @@ const buildImageGenerationPrompt = (params: {
     // 第三部分: 形神兼备合成指令 (Synthesized Meta-Instruction)
     prompt += `\n【3. 形神兼备合成要求】\n`;
     prompt += `- 任务使命: 请使用第一部分定义的【视觉语言】去重构并描绘第二部分定义的【业务任务内容】。\n`;
-    prompt += `- 深度要求: 生成的图像必须在视觉上看起来与参考图逻辑一致，但在含义和内容上必须精准对应本页面的业务主题（如：如果业务涉及风电，请将风电机组以参考图的风格化形式融入构图中）。\n`;
+    prompt += `- 深度要求: 生成的图像必须在视觉上看起来与参考图逻辑一致，但在含义和内容上必须精准对应本页面的业务主题。\n`;
+    prompt += `- [CRITICAL] 内容隔离: 请**忽略**参考风格图中的任何文字、数字或具体业务信息。只提取其视觉风格，内容完全以【业务任务内容】为准。\n`;
 
     // 第四部分: 技术规格
     prompt += `\n【4. 技术规格】\n`;
     prompt += `- 宽高比: ${aspectRatio}\n`;
     if (styleName) prompt += `- 风格流派: ${styleName}\n`;
     if (colorPalette) prompt += `- 配色方案: ${colorPalette}\n`;
-    if (requirements) prompt += `- 用户特定偏好: ${requirements}\n`;
+    // Note: requirements are already injected in Part 1
     prompt += `- 画面基调: 专业商业演示, 4K 高画质, 文字严禁模糊, 线条精准。\n`;
 
     return prompt;
@@ -309,7 +379,11 @@ async function callOpenAICompatible(
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
-    if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+    if (config.apiKey) {
+        // [Debug] Aggressive Sanitization
+        const safeKey = config.apiKey.replace(/[^ -~]/g, "");
+        headers['Authorization'] = `Bearer ${safeKey}`;
+    }
 
     const body: any = {
         model: config.model,
@@ -328,22 +402,37 @@ async function callOpenAICompatible(
 
     console.log(`[OpenAI Compatible] Calling: ${url}, Model: ${config.model}`);
 
-    try {
-        const response = await axios.post(url, body, { headers, timeout: 120000 });
-        const content = response.data.choices[0]?.message?.content || "";
-        console.log(`[OpenAI Compatible] Response received, length: ${content.length}`);
-        console.log(`[OpenAI Compatible] Response preview:`, content.substring(0, 200));
-        return content;
-    } catch (error: any) {
-        const errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
-        const statusCode = error.response?.status || 'unknown';
-        console.error(`[OpenAI Compatible] API Call failed to ${url} [Status: ${statusCode}]`);
-        console.error(`[OpenAI Compatible] Error Message: ${errMsg}`);
-        if (error.response?.data) {
-            console.error(`[OpenAI Compatible] Full error response:`, JSON.stringify(error.response.data, null, 2));
+    let retries = 3;
+    while (retries > 0) {
+        try {
+            console.log(`[OpenAI Compatible] Calling: ${url}, Model: ${config.model} (Attempts left: ${retries})`);
+            const response = await axios.post(url, body, { headers, timeout: 120000 });
+            const content = response.data.choices[0]?.message?.content || "";
+            console.log(`[OpenAI Compatible] Response received, length: ${content.length}`);
+            console.log(`[OpenAI Compatible] Response preview:`, content.substring(0, 200));
+            return content;
+        } catch (error: any) {
+            const errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
+            const statusCode = error.response?.status;
+            console.error(`[OpenAI Compatible] Attempt failed: ${errMsg} (Status: ${statusCode})`);
+
+            // Only retry on specific status codes or network errors
+            const shouldRetry = !statusCode || [500, 502, 503, 504].includes(statusCode);
+
+            if (shouldRetry && retries > 1) {
+                retries--;
+                console.log(`[OpenAI Compatible] Retrying in 2 seconds...`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                continue;
+            }
+
+            if (error.response?.data) {
+                console.error(`[OpenAI Compatible] Full error response:`, JSON.stringify(error.response.data, null, 2));
+            }
+            throw new Error(`API Request Failed: ${errMsg} (Status: ${statusCode})`);
         }
-        throw new Error(`API Request Failed: ${errMsg} (Status: ${statusCode})`);
     }
+    throw new Error("API Request Failed after retries");
 }
 
 async function callOpenAIImageGeneration(
@@ -354,7 +443,22 @@ async function callOpenAIImageGeneration(
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
-    if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
+    if (config.apiKey) {
+        // [Debug] Aggressive Sanitization: Keep ONLY visible ASCII (32-126)
+        // This removes hidden control chars, non-breaking spaces, zero-width spaces, etc.
+        const safeKey = config.apiKey.replace(/[^ -~]/g, "");
+
+        if (config.apiKey !== safeKey) {
+            console.warn(`[API Key Warning] Key contained invalid characters! Replacing with sanitized version.`);
+        }
+
+        // Debug: If sanitized key is still weirdly empty or short, warn
+        if (safeKey.length < 10) {
+            console.warn(`[API Key Warning] Sanitized key is suspiciously short: "${safeKey}"`);
+        }
+
+        headers['Authorization'] = `Bearer ${safeKey}`;
+    }
 
     // Map aspect ratio to size (DALL-E style)
     const sizeMap: Record<string, string> = {
@@ -380,30 +484,43 @@ async function callOpenAIImageGeneration(
 
     console.log(`[OpenAI Image] Calling: ${url}, Model: ${config.model}, Size: ${size}`);
 
-    try {
-        const response = await axios.post(url, body, { headers, timeout: 600000 });
-        const data = response.data?.data?.[0];
+    let retries = 3;
+    while (retries > 0) {
+        try {
+            console.log(`[OpenAI Image] Calling: ${url}, Model: ${config.model}, Size: ${size} (Attempts left: ${retries})`);
+            const response = await axios.post(url, body, { headers, timeout: 600000 });
+            const data = response.data?.data?.[0];
 
-        if (data?.b64_json) {
-            return `data:image/png;base64,${data.b64_json}`;
-        } else if (data?.url) {
-            // If URL is returned, fetch and convert to base64
-            const imageResponse = await axios.get(data.url, { responseType: 'arraybuffer' });
-            const base64 = Buffer.from(imageResponse.data, 'binary').toString('base64');
-            return `data:image/png;base64,${base64}`;
-        }
+            if (data?.b64_json) {
+                const base64 = `data:image/png;base64,${data.b64_json}`;
+                return await saveBase64Image(base64, 'gen_ai');
+            } else if (data?.url) {
+                // If URL is returned, fetch and convert to base64 then save
+                const imageResponse = await axios.get(data.url, { responseType: 'arraybuffer' });
+                const base64 = `data:image/png;base64,${Buffer.from(imageResponse.data, 'binary').toString('base64')}`;
+                return await saveBase64Image(base64, 'gen_ai');
+            }
+            throw new Error("No image data returned from API"); // Should be caught by catch block
+        } catch (error: any) {
+            const errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
+            const statusCode = error.response?.status;
+            console.error(`[OpenAI Image] Attempt failed: ${errMsg} (Status: ${statusCode})`);
 
-        throw new Error("No image data in response");
-    } catch (error: any) {
-        const errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
-        const statusCode = error.response?.status || 'unknown';
-        console.error(`[OpenAI Image] API Call failed to ${url} [Status: ${statusCode}]`);
-        console.error(`[OpenAI Image] Error Message: ${errMsg}`);
-        if (error.response?.data) {
-            console.error(`[OpenAI Image] Full error response:`, JSON.stringify(error.response.data, null, 2));
+            // Only retry on specific status codes or network errors
+            const shouldRetry = !statusCode || [500, 502, 503, 504].includes(statusCode);
+
+            if (shouldRetry && retries > 1) {
+                retries--;
+                console.log(`[OpenAI Image] Retrying in 2 seconds...`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                continue;
+            }
+
+            console.error(`[OpenAI Image] Full error response:`, JSON.stringify(error.response?.data || {}, null, 2));
+            throw new Error(`Image Generation Failed: ${errMsg} (Status: ${statusCode})`);
         }
-        throw new Error(`Image Generation Failed: ${errMsg} (Status: ${statusCode})`);
     }
+    throw new Error("Image Generation Failed after retries");
 }
 
 // --- Exported Services ---
@@ -412,11 +529,69 @@ export const AIService = {
 
     async smartRefine(text: string, type: 'requirement' | 'content', settings?: AppSettings): Promise<string> {
         const config = getTaskConfig(settings, 'text');
-        let contextPrompt = type === 'requirement'
-            ? "Refine the following design requirements for a presentation. Make them clear, professional, specific, and actionable for a design AI. Maintain the original intent but improve clarity and terminology."
-            : "Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.";
+        let prompt = '';
+        if (type === 'requirement') {
+            prompt = `
+Role: Senior Visual Director & PPT Expert.
+Task: Refine the user's input into a professional, structured "AI Visual Instruction" (Style Config) for a presentation generation system.
+Input Text: "${text}"
 
-        const prompt = `Task: ${contextPrompt}\n\nInput Text: "${text}"\n\nRequirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`;
+[CRITICAL REQUIREMENT]
+You MUST output the result in the following Standard Markdown Structure. Do NOT change the headings.
+
+# [Role Name] AI 视觉指令
+
+## 1. 核心定位
+*   **角色设定**: (e.g. 未来主义架构师)
+*   **应用场景**: (e.g. 技术发布会)
+*   **视觉关键词**: (3-5 keywords)
+
+## 2. 总体视觉规范
+*   **设计美学**: (Detailed description of style, mood, lighting, materials)
+*   **色彩方案 (Name)**:
+    *   **背景色**: (Hex & Description)
+    *   **核心骨架/主色**: (Hex)
+    *   **战略目标/亮色**: (Hex)
+    *   **文字色**: (Hex)
+*   **字体建议**:
+    *   **标题**:
+    *   **正文**:
+*   **核心元素**: (List of visual elements)
+
+## 3. 页面类型详细指令
+(Provide specific visual instructions for EACH page type below. Infer details if missing.)
+
+### [封面页] (Cover Page)
+*   **布局**:
+*   **元素**:
+*   **氛围**:
+
+### [目录页] (Agenda Page)
+*   **布局**:
+*   **元素**:
+*   **特点**:
+
+### [章节过渡页] (Section Header)
+*   **布局**:
+*   **元素**:
+*   **特点**:
+
+### [内容页] (Content Page)
+*   **布局**:
+*   **图表**:
+*   **特点**:
+
+### [结束页] (Thank You)
+*   **布局**:
+*   **元素**:
+*   **氛围**:
+
+---
+Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简体中文).`;
+        } else {
+            // Content refinement remains simple
+            prompt = `Task: Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.\n\nInput Text: "${text}"\n\nRequirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`;
+        }
 
         if (shouldUseGeminiNative(config, settings)) {
             const ai = createGoogleClient(config);
@@ -804,7 +979,8 @@ export const AIService = {
                 if (styleRef) {
                     const styleBase64 = await resourceToBase64(styleRef);
                     parts.push({ inlineData: { mimeType: 'image/png', data: styleBase64 } });
-                    parts.push({ text: "风格参考图：请严格学习该图的调色板、视觉元素、UI质感和装饰风格。" });
+                    // CRITICAL: Explicit instruction to separate Style from Content
+                    parts.push({ text: "【高优先级指令】：上图仅作为【视觉风格参考】（配色、构图、装饰元素）。请完全忽略参考图中的所有文字、数据和具体内容。严禁照抄参考图中的文字！" });
                 }
 
                 // 4.3 混合 Prompt (文字指令 + 视觉分析结果)
@@ -819,35 +995,191 @@ export const AIService = {
                     }
                 } as any);
 
-                const candidate = response.candidates?.[0];
-                let imageBase64: string | undefined;
-                if (candidate?.content?.parts) {
-                    for (const p of candidate.content.parts) {
-                        if (p.inlineData && p.inlineData.data) {
-                            imageBase64 = p.inlineData.data;
-                            break;
-                        }
-                    }
+                if (response.candidates && response.candidates.length > 0 && response.candidates[0].content?.parts?.[0]?.inlineData) {
+                    const base64 = response.candidates[0].content.parts[0].inlineData.data;
+                    return await AssetService.save(`data:image/png;base64,${base64}`, 'png');
+                } else if (response.candidates && response.candidates.length > 0 && response.candidates[0].content?.parts?.[0]?.text) {
+                    // Some models return image as a link in text for some reason
+                    throw new Error("Gemini returned text instead of image");
                 }
-
-                if (!imageBase64) throw new Error("Gemini returned no image data");
-
-                const savedUrl = await AssetService.save(`data:image/png;base64,${imageBase64}`, 'png');
-                console.log(`[generateSlideVariant] Gemini Image Saved: ${savedUrl}`);
-                return savedUrl;
+                throw new Error("No image data in Gemini Native response");
 
             } else {
-                // --- OpenAI/DALL-E 分支 ---
-                // DALL-E 无法“看到”图片，但我们通过 styleKeywords (从 Vision 提取) 将视觉特征转化为了强指令
-                console.log(`[generateSlideVariant] DALL-E Prompt length: ${prompt.length}`);
+                // OpenAI DALL-E 3 (No Reference Image Support usually)
                 const base64Result = await callOpenAIImageGeneration(config, prompt, targetRatio);
-                const savedUrl = await AssetService.save(base64Result, 'png');
-                console.log(`[generateSlideVariant] OpenAI Image Saved: ${savedUrl}`);
-                return savedUrl;
+                return await AssetService.save(base64Result, 'png');
             }
         } catch (error) {
-            console.error("[generateSlideVariant] Core Error:", error);
+            console.error("Generate Slide Variant Error", error);
             throw error;
         }
+    },
+
+    /**
+     * 新增: 分析模版创作意图 (支持文本或文件)
+     */
+    async analyzeTemplateConcept(
+        input: string | { path: string, mimeType: string },
+        settings?: AppSettings
+    ): Promise<StyleConfig> {
+        // 1. 准备 Context
+        let contextText = "";
+        let visionPart: { mimeType: string, data: string } | null = null;
+        let isVisionMode = false;
+
+        // 处理输入
+        if (typeof input === 'string') {
+            // 纯文本输入
+            contextText = input;
+        } else {
+            // 文件输入 (Vision 或 MinierU 提取后的文本)
+            const { path: filePath, mimeType } = input;
+
+            // 如果是 PDF/Word，先尝试提取文本 (复用 extractTextFromFile)
+            if (mimeType === 'application/pdf' || mimeType.includes('word') || mimeType.includes('text') || filePath.endsWith('.md')) {
+                const extracted = await AIService.extractTextFromFile(filePath, mimeType, settings);
+                contextText = extracted.content;
+            } else if (mimeType.startsWith('image/')) {
+                // 图片: 启用 Vision 模式
+                isVisionMode = true;
+                const base64 = await resourceToBase64(filePath);
+                visionPart = { mimeType, data: base64 };
+            }
+        }
+
+        const config = getTaskConfig(settings, isVisionMode ? 'vision' : 'text');
+
+        // 2. 构建 Prompt
+        const prompt = `
+            Role: 资深视觉设计总监 & PPT 专家。
+            Task: ${isVisionMode ? '分析这张设计图/PPT截图的【视觉风格】' : '分析用户的【设计需求描述】'}，并将其转化为结构化的 BananaSlides 设计规范。
+            
+            Input Context: ${isVisionMode ? '见附图' : `"${contextText.substring(0, 2000)}..."`}
+
+            Output Format: JSON Only (严格匹配 StyleConfig 接口).
+            
+            Analysis Focus (Infer the following fields):
+            1. styleName: 推断最接近的风格流派 (如: "极简科技", "商务严谨", "时尚杂志", "扁平插画", "复古风" 或其他精准词汇)。
+            2. colorPalette: 提取核心配色方案 (如: "经典蓝白", "黑金奢华", "莫兰迪色系", "赛博朋克" 等)。
+            3. requirements: **核心字段**。请生成一份符合以下 Markdown 结构的详细 AI 视觉指令 (Prompt)。
+               
+               **必需结构 (Markdown)**:
+               # [角色定义，如：极简主义架构师] AI 视觉指令
+
+               ## 1. 核心定位
+               *   **场景定位**: (如：A轮融资路演 / 内部技术分享)
+               *   **视觉关键词**: (3-5个核心词)
+
+               ## 2. 总体视觉规范
+               *   **设计美学**: (详述风格、材质、光影、氛围)
+               *   **色彩方案**:
+                   *   **背景色**: [Hex] (描述)
+                   *   **主色**: [Hex] (描述)
+                   *   **辅助色**: [Hex] (描述)
+                   *   **文字色**: [Hex] (描述)
+               *   **排版与字体**: (推荐字体与字号策略)
+               *   **核心元素**: (具体的装饰元素，如玻璃拟态、粒子流等)
+
+               ## 3. 页面类型详细指令
+               (针对以下 5 种页面类型，分别提供 "布局"、"元素"、"特点" 的详细描述)
+               ### [封面页] (Cover Page)
+               ### [目录页] (Agenda Page)
+               ### [章节过渡页] (Section Header)
+               ### [内容页] (Content Page)
+               ### [结束页] (Thank You)
+
+            4. targetPageCount: 推荐的总页数 (默认为 10-15)。
+            5. pageStructure: 推荐的页面结构对象 { cover: number, directory: number, transition: number, content: number, end: number }。
+               - 封面(cover)通常为 1。
+               - 目录(directory)通常为 1。
+               - 结束页(end)通常为 1。
+               - 其余分配给 transition 和 content。
+            
+            Constraints:
+            - Language: Simplified Chinese (简体中文).
+            - Output valid JSON string parsing.
+        `;
+
+        try {
+            let jsonStr = "";
+            if (shouldUseGeminiNative(config, settings)) {
+                const ai = createGoogleClient(config);
+                const contents: any[] = [];
+                if (visionPart) {
+                    contents.push({ inlineData: visionPart });
+                }
+                contents.push({ text: prompt });
+
+                const response = await ai.models.generateContent({
+                    model: config.model,
+                    contents: { parts: contents } as any
+                });
+                jsonStr = response.text?.trim() || "{}";
+            } else {
+                const messages: any[] = [{ role: "user", content: [] }];
+                messages[0].content.push({ type: "text", text: prompt });
+                if (visionPart) {
+                    // OpenAI Vision Format
+                    messages[0].content.push({
+                        type: "image_url",
+                        image_url: { url: `data:${visionPart.mimeType};base64,${visionPart.data}` }
+                    });
+                }
+                jsonStr = await callOpenAICompatible(config, messages, 0.7, true);
+            }
+
+            // Clean & Parse JSON
+            jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+            const start = jsonStr.indexOf('{');
+            const end = jsonStr.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                jsonStr = jsonStr.substring(start, end + 1);
+            }
+            const parsed = JSON.parse(jsonStr);
+
+            // Add defaults if missing
+            return {
+                styleName: parsed.styleName || "自定义风格",
+                colorPalette: parsed.colorPalette || "默认配色",
+                requirements: parsed.requirements || "保持专业、清晰的视觉风格。",
+                aspectRatio: "16:9", // Default
+                targetPageCount: parsed.targetPageCount || 10,
+                pageStructure: parsed.pageStructure || { cover: 1, directory: 1, transition: 2, content: 5, end: 1 }
+            };
+
+        } catch (e) {
+            console.error("[analyzeTemplateConcept] Failed:", e);
+            // Fallback default
+            return {
+                styleName: "极简科技",
+                colorPalette: "经典蓝白",
+                requirements: "生成风格现代、专业的演示文稿。",
+                aspectRatio: "16:9",
+                targetPageCount: 8,
+                pageStructure: { cover: 1, directory: 1, transition: 1, content: 4, end: 1 }
+            };
+        }
+    },
+
+    /**
+     * 新增: 生成风格参考图
+     */
+    async generateStyleReference(
+        configStyle: StyleConfig,
+        pageType: string,
+        settings: AppSettings
+    ): Promise<string> {
+        // 复用 generateSlideVariant 的逻辑，但 Content 是空的
+        return await AIService.generateSlideVariant(
+            "", // No source content
+            null, // No style file
+            configStyle,
+            "style-reference",
+            `${configStyle.styleName} - ${pageType}页参考`,
+            settings,
+            'text',
+            undefined,
+            pageType
+        );
     }
 };

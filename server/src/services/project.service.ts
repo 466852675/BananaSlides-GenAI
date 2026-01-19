@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
+import { saveBase64Image, isBase64Image } from '../utils/imageSaver';
 
 export class ProjectService {
 
@@ -46,7 +47,8 @@ export class ProjectService {
         }
 
         if (migrations.length > 0) {
-            await Promise.all(migrations);
+            // Use transaction to avoid SQLite "database is locked" errors with concurrent updates
+            await prisma.$transaction(migrations);
         }
 
         return projects;
@@ -54,7 +56,7 @@ export class ProjectService {
 
     // Get detail
     async findById(id: string) {
-        return prisma.project.findUnique({
+        const project = await prisma.project.findUnique({
             where: { id },
             include: {
                 items: {
@@ -62,6 +64,69 @@ export class ProjectService {
                 }
             }
         });
+
+        if (project) {
+            await this.migrateProjectImages(project);
+        }
+
+        return project;
+    }
+
+    // Helper: Migrate Base64 to File (Lazy)
+    private async migrateProjectImages(project: any) {
+        if (!project || !project.items) return;
+
+        let projectChanged = false;
+        const updates = [];
+
+        for (const item of project.items) {
+            if (!item.variants) continue;
+
+            let variants: string[] = [];
+            try {
+                if (typeof item.variants === 'string') {
+                    variants = JSON.parse(item.variants);
+                } else {
+                    variants = item.variants;
+                }
+            } catch (e) { continue; }
+
+            let itemChanged = false;
+            const newVariants: string[] = [];
+
+            for (const v of variants) {
+                if (isBase64Image(v)) {
+                    try {
+                        const url = await saveBase64Image(v, `p_${project.id}_s_${item.id}`);
+                        newVariants.push(url);
+                        itemChanged = true;
+                        projectChanged = true;
+                    } catch (e) {
+                        console.error('Failed to migrate image:', e);
+                        newVariants.push(v); // Keep original if failed
+                    }
+                } else {
+                    newVariants.push(v);
+                }
+            }
+
+            if (itemChanged) {
+                // Update item in memory
+                item.variants = JSON.stringify(newVariants);
+
+                // Queue DB update
+                updates.push(prisma.slide.update({
+                    where: { id: item.id },
+                    data: { variants: item.variants }
+                }));
+            }
+        }
+
+        if (updates.length > 0) {
+            console.log(`[ProjectService] Migrated ${updates.length} items from Base64 to Files for project ${project.id}`);
+            // Fire and forget, or await? Await to ensure safety.
+            await prisma.$transaction(updates);
+        }
     }
 
     // Create
@@ -127,7 +192,8 @@ export class ProjectService {
                     content: slide.textContent || slide.content || '',
                     brief: slide.brief || '',
                     variants: JSON.stringify(slide.variants || []),
-                    variantCount: slide.variantCount || 2,
+                    // Enforce max 4 variants (Backend Guard)
+                    variantCount: Math.min(Math.max(slide.variantCount || 2, 1), 4),
                     previewUrl: slide.previewUrl || null,
                     originalFileRef: slide.originalFile ? JSON.stringify(slide.originalFile) : null,
                     status: slide.status || 'idle'

@@ -8,6 +8,38 @@ const getServerSettings = async () => {
     return await SettingService.getSettings();
 };
 
+export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) => {
+    const { input } = req.body; // input can be string or { path, mimeType }
+    try {
+        const settings = await getServerSettings();
+        const result = await AIService.analyzeTemplateConcept(input, settings);
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        console.error('[handleAnalyzeTemplateConcept] Error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+export const handleGenerateStyleReference = async (req: Request, res: Response) => {
+    const { configStyle, pageType, settings: clientSettings } = req.body;
+    try {
+        let settings = await getServerSettings();
+        if (clientSettings) {
+            // Apply client overrides (e.g. from frontend Global Settings)
+            settings = { ...settings, ...clientSettings };
+            // Deep merge AI settings if needed, but simple spread is usually enough for top level
+            if (clientSettings.ai) {
+                settings.ai = { ...settings.ai, ...clientSettings.ai };
+            }
+        }
+        const result = await AIService.generateStyleReference(configStyle, pageType, settings);
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        console.error('[handleGenerateStyleReference] Error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 export const handleSmartRefine = async (req: Request, res: Response) => {
     const { text, type } = req.body;
     try {

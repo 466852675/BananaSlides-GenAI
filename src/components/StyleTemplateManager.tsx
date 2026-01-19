@@ -26,6 +26,7 @@ import {
 import { StyleConfig, StyleTemplate, GlobalStyleMap, PageType, StylePreset, AppSettings, StoredResource } from '../types';
 import { ImageUploader } from './ImageUploader';
 import { SharedStyleCard, SharedStyleItem } from './SharedStyleCard';
+import { QuickTemplateModal } from './QuickTemplateModal';
 import { Home, LayoutList, BookOpen, Flag, Type, Wand2, Edit3, Loader2 } from 'lucide-react';
 import { smartRefine } from '../services/geminiService';
 import { StyleTemplateEditor } from './StyleTemplateEditor';
@@ -277,7 +278,9 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   // ... (keep state)
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
   const [isSearching, setIsSearching] = useState(false);
+
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
 
   // Confirmation State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -285,7 +288,9 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
     title: string;
     message: string;
     onConfirm: () => void;
+    onCancel?: () => void; // Added onCancel
     confirmLabel?: string;
+    cancelLabel?: string; // Added cancelLabel
     variant?: 'danger' | 'primary';
   }>({ isOpen: false, title: '', message: '', onConfirm: () => { } });
 
@@ -579,19 +584,64 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
     setView('creator');
   };
 
+  const handleQuickAnalyzeSuccess = (config: StyleConfig) => {
+    const newTemplate: StyleTemplate = {
+      id: generateTemplateId(),
+      name: `${config.styleName}模版`,
+      isCustom: true,
+      createdAt: Date.now(),
+      config: config
+    };
+    setEditingTemplate(newTemplate);
+    setIsOpeningInEditMode(true);
+    setView('creator');
+  };
+
   const handleEditTemplate = (template: StyleTemplate, editMode: boolean = false) => {
     setEditingTemplate(template);
     // Force state update for isEditing prop
-    // We might need a ref or separate state for initialEditMode if it's derived from ID in render
-    // But since we pass it as a prop key or initial value, changing view might not confirm it if component recycles?
-    // Actually StyleEditor is unmounted when view changes? Yes.
-    // Wait, "initialEditMode" is only used on mount.
-    // I need to ensure the logic in render considers this overrides.
-    // Let's store a temporary state "forceEditMode" or just rely on ID?
-    // The previous logic was: `initialEditMode={!templates.some(t => t.id === editingTemplate.id)}`
-    // I should change that to use a state `isOpeningInEditMode`.
     setIsOpeningInEditMode(editMode);
     setView('creator');
+  };
+
+  const handleAIButtonClick = () => {
+    const draft = localStorage.getItem('ai_template_draft');
+    if (draft) {
+      setConfirmDialog({
+        isOpen: true,
+        title: '恢复未保存的草稿',
+        message: '检测到您上次有未保存的 AI 模版草稿，是否恢复继续编辑？',
+        confirmLabel: '恢复草稿',
+        cancelLabel: '开启新生成',
+        onConfirm: () => {
+          try {
+            const template = JSON.parse(draft);
+            setEditingTemplate(template);
+            setIsOpeningInEditMode(true);
+            setView('creator'); // NOTE: Changed from 'editor' to 'creator' to match other handlers if needed, but wait, 'editor' is not a view state?
+            // Actually existing code uses 'creator' view (which shows StyleEditor).
+            // Lines 582 and 595 use setView('creator').
+            // Line 610 uses setView('creator').
+            // So I should use setView('creator').
+
+            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+            onShowToast('已恢复上次的草稿', 'success');
+          } catch (e) {
+            console.error('Failed to parse draft', e);
+            localStorage.removeItem('ai_template_draft');
+            setIsQuickModalOpen(true);
+            setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          }
+        },
+        onCancel: () => {
+          localStorage.removeItem('ai_template_draft');
+          setIsQuickModalOpen(true);
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        }
+      });
+    } else {
+      setIsQuickModalOpen(true);
+    }
   };
 
   // ... inside render ... 
@@ -718,13 +768,22 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
 
               <div className="flex items-center gap-4">
                 {view === 'gallery' && (
-                  <button
-                    onClick={handleCreateNew}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-black shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
-                  >
-                    <Plus size={18} strokeWidth={3} />
-                    创建模板
-                  </button>
+                  <>
+                    <button
+                      onClick={handleAIButtonClick}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-2xl text-sm font-black shadow-xl shadow-violet-500/20 active:scale-95 transition-all"
+                    >
+                      <Sparkles size={18} />
+                      AI 一键生成
+                    </button>
+                    <button
+                      onClick={handleCreateNew}
+                      className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-black shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
+                    >
+                      <Plus size={18} strokeWidth={3} />
+                      创建模板
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -761,7 +820,6 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                       >
                         <option value="lastModified">更新时间</option>
                         <option value="createdAt">创建时间</option>
-                        <option value="priority">推荐权重</option>
                       </select>
                       <div className="flex items-center px-1">
                         <FilterTag active={timeFilter === ''} onClick={() => setTimeFilter('')}>全部</FilterTag>
@@ -797,9 +855,17 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                         className={`px-3 py-1 rounded-md text-[10px] font-black transition-all ${sortBy === 'recommended' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                       >综合</button>
                       <button
+                        onClick={() => setSortBy('newest')}
+                        className={`px-3 py-1 rounded-md text-[10px] font-black transition-all ${sortBy === 'newest' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >最新</button>
+                      <button
                         onClick={() => setSortBy('usage')}
                         className={`px-3 py-1 rounded-md text-[10px] font-black transition-all ${sortBy === 'usage' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                       >热度</button>
+                      <button
+                        onClick={() => setSortBy('favorite')}
+                        className={`px-3 py-1 rounded-md text-[10px] font-black transition-all ${sortBy === 'favorite' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >收藏</button>
                     </div>
 
                     <button
@@ -1230,16 +1296,19 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
         footer={
           <div className="flex gap-2 w-full justify-end">
             <button
-              onClick={closeConfirm}
-              className="px-4 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-sm font-medium"
+              onClick={() => {
+                if (confirmDialog.onCancel) confirmDialog.onCancel();
+                else closeConfirm();
+              }}
+              className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg text-sm font-bold transition-colors"
             >
-              取消
+              {confirmDialog.cancelLabel || '取消'}
             </button>
             <button
               onClick={confirmDialog.onConfirm}
-              className={`px-6 py-2 text-white rounded-lg shadow-lg transition-all text-sm font-bold ${confirmDialog.variant === 'danger'
+              className={`px-4 py-2 text-white rounded-lg text-sm font-bold shadow-lg transition-transform active:scale-95 ${confirmDialog.variant === 'danger'
                 ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-200'
-                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
+                : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
                 }`}
             >
               {confirmDialog.confirmLabel || '确定'}
@@ -1257,7 +1326,14 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
           </p>
         </div>
       </Modal>
-    </div >
+      <QuickTemplateModal
+        isOpen={isQuickModalOpen}
+        onClose={() => setIsQuickModalOpen(false)}
+        onAnalyzeSuccess={handleQuickAnalyzeSuccess}
+        onShowToast={onShowToast}
+        appSettings={appSettings}
+      />
+    </div>
   );
 };
 
@@ -1276,6 +1352,19 @@ const StyleEditor: React.FC<{
   const [isEditing, setIsEditing] = useState(initialEditMode);
   const [isRefining, setIsRefining] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Auto-Save Draft Logic
+  React.useEffect(() => {
+    if (isEditing && localTemplate) {
+      const timer = setTimeout(() => {
+        // Only save if it's an AI-generated template (usually has a specific ID pattern or name, but allowing all edits to be robust)
+        // Storing strictly as 'ai_template_draft' implies we only support one draft at a time, which matches the spec.
+        localStorage.setItem('ai_template_draft', JSON.stringify(localTemplate));
+      }, 1000); // Debounce 1s
+
+      return () => clearTimeout(timer);
+    }
+  }, [localTemplate, isEditing]);
 
   // 上传单个图片到服务器
   const uploadStyleImage = async (file: File): Promise<string> => {
@@ -1324,6 +1413,7 @@ const StyleEditor: React.FC<{
         styleMap: serializedMap
       };
       onSave(savedTemplate);
+      localStorage.removeItem('ai_template_draft'); // Clear draft on success
       setIsEditing(false);
       onShowToast('模板保存成功', 'success');
     } catch (err: any) {
@@ -1394,6 +1484,7 @@ const StyleEditor: React.FC<{
     <div className="w-full max-w-5xl mx-auto flex flex-col space-y-6 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <StyleTemplateEditor
         template={localTemplate}
+        onShowToast={onShowToast}
         isEditing={isEditing}
         onUpdateConfig={updateConfig}
         onUpdateStyleMap={updateStyleMap}
@@ -1401,6 +1492,7 @@ const StyleEditor: React.FC<{
         onSmartRefine={handleSmartRefine}
         isRefining={isRefining}
         setName={(name) => setLocalTemplate({ ...localTemplate, name })}
+        appSettings={appSettings}
       />
 
       {/* Footer Actions - Fixed Bottom */}
@@ -1440,6 +1532,8 @@ const StyleEditor: React.FC<{
           </>
         )}
       </div>
+
+
     </div>
   );
 };

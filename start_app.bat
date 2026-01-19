@@ -1,6 +1,10 @@
 @echo off
 echo Starting BananaSlides-GenAI...
 
+echo [0/2] Cleaning up existing Node.js processes...
+taskkill /F /IM node.exe /T >nul 2>&1
+echo Cleanup complete.
+
 :: Start Backend first
 echo [1/2] Starting Backend Server...
 start "BananaSlides Backend (Port 1111)" cmd /k "cd server && npm run dev || pause"

@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { AIService } from './ai.service';
 import { AppSettings, ProjectSession } from '../types';
+import { SettingService } from './setting.service';
 
 const prisma = new PrismaClient();
 
@@ -15,7 +16,7 @@ export const notificationQueue: Array<{
 }> = [];
 
 export class SnapshotService {
-    
+
     // Static poll method to match route usage, or instance method if we use instance
     // To minimize breakage, we use static for utility access or global instance pattern
     // But since the route uses `SnapshotService.pollNotifications`, let's make it static.
@@ -30,7 +31,7 @@ export class SnapshotService {
     private calculateDiff(oldData: any, newData: any): string {
         try {
             const changes: string[] = [];
-            
+
             // 1. Config differences
             const oldConfig = oldData.globalConfig || {};
             const newConfig = newData.globalConfig || {};
@@ -51,11 +52,11 @@ export class SnapshotService {
             // Deep compare items (up to a limit to avoid huge prompts)
             let itemChanges = 0;
             const limit = Math.max(oldItems.length, newItems.length);
-            
+
             for (let i = 0; i < limit; i++) {
                 const oldItem = oldItems[i];
                 const newItem = newItems[i];
-                
+
                 if (!oldItem && newItem) {
                     itemChanges++; // Added
                     continue;
@@ -68,37 +69,37 @@ export class SnapshotService {
                 // Check key fields
                 let changed = false;
                 if (oldItem.title !== newItem.title) {
-                    changes.push(`Slide ${i+1} title: "${oldItem.title}" -> "${newItem.title}"`);
+                    changes.push(`Slide ${i + 1} title: "${oldItem.title}" -> "${newItem.title}"`);
                     changed = true;
                 }
                 // Check content length or rough content match
                 // We use simplified check for content to avoid huge diff strings
                 const oldContent = oldItem.content || oldItem.textContent || "";
                 const newContent = newItem.content || newItem.textContent || "";
-                
+
                 if (oldContent !== newContent && !changed) { // Only log if title didn't change (avoid double log)
-                   if (Math.abs(oldContent.length - newContent.length) > 5) { // Ignore minor whitespace
-                       changes.push(`Slide ${i+1} content modified`);
-                       changed = true;
-                   } else if (oldContent.trim() !== newContent.trim()) {
-                       changes.push(`Slide ${i+1} content tweaked`);
-                       changed = true;
-                   }
+                    if (Math.abs(oldContent.length - newContent.length) > 5) { // Ignore minor whitespace
+                        changes.push(`Slide ${i + 1} content modified`);
+                        changed = true;
+                    } else if (oldContent.trim() !== newContent.trim()) {
+                        changes.push(`Slide ${i + 1} content tweaked`);
+                        changed = true;
+                    }
                 }
 
-                 if (oldItem.pageType !== newItem.pageType && !changed) {
-                    changes.push(`Slide ${i+1} type: ${oldItem.pageType} -> ${newItem.pageType}`);
+                if (oldItem.pageType !== newItem.pageType && !changed) {
+                    changes.push(`Slide ${i + 1} type: ${oldItem.pageType} -> ${newItem.pageType}`);
                     changed = true;
                 }
 
                 if (changed) itemChanges++;
-                
+
                 // Cap details in prompt
-                if (changes.length > 5) break; 
+                if (changes.length > 5) break;
             }
 
             if (changes.length > 5) changes.push(`...and more changes.`);
-            
+
             if (changes.length === 0) return "No significant changes detected (Routine Save).";
             return changes.join(". ");
         } catch (e) {
@@ -116,12 +117,12 @@ export class SnapshotService {
         // 2. Calculate Diff
         let diffContext = "Initial Snapshot";
         if (latest) {
-             try {
-                 const oldData = JSON.parse(latest.data);
-                 diffContext = this.calculateDiff(oldData, data);
-             } catch (e) {
-                 console.error("Failed to parse old snapshot data", e);
-             }
+            try {
+                const oldData = JSON.parse(latest.data);
+                diffContext = this.calculateDiff(oldData, data);
+            } catch (e) {
+                console.error("Failed to parse old snapshot data", e);
+            }
         }
 
         // 3. Determine Summary Strategy
@@ -135,7 +136,7 @@ export class SnapshotService {
             console.log("[SnapshotService] Trivial diff, skipping AI summary.");
         } else {
             // [MODIFIED] Show immediate diff + AI pending status
-            summary = `${diffContext}\n\n🤖 AI 正在智能摘要，请耐心等待...`; 
+            summary = `${diffContext}\n\n🤖 AI 正在智能摘要，请耐心等待...`;
             shouldGenerateAsync = true;
         }
 
@@ -156,8 +157,14 @@ export class SnapshotService {
             (async () => {
                 try {
                     console.log(`[SnapshotService] Starting async summary generation for Snapshot ${snapshot.id}...`);
-                    const aiSummary = await AIService.generateSnapshotSummary(diffContext, settings);
-                    
+
+                    // [SECURE FIX] Always fetch latest server-side settings to ensure API Keys are present
+                    // Frontend 'settings' argument often has masked keys (e.g. "sk-****")
+                    const secureSettings = await SettingService.getSettings();
+                    const aiSettings = secureSettings || settings; // Fallback to passed settings if DB fails (unlikely)
+
+                    const aiSummary = await AIService.generateSnapshotSummary(diffContext, aiSettings);
+
                     await prisma.projectSnapshot.update({
                         where: { id: snapshot.id },
                         data: { summary: aiSummary }
@@ -178,12 +185,16 @@ export class SnapshotService {
                     console.error(`[SnapshotService] Async summary generation failed for ${snapshot.id}`, e);
                     // Update status to indicate failure but keep record
                     try {
+                        let errorMsg = "手动保存 (摘要生成失败)";
+                        if (e instanceof Error) {
+                            errorMsg += `: ${e.message}`;
+                        }
                         await prisma.projectSnapshot.update({
                             where: { id: snapshot.id },
-                            data: { summary: "手动保存 (摘要生成失败)" }
+                            data: { summary: errorMsg }
                         });
                     } catch (updateErr) {
-                         console.error(`[SnapshotService] Failed to update error status for ${snapshot.id}`, updateErr);
+                        console.error(`[SnapshotService] Failed to update error status for ${snapshot.id}`, updateErr);
                     }
                 }
             })();
@@ -208,7 +219,7 @@ export class SnapshotService {
 
     async findById(id: string) {
         return prisma.projectSnapshot.findUnique({
-             where: { id }
+            where: { id }
         });
     }
 
@@ -224,7 +235,7 @@ export class SnapshotService {
 
         // 2. Overwrite Project Data
         // Needs to update Project fields AND Items (Slides)
-        
+
         // Update Project Metadata
         await prisma.project.update({
             where: { id: projectId },
@@ -239,31 +250,31 @@ export class SnapshotService {
 
         // Update Slides (Full Replace)
         await prisma.$transaction(async (tx) => {
-             // Delete all existing
-             await tx.slide.deleteMany({ where: { projectId } });
+            // Delete all existing
+            await tx.slide.deleteMany({ where: { projectId } });
 
-             // Re-create from snapshot - use loop instead of createMany for compatibility
-             if (data.items && data.items.length > 0) {
-                 for (const item of data.items) {
-                     await tx.slide.create({
-                         data: {
-                             id: item.id,
-                             projectId,
-                             index: item.index || 0,
-                             pageType: item.pageType,
-                             contentType: item.contentType,
-                             title: item.title,
-                             content: item.textContent || item.content || '',
-                             brief: item.brief,
-                             variants: JSON.stringify(item.variants || []),
-                             variantCount: item.variantCount || 2,
-                             previewUrl: item.previewUrl,
-                             originalFileRef: item.originalFile ? JSON.stringify(item.originalFile) : null,
-                             status: item.status
-                         }
-                     });
-                 }
-             }
+            // Re-create from snapshot - use loop instead of createMany for compatibility
+            if (data.items && data.items.length > 0) {
+                for (const item of data.items) {
+                    await tx.slide.create({
+                        data: {
+                            id: item.id,
+                            projectId,
+                            index: item.index || 0,
+                            pageType: item.pageType,
+                            contentType: item.contentType,
+                            title: item.title,
+                            content: item.textContent || item.content || '',
+                            brief: item.brief,
+                            variants: JSON.stringify(item.variants || []),
+                            variantCount: item.variantCount || 2,
+                            previewUrl: item.previewUrl,
+                            originalFileRef: item.originalFile ? JSON.stringify(item.originalFile) : null,
+                            status: item.status
+                        }
+                    });
+                }
+            }
         });
 
         return { success: true };

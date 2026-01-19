@@ -61,8 +61,8 @@ export const getProject = async (req: Request, res: Response) => {
 
 export const createProject = async (req: Request, res: Response) => {
     try {
-        const { title, status, isPinned, globalConfig, styleMap, items, thumbnailUrl } = req.body;
-        
+        const { title, status, isPinned, globalConfig, styleMap, globalStyleMap, items, thumbnailUrl } = req.body;
+
         // Transform Input -> Prisma Format
         const projectData: any = {
             title,
@@ -70,7 +70,7 @@ export const createProject = async (req: Request, res: Response) => {
             isPinned: isPinned || false,
             thumbnailUrl,
             globalConfig: safeJSONStringify(globalConfig) || "{}",
-            styleMap: safeJSONStringify(styleMap),
+            styleMap: safeJSONStringify(styleMap || globalStyleMap),
             items: {
                 create: (items || []).map((item: any, idx: number) => ({
                     index: idx,
@@ -79,6 +79,7 @@ export const createProject = async (req: Request, res: Response) => {
                     title: item.title || "Untitled",
                     content: item.content || "",
                     brief: item.brief || "",
+                    variantCount: Math.min(Math.max(item.variantCount || 2, 1), 4),
                     variants: safeJSONStringify(item.variants) || "[]",
                     originalFileRef: safeJSONStringify(item.originalFileRef),
                     status: item.status || "idle"
@@ -98,23 +99,25 @@ export const updateProject = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { title, globalConfig, styleMap, status, isPinned, items } = req.body;
-        
+
         // This is a simplified update 
         // Real-world might need 'upsert' for items, but Phase 1 focuses on top-level
         // or full replacement.
-        
+
         /* 
            Ideally, for full sync:
            delete all items? No that's expensive via Prisma without transaction.
            For now, let's just update Top Level + Global Config
         */
-        
+
         const updateData: any = {};
         if (title !== undefined) updateData.title = title;
         if (status !== undefined) updateData.status = status;
         if (isPinned !== undefined) updateData.isPinned = isPinned;
         if (globalConfig !== undefined) updateData.globalConfig = safeJSONStringify(globalConfig);
         if (styleMap !== undefined) updateData.styleMap = safeJSONStringify(styleMap);
+        // Fallback for frontend alias
+        else if (req.body.globalStyleMap !== undefined) updateData.styleMap = safeJSONStringify(req.body.globalStyleMap);
 
         // Special handling for Pinning:
         // If ONLY 'isPinned' is being updated, we want to PRESERVE the original 'updatedAt'

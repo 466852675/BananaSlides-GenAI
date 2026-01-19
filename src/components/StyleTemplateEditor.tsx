@@ -11,21 +11,30 @@ import {
     Layout,
     LayoutTemplate,
     AlertTriangle,
-    AlertCircle
+    AlertCircle,
+    Wand2,
+    Loader2
 } from 'lucide-react';
+import { generateStyleReference } from '../services/geminiService';
+import { QuickTemplateModal } from './QuickTemplateModal';
 import { ImageUploader } from './ImageUploader';
-import { StyleTemplate, PageType } from '../types';
+import { AIGlowContainer } from './AIGlowContainer';
+import { StyleTemplate, PageType, StyleConfig, AppSettings } from '../types';
+import { Home as HomeIcon, LayoutList as LayoutListIcon, BookOpen as BookOpenIcon, Flag as FlagIcon, Type, Wand2 as Wand2Icon, Edit3, Loader2 as Loader2Icon, Eye } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from '../constants';
 
 interface StyleTemplateEditorProps {
     template: StyleTemplate;
     isEditing: boolean;
     onUpdateConfig: (key: any, value: any) => void;
-    onUpdateStyleMap: (type: PageType, file: File | null) => void;
+    onUpdateStyleMap: (type: PageType, file: File | string | null) => void;
     onStructureChange: (type: PageType, value: number) => void;
     onSmartRefine?: (prompt: string) => void;
     isRefining?: boolean;
     setName?: (name: string) => void;
+    onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+    appSettings: AppSettings;
 }
 
 const PAGE_TYPES: { type: PageType; label: string }[] = [
@@ -67,8 +76,91 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
     onSmartRefine,
     isRefining = false,
     setName,
+    onShowToast,
+    appSettings,
 }) => {
     const [customColor, setCustomColor] = useState<string>('');
+    const [generatingTypes, setGeneratingTypes] = useState<Set<string>>(new Set());
+
+    const getProviderName = (task: 'text' | 'image' | 'vision') => {
+        if (appSettings.ai.provider === 'CustomCombo' && appSettings.ai.customCombo) {
+            return 'Custom Combo';
+        }
+        return appSettings.ai.provider === 'Gemini' ? 'Google Gemini' : appSettings.ai.provider;
+    };
+
+    const handleGenerateAllReferences = async () => {
+        if (!template.config.requirements) {
+            alert("请先在下方填写“AI 视觉指令”");
+            return;
+        }
+
+        const providerName = getProviderName('image');
+        onShowToast(`调用 ${providerName} API 批量生成参考图中...`, 'info');
+
+        // Sequential generation to avoid rate limits and better UX flow
+        let hasGenerated = false;
+        for (const pt of PAGE_TYPES) {
+            // Optimization: Skip if already exists
+            if (template.styleMap?.[pt.type]) {
+                console.log(`[Generate All] Skipping ${pt.type} as it already exists.`);
+                continue;
+            }
+
+            setGeneratingTypes(prev => new Set(prev).add(pt.type));
+            hasGenerated = true;
+            try {
+                // Generate
+                const imageUrl = await generateStyleReference(template.config, pt.type, appSettings);
+                onUpdateStyleMap(pt.type, imageUrl as any);
+                onShowToast(`${pt.label} 参考图生成成功`, 'success');
+
+            } catch (error) {
+                console.error(`Failed to generate for ${pt.type}`, error);
+                onShowToast(`调用 ${providerName} API 失败 (${pt.label})`, 'error');
+            } finally {
+                setGeneratingTypes(prev => {
+                    const next = new Set(prev);
+                    next.delete(pt.type);
+                    return next;
+                });
+            }
+        }
+
+        if (!hasGenerated) {
+            onShowToast(`所有页面均已有参考图，无需生成`, 'info');
+        }
+    };
+
+    const handleSingleGenerate = async (type: PageType) => {
+        if (!template.config.requirements) {
+            alert("请先在下方填写“AI 视觉指令”");
+            return;
+        }
+        setGeneratingTypes(prev => new Set(prev).add(type));
+        const label = PAGE_TYPES.find(p => p.type === type)?.label || '图片';
+
+        const providerName = getProviderName('image');
+        onShowToast(`调用 ${providerName} API 生成 ${label} 中...`, 'info');
+
+        try {
+            const imageUrl = await generateStyleReference(template.config, type, appSettings);
+            onUpdateStyleMap(type, imageUrl as any);
+            onShowToast(`${label} 生成成功`, 'success');
+        } catch (error) {
+            console.error(`Failed to generate for ${type}`, error);
+            onShowToast(`调用 ${providerName} API 失败，请重试`, 'error');
+        } finally {
+            setGeneratingTypes(prev => {
+                const next = new Set(prev);
+                next.delete(type);
+                return next;
+            });
+        }
+    };
+
+    // Local Stating for previewing the prompt
+    const [isPromptPreview, setIsPromptPreview] = useState(false);
 
     // Page Count Validation Logic
     const currentStructureSum = Object.values(template.config.pageStructure).reduce((a, b) => a + b, 0);
@@ -155,8 +247,21 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
 
             {/* 2. Style References */}
             <section className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-6 pb-3 border-b border-slate-100">
-                    <Monitor size={18} className="text-blue-500" /> 视觉参考 (Style References)
+                <h4 className="flex items-center justify-between gap-2 font-bold text-slate-800 mb-6 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                        <Monitor size={18} className="text-blue-500" /> 视觉参考 (Style References)
+                    </div>
+                    {isEditing && (
+                        <button
+                            onClick={handleGenerateAllReferences}
+                            disabled={generatingTypes.size > 0 || !template.config.requirements}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={!template.config.requirements ? "请先填写下方视觉指令" : "AI 自动生成全套参考图"}
+                        >
+                            {generatingTypes.size > 0 ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                            {generatingTypes.size > 0 ? '正在生成...' : '一键生成全套'}
+                        </button>
+                    )}
                 </h4>
 
                 <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg text-xs text-blue-800 flex items-start gap-2 mb-6">
@@ -176,7 +281,18 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
                                             pt.type === 'end' ? <Flag size={12} className="text-indigo-400" /> : <FileDigit size={12} className="text-indigo-400" />}
                                 {pt.label}
                             </div>
-                            <div className="h-28 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+
+                            <AIGlowContainer
+                                isActive={generatingTypes.has(pt.type)}
+                                className={`h-28 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all relative ${generatingTypes.has(pt.type) ? 'shadow-blue-500/10' : 'bg-slate-50 border border-slate-100'
+                                    }`}
+                            >
+                                {generatingTypes.has(pt.type) && (
+                                    <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center gap-2">
+                                        <Loader2 size={24} className="animate-spin text-blue-500" />
+                                        <span className="text-[10px] font-bold text-blue-500">生成中...</span>
+                                    </div>
+                                )}
                                 <ImageUploader
                                     variant="style-ref"
                                     files={template.styleMap?.[pt.type] ? [template.styleMap[pt.type] as any] : []}
@@ -185,8 +301,9 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
                                     label="点击上传"
                                     subLabel=""
                                     readOnly={!isEditing}
+                                    onGenerate={isEditing ? () => handleSingleGenerate(pt.type) : undefined}
                                 />
-                            </div>
+                            </AIGlowContainer>
                         </div>
                     ))}
                 </div>
@@ -310,21 +427,61 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
 
             {/* 4. AI Prompt */}
             <section className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col">
-                <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-6 pb-3 border-b border-slate-100">
-                    <LayoutTemplate size={18} className="text-purple-500" /> AI 视觉指令 (Prompt)
+                <h4 className="flex items-center justify-between gap-2 font-bold text-slate-800 mb-6 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                        <LayoutTemplate size={18} className="text-purple-500" /> AI 视觉指令 (Prompt)
+                    </div>
+                    {template.config.requirements && (
+                        <button
+                            onClick={() => setIsPromptPreview(!isPromptPreview)}
+                            className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${isPromptPreview
+                                ? 'bg-purple-100 text-purple-600 font-bold'
+                                : 'text-slate-400 hover:text-purple-600 hover:bg-purple-50'
+                                }`}
+                        >
+                            {isPromptPreview ? <Edit3 size={12} /> : <Eye size={12} />}
+                            {isPromptPreview ? '编辑' : '预览'}
+                        </button>
+                    )}
                 </h4>
 
-                <div className="relative group flex-1 min-h-[300px]">
-                    <textarea
-                        className="w-full h-full min-h-[300px] p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm leading-relaxed text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 resize-none transition-all"
-                        placeholder="描述您期望的 PPT 视觉风格。例如：现代极简风格，使用大量留白，主色调为深蓝色，字体采用无衬线体，配图风格为写实商务照片..."
-                        value={template.config.requirements}
-                        disabled={!isEditing}
-                        onChange={(e) => onUpdateConfig('requirements', e.target.value)}
-                    />
+                <AIGlowContainer
+                    isActive={isRefining}
+                    className={`flex-1 min-h-[300px] flex flex-col ${isRefining ? 'shadow-lg shadow-purple-500/10' : ''}`}
+                    colorFrom="#3b82f6"
+                    colorTo="#a855f7"
+                    duration={4}
+                >
+                    {isPromptPreview ? (
+                        <div className="w-full h-full min-h-[300px] p-6 bg-slate-50 border border-slate-200 rounded-xl overflow-y-auto custom-scrollbar prose prose-sm prose-purple max-w-none">
+                            <ReactMarkdown
+                                components={{
+                                    h1: ({ children }) => <h1 className="text-lg font-bold text-slate-800 mb-3 pb-2 border-b border-purple-100">{children}</h1>,
+                                    h2: ({ children }) => <h2 className="text-base font-bold text-slate-700 mt-4 mb-2 flex items-center gap-2"><div className="w-1 h-4 bg-purple-500 rounded-full"></div>{children}</h2>,
+                                    h3: ({ children }) => <h3 className="text-sm font-bold text-slate-700 mt-3 mb-1">{children}</h3>,
+                                    p: ({ children }) => <p className="text-slate-600 mb-2 leading-relaxed text-sm">{children}</p>,
+                                    ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-2 text-slate-600 text-sm marker:text-purple-400">{children}</ul>,
+                                    ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-2 text-slate-600 text-sm marker:text-purple-500 font-medium">{children}</ol>,
+                                }}
+                            >
+                                {template.config.requirements}
+                            </ReactMarkdown>
+                        </div>
+                    ) : (
+                        <textarea
+                            className={`w-full h-full min-h-[300px] p-4 rounded-xl text-sm leading-relaxed text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-400 resize-none transition-all font-mono ${isRefining
+                                ? 'bg-slate-50 border-transparent' // Keep BG opaque, Beam is on top but pointer-events-none matches
+                                : 'bg-slate-50 border border-slate-200'
+                                }`}
+                            placeholder="描述您期望的 PPT 视觉风格。例如：现代极简风格，使用大量留白，主色调为深蓝色，字体采用无衬线体，配图风格为写实商务照片..."
+                            value={template.config.requirements}
+                            disabled={!isEditing}
+                            onChange={(e) => onUpdateConfig('requirements', e.target.value)}
+                        />
+                    )}
 
-                    {isEditing && onSmartRefine && (
-                        <div className="absolute bottom-4 right-4 flex gap-2">
+                    {isEditing && onSmartRefine && !isPromptPreview && (
+                        <div className="absolute bottom-4 right-4 flex gap-2 z-30">
                             <button
                                 onClick={() => onSmartRefine(template.config.requirements)}
                                 disabled={isRefining || !template.config.requirements}
@@ -335,7 +492,7 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
                             </button>
                         </div>
                     )}
-                </div>
+                </AIGlowContainer>
             </section>
         </div>
     );
