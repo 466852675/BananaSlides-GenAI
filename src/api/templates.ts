@@ -68,6 +68,7 @@ export const useUpdateTemplate = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['templates'] });
+            queryClient.invalidateQueries({ queryKey: ['favorites'] });
         }
     });
 };
@@ -80,6 +81,7 @@ export const useDeleteTemplate = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['templates'] });
+            queryClient.invalidateQueries({ queryKey: ['favorites'] });
         }
     });
 };

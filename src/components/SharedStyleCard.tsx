@@ -12,6 +12,7 @@ import {
   Edit3,
 } from "lucide-react";
 import { StyleTemplate, StylePreset, StyleConfig } from "../types";
+import { formatTemplateId } from '../utils/idFormatter';
 
 export type SharedStyleItem = StyleTemplate | StylePreset;
 
@@ -137,7 +138,9 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
       <div className="p-4 pb-20 flex-1 flex flex-col space-y-3 relative">
         {/* Title & Metadata */}
         <div>
-          <div className="text-[10px] font-mono text-slate-400 mb-0.5 select-all">{item.id}</div>
+          <div className="text-[10px] font-mono text-slate-400 mb-0.5 select-all">
+            {formatTemplateId(('templateId' in item && item.templateId) ? item.templateId : item.id, ('templateCreatedAt' in item ? (item as any).templateCreatedAt : undefined) || item.createdAt)}
+          </div>
           <h4
             className="font-bold text-slate-800 text-sm truncate mb-1"
             title={item.name}

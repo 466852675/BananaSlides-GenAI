@@ -35,7 +35,12 @@ interface StyleTemplateEditorProps {
     setName?: (name: string) => void;
     onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
     appSettings: AppSettings;
+    onViewImage?: (url: string) => void;
 }
+
+// Helper to format Template ID
+import { formatTemplateId } from '../utils/idFormatter';
+
 
 const PAGE_TYPES: { type: PageType; label: string }[] = [
     { type: 'cover', label: '封面页' },
@@ -182,9 +187,12 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
                             </div>
+
+
+
                             <input
                                 type="text"
-                                value={template.id || 'Generating...'}
+                                value={formatTemplateId(template.id, template.createdAt)}
                                 readOnly
                                 className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono text-slate-500 select-all focus:outline-none cursor-default"
                             />

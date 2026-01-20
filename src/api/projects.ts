@@ -14,6 +14,7 @@ export interface ProjectDTO {
     items: SlideDTO[];
     createdAt: string;
     updatedAt: string;
+    completedAt?: string; // New field
     thumbnailUrl?: string;
     isPinned: boolean;
 }
@@ -176,6 +177,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
         status: effectiveStatus,
         createdAt: new Date(dto.createdAt).getTime(),
         lastModified: new Date(dto.updatedAt).getTime(),
+        completedAt: dto.completedAt ? new Date(dto.completedAt).getTime() : undefined,
         isPinned: dto.isPinned,
         methods: [],
         progress,

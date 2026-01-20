@@ -76,6 +76,7 @@ export interface ProjectSession {
   globalConfig: StyleConfig; // The config used for this project
   globalStyleMap?: GlobalStyleMap;
   thumbnailUrl?: string;
+  completedAt?: number; // New: Completion timestamp
 }
 
 export interface StyleTemplate {

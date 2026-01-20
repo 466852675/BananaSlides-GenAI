@@ -44,6 +44,18 @@ export class ProjectService {
                     data: { displayId: newId }
                 }));
             }
+
+            // Lazy Migration: Backfill completedAt for legacy projects
+            // @ts-ignore: Stale Prisma types protection
+            if (p.status === 'completed' && !p.completedAt) {
+                // @ts-ignore
+                p.completedAt = p.updatedAt; // Update in-memory for immediate correct display
+                migrations.push(prisma.project.update({
+                    where: { id: p.id },
+                    // @ts-ignore
+                    data: { completedAt: p.updatedAt }
+                }));
+            }
         }
 
         if (migrations.length > 0) {
@@ -144,9 +156,26 @@ export class ProjectService {
 
     // Update
     async update(id: string, data: Prisma.ProjectUpdateInput) {
+        // Fetch current state to prevent overwriting completedAt
+        const current = await prisma.project.findUnique({ where: { id } });
+
+        // Logic: Only update completedAt if:
+        // 1. Transitioning to 'completed' (from non-completed)
+        // 2. Repairing: Is 'completed' but missing timestamp
+        // @ts-ignore: Pruns 'completedAt' might be missing in stale Client types
+        if (data.status === 'completed' && current?.status !== 'completed') {
+            (data as any).completedAt = new Date();
+            // @ts-ignore: Pruns 'completedAt' might be missing in stale Client types
+        } else if (current?.status === 'completed' && !current.completedAt) {
+            // Backfill with current updatedAt (best guess) or new Date()
+            (data as any).completedAt = current.updatedAt;
+        }
+        // Otherwise: Do NOT update completedAt. It stays fixed.
+
         return prisma.project.update({
             where: { id },
-            data
+            // @ts-ignore: Cast to any to bypass stale PrismaClient type checks
+            data: data as any
         });
     }
 

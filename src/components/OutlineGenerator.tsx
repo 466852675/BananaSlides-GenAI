@@ -284,14 +284,13 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         if (transitions === 0) {
             for (let i = 0; i < contents; i++) targetSequence.push('content');
         } else {
-            const groupSize = Math.floor(contents / (transitions + 1));
-            let remC = contents;
+            const groupSize = Math.floor(contents / transitions);
+            const remainder = contents % transitions;
             for (let i = 0; i < transitions; i++) {
-                const curG = (i === transitions - 1) ? remC : groupSize;
-                for (let j = 0; j < curG; j++) { targetSequence.push('content'); remC--; }
                 targetSequence.push('transition');
+                const count = groupSize + (i < remainder ? 1 : 0);
+                for (let j = 0; j < count; j++) { targetSequence.push('content'); }
             }
-            while (remC > 0) { targetSequence.push('content'); remC--; }
         }
         for (let i = 0; i < (targetTypes.end || 0); i++) targetSequence.push('end');
 
@@ -510,7 +509,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                     textContent: item.fullContent || item.brief,
                     previewUrl: '',
                     variants: [],
-                    variantCount: config.defaultVariantCount || 2,
+                    variantCount: config.defaultVariantCount || 1,
                     status: 'idle',
                     createdAt: Date.now()
                 }));

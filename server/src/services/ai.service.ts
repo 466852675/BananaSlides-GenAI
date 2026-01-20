@@ -527,10 +527,25 @@ async function callOpenAIImageGeneration(
 
 export const AIService = {
 
-    async smartRefine(text: string, type: 'requirement' | 'content', settings?: AppSettings): Promise<string> {
+    async smartRefine(text: string, type: 'requirement' | 'content' | 'requirement_polish', settings?: AppSettings): Promise<string> {
         const config = getTaskConfig(settings, 'text');
         let prompt = '';
-        if (type === 'requirement') {
+        if (type === 'requirement_polish') {
+            prompt = `
+Task: Rewrite the user's input into ONE single fluent paragraph of plain text.
+Input: "${text}"
+
+[STRICT RULES]
+1. NO Markdown (no **, #, etc).
+2. NO Bullet points or lists (*, -).
+3. NO Newlines. Return exactly one line of text.
+4. Keep the original intent but make it sound professional and descriptive.
+5. Language: Simplified Chinese (简体中文).
+6. If the input is keywords, expand them into full sentences.
+
+Example Output:
+"该模版专为小学语文教学设计，采用生动有趣的视觉风格，以适应小学生的审美偏好，旨在打造沉浸式的语文课堂体验，帮助学生更好地理解教学内容。"`;
+        } else if (type === 'requirement') {
             prompt = `
 Role: Senior Visual Director & PPT Expert.
 Task: Refine the user's input into a professional, structured "AI Visual Instruction" (Style Config) for a presentation generation system.
@@ -753,14 +768,15 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                 if (transitions === 0) {
                     for (let i = 0; i < contents; i++) targetSequence.push('content');
                 } else {
-                    const groupSize = Math.floor(contents / (transitions + 1));
-                    let remC = contents;
+                    // Logic: N Transitions create N Chapters.
+                    // Sequence: Transition -> Content(s) -> Transition -> Content(s) ...
+                    const groupSize = Math.floor(contents / transitions);
+                    const remainder = contents % transitions;
                     for (let i = 0; i < transitions; i++) {
-                        const curG = (i === transitions - 1) ? remC : groupSize;
-                        for (let j = 0; j < curG; j++) { targetSequence.push('content'); remC--; }
                         targetSequence.push('transition');
+                        const count = groupSize + (i < remainder ? 1 : 0);
+                        for (let j = 0; j < count; j++) { targetSequence.push('content'); }
                     }
-                    while (remC > 0) { targetSequence.push('content'); remC--; }
                 }
                 for (let i = 0; i < (structure.end || 0); i++) targetSequence.push('end');
 
@@ -1063,6 +1079,11 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             2. colorPalette: 提取核心配色方案 (如: "经典蓝白", "黑金奢华", "莫兰迪色系", "赛博朋克" 等)。
             3. requirements: **核心字段**。请生成一份符合以下 Markdown 结构的详细 AI 视觉指令 (Prompt)。
                
+               [CRITICAL INSTRUCTION]
+               You MUST write a COMPLETE Markdown document inside this string. 
+               DO NOT truncate. DO NOT skip sections. DO NOT use placeholders like "(Provide details...)".
+               You MUST fill out Section 3 for ALL 5 page types explicitly.
+
                **必需结构 (Markdown)**:
                # [角色定义，如：极简主义架构师] AI 视觉指令
 
@@ -1077,16 +1098,31 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                    *   **主色**: [Hex] (描述)
                    *   **辅助色**: [Hex] (描述)
                    *   **文字色**: [Hex] (描述)
-               *   **排版与字体**: (推荐字体与字号策略)
-               *   **核心元素**: (具体的装饰元素，如玻璃拟态、粒子流等)
+               *   **排版与字体**: (推荐字体与字号策略，必填)
+               *   **核心元素**: (具体的装饰元素，如玻璃拟态、粒子流，必填)
 
                ## 3. 页面类型详细指令
-               (针对以下 5 种页面类型，分别提供 "布局"、"元素"、"特点" 的详细描述)
+               (Must provide specific "Layout", "Elements", "Features" for EVERY single page type below)
+               
                ### [封面页] (Cover Page)
+               *   **布局**: 
+               *   **元素**: 
+               
                ### [目录页] (Agenda Page)
+               *   **布局**: 
+               *   **元素**: 
+               
                ### [章节过渡页] (Section Header)
+               *   **布局**: 
+               *   **元素**: 
+               
                ### [内容页] (Content Page)
+               *   **布局**: 
+               *   **元素**: 
+               
                ### [结束页] (Thank You)
+               *   **布局**: 
+               *   **元素**: 
 
             4. targetPageCount: 推荐的总页数 (默认为 10-15)。
             5. pageStructure: 推荐的页面结构对象 { cover: number, directory: number, transition: number, content: number, end: number }。
@@ -1098,6 +1134,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             Constraints:
             - Language: Simplified Chinese (简体中文).
             - Output valid JSON string parsing.
+            - ENSURE the "requirements" string contains the FULL Markdown content defined above.
         `;
 
         try {

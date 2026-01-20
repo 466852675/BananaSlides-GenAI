@@ -59,7 +59,11 @@ const CascadingFilter: React.FC<{
     };
 
     // Close on any scroll to prevent floating menu detachment
-    const handleScroll = () => {
+    const handleScroll = (event: Event) => {
+      // Ignore scroll events originating from within the menu itself
+      if (menuRef.current && menuRef.current.contains(event.target as Node)) {
+        return;
+      }
       if (isOpen) setIsOpen(false);
     };
 
@@ -150,7 +154,7 @@ const CascadingFilter: React.FC<{
         {/* Clear Option */}
         <div className="mt-2 pt-2 border-t border-slate-50 px-2">
           <button
-            onClick={() => { onChange(""); setIsOpen(false); }}
+            onClick={(e) => { e.stopPropagation(); onChange(""); setIsOpen(false); }}
             className="w-full text-center py-1.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-md transition-colors"
           >
             清除筛选
@@ -1001,9 +1005,14 @@ const ProjectCard: React.FC<{
       {/* Footer / Actions */}
       <div className="px-5 py-3 bg-slate-50/50 border-t border-slate-50 flex items-center justify-between">
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1.5 text-slate-500" title="最后活跃时间">
+          <div className="flex items-center gap-1.5 text-slate-500" title={project.status === 'completed' ? "项目完成时间" : "最后活跃时间"}>
             <Clock size={11} />
-            <span className="text-[10px] font-bold">{timeAgo(project.lastModified)}</span>
+            <span className="text-[10px] font-bold">
+              {project.status === 'completed' && project.completedAt
+                ? new Date(project.completedAt).toLocaleString()
+                : timeAgo(project.lastModified)}
+
+            </span>
           </div>
           <div className="flex items-center gap-1.5 text-slate-400" title="项目创建时间">
             <Calendar size={11} />

@@ -3,10 +3,11 @@ import { PrismaClient, Prisma } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export class FavoriteService {
-    
+
     // Get all
     async findAll() {
         return prisma.favorite.findMany({
+            include: { template: true },
             orderBy: { createdAt: 'desc' }
         });
     }

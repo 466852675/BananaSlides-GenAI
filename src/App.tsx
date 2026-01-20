@@ -103,7 +103,7 @@ import { StyleTemplateManager, FilterTag } from "./components/StyleTemplateManag
 import { StyleTemplateEditor } from './components/StyleTemplateEditor';
 import { CreateProjectModal } from "./components/CreateProjectModal";
 import { SharedStyleCard } from "./components/SharedStyleCard";
-import LandingPage from "./components/LandingPage";
+import { LandingPage } from "./components/LandingPageComp";
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from './api/projects';
 import { useTemplates, useSaveTemplate } from './api/templates';
 import { useFavorites, useAddFavorite, useRemoveFavorite } from './api/favorites';
@@ -703,7 +703,7 @@ const HistoryProjectCard: React.FC<{
           </div>
           <div className="flex items-center gap-1.5">
             <CheckCircle2 size={13} className="text-emerald-400" />
-            <span>完成于 <span className="text-slate-500">{new Date(session.lastModified).toLocaleString()}</span></span>
+            <span>完成于 <span className="text-slate-500">{new Date(session.completedAt || session.lastModified).toLocaleString()}</span></span>
           </div>
         </div>
       </div>
@@ -1212,10 +1212,11 @@ const App: React.FC = () => {
   // Sync defaultVariantCount to all items when global setting changes
   React.useEffect(() => {
     if (config.defaultVariantCount && items.length > 0) {
-      setItems(prev => prev.map(item => ({
-        ...item,
-        variantCount: config.defaultVariantCount
-      })));
+      setItems(prev => prev.map(item => {
+        // Only update if different to avoid re-renders? No, simple update is fine.
+        // Force update to match global setting
+        return { ...item, variantCount: config.defaultVariantCount };
+      }));
     }
   }, [config.defaultVariantCount]); // Only run when defaultVariantCount changes
 
@@ -2359,6 +2360,7 @@ const App: React.FC = () => {
       // Based on `useAddFavorite`, it takes `Omit<FavoriteDTO, 'id' | 'createdAt'>`.
       // So we pass the data.
       addFavoriteMutation.mutate({
+        templateId: template.id,
         name: newPreset.name,
         config: newPreset.config,
         styleMap: newPreset.styleMap,
@@ -3145,10 +3147,10 @@ const App: React.FC = () => {
       data: { title: newTitle }
     });
 
-    // 2. Sync to Cover Page (if exists) - Update BOTH title and textContent for compatibility
+    // 2. Sync to Cover Page (if exists) - Update ONLY title, keep content independent
     setItems(prev => prev.map(item => {
       if (item.pageType === 'cover') {
-        return { ...item, title: newTitle, textContent: newTitle };
+        return { ...item, title: newTitle };
       }
       return item;
     }));
@@ -3579,6 +3581,7 @@ const App: React.FC = () => {
             setName={() => { }}
             onShowToast={showToast}
             appSettings={appSettings}
+            onViewImage={(url) => setLightboxImage(url)}
           />
         )}
       </Modal>

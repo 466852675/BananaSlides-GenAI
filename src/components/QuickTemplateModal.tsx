@@ -127,69 +127,77 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
                 <div className="p-6 space-y-6">
 
                     {/* File Upload Area */}
-                    <div
-                        className={`border-2 border-dashed rounded-xl p-6 transition-all cursor-pointer group
-              ${selectedFile ? 'border-violet-300 bg-violet-50' : 'border-slate-200 hover:border-violet-400 hover:bg-slate-50'}
-            `}
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            className="hidden"
-                            accept="image/*,application/pdf,.md,.txt,.docx"
-                            onChange={handleFileChange}
-                        />
-
-                        <div className="flex flex-col items-center justify-center text-center gap-3">
-                            {selectedFile ? (
-                                <>
-                                    <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center">
-                                        {isImage ? <ImageIcon className="w-6 h-6 text-violet-600" /> : <FileText className="w-6 h-6 text-violet-600" />}
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-violet-700 text-lg">{selectedFile.name}</p>
-                                        <p className="text-sm text-violet-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB • 点击更换</p>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="w-12 h-12 rounded-full bg-slate-100 group-hover:bg-violet-100 transition-colors flex items-center justify-center">
-                                        <Upload className="w-6 h-6 text-slate-400 group-hover:text-violet-600 transition-colors" />
-                                    </div>
-                                    <div>
-                                        <p className="font-medium text-slate-700">点击上传参考文件</p>
-                                        <p className="text-sm text-slate-400 mt-1">支持 PPT截图 / 设计稿 / PDF / 文档</p>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
                     <AIGlowContainer
-                        isActive={isRefining || isAnalyzing}
+                        isActive={isAnalyzing && !!selectedFile}
                         className="relative"
                         colorFrom="#8b5cf6"
                         colorTo="#06b6d4"
                     >
-                        <div className="flex justify-between items-center mb-2 px-1">
-                            <label className="text-sm font-medium text-slate-700">或者直接描述你的需求</label>
-                            <button
-                                onClick={handleSmartRefine}
-                                disabled={!inputText.trim() || isRefining}
-                                className="flex items-center gap-1 text-xs text-violet-600 font-medium hover:text-violet-700 disabled:opacity-50 transition-colors relative z-30"
-                            >
-                                <Sparkles className="w-3 h-3" />
-                                {isRefining ? '优化中...' : 'AI 润色描述'}
-                            </button>
+                        <div
+                            className={`border-2 border-dashed rounded-xl p-6 transition-all cursor-pointer group
+                  ${(isAnalyzing && !!selectedFile) ? 'border-transparent bg-white' : (selectedFile ? 'border-violet-300 bg-violet-50' : 'border-slate-200 hover:border-violet-400 hover:bg-slate-50')}
+                `}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                accept="image/*,application/pdf,.md,.txt,.docx"
+                                onChange={handleFileChange}
+                            />
+
+                            <div className="flex flex-col items-center justify-center text-center gap-3">
+                                {selectedFile ? (
+                                    <>
+                                        <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center">
+                                            {isImage ? <ImageIcon className="w-6 h-6 text-violet-600" /> : <FileText className="w-6 h-6 text-violet-600" />}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-violet-700 text-lg">{selectedFile.name}</p>
+                                            <p className="text-sm text-violet-500">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB • 点击更换</p>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="w-12 h-12 rounded-full bg-slate-100 group-hover:bg-violet-100 transition-colors flex items-center justify-center">
+                                            <Upload className="w-6 h-6 text-slate-400 group-hover:text-violet-600 transition-colors" />
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-slate-700">点击上传参考文件</p>
+                                            <p className="text-sm text-slate-400 mt-1">支持 PPT截图 / 设计稿 / PDF / 文档</p>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
+                    </AIGlowContainer>
+
+                    <div className="mb-2 px-1 flex justify-between items-center">
+                        <label className="text-sm font-medium text-slate-700">或者直接描述你的需求</label>
+                        <button
+                            onClick={handleSmartRefine}
+                            disabled={!inputText.trim() || isRefining}
+                            className="flex items-center gap-1 text-xs text-violet-600 font-medium hover:text-violet-700 disabled:opacity-50 transition-colors relative z-30"
+                        >
+                            <Sparkles className="w-3 h-3" />
+                            {isRefining ? '优化中...' : 'AI 润色描述'}
+                        </button>
+                    </div>
+
+                    <AIGlowContainer
+                        isActive={isRefining || (isAnalyzing && !!inputText)}
+                        className="relative"
+                        colorFrom="#8b5cf6"
+                        colorTo="#06b6d4"
+                    >
                         <textarea
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
                             placeholder="例如：帮我设计一套极简科技风的模版，主色调要用深蓝和青色，适合做云服务产品的介绍，整体要有通透的毛玻璃质感..."
-                            className={`w-full h-32 px-4 py-3 rounded-xl border focus:ring-4 focus:ring-violet-100 transition-all outline-none resize-none text-slate-700 placeholder:text-slate-400 ${(isRefining || isAnalyzing)
-                                    ? 'bg-white border-transparent'
-                                    : 'bg-white border-slate-200 focus:border-violet-500'
+                            className={`w-full h-32 px-4 py-3 rounded-xl border focus:ring-4 focus:ring-violet-100 transition-all outline-none resize-none text-slate-700 placeholder:text-slate-400 ${(isRefining || (isAnalyzing && !!inputText))
+                                ? 'bg-white border-transparent'
+                                : 'bg-white border-slate-200 focus:border-violet-500'
                                 }`}
                         />
                     </AIGlowContainer>

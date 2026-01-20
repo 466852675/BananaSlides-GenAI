@@ -5,6 +5,13 @@ echo [0/2] Cleaning up existing Node.js processes...
 taskkill /F /IM node.exe /T >nul 2>&1
 echo Cleanup complete.
 
+:: Ensure Database Schema is Up-to-Date (Auto-Fix)
+echo [0.5/2] Applying Database Schema Updates...
+cd server
+call npx prisma db push
+cd ..
+echo Schema update check complete.
+
 :: Start Backend first
 echo [1/2] Starting Backend Server...
 start "BananaSlides Backend (Port 1111)" cmd /k "cd server && npm run dev || pause"

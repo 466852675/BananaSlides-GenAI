@@ -14,7 +14,7 @@ const ensureUploaded = async (resource: StoredResource): Promise<string> => {
 
 // --- Exports ---
 
-export const smartRefine = async (text: string, type: 'requirement' | 'content'): Promise<string> => {
+export const smartRefine = async (text: string, type: 'requirement' | 'content' | 'requirement_polish'): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', {
             text,
@@ -31,7 +31,7 @@ export const refinePrompt = async (rawText: string): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', {
             text: rawText,
-            type: 'requirement'
+            type: 'requirement_polish'
         });
         return (response as any).data || rawText;
     } catch (error) {

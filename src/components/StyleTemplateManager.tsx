@@ -35,6 +35,10 @@ import { useAddFavorite, useRemoveFavorite } from '../api/favorites';
 import { Filter, ArrowUpNarrowWide, ArrowDownWideNarrow, ChevronDown, ChevronUp } from 'lucide-react';
 import { STYLE_PRESETS, RATIO_PRESETS, COLOR_PRESETS } from '../constants';
 
+// Helper to format Template ID
+import { formatTemplateId } from '../utils/idFormatter';
+
+
 const PAGE_TYPES: { type: PageType; label: string }[] = [
   { type: 'cover', label: '封面页' },
   { type: 'directory', label: '目录页' },
@@ -1024,7 +1028,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                           </div>
                         </div>
                         <div className="p-4">
-                          <div className="text-[10px] font-mono text-slate-400 mb-0.5 select-all">{preset.templateId || preset.id}</div>
+                          <div className="text-[10px] font-mono text-slate-400 mb-0.5 select-all">{formatTemplateId(preset.templateId || preset.id, preset.templateCreatedAt || preset.createdAt)}</div>
                           <h4 className="text-sm font-black text-slate-800 mb-1">{preset.name}</h4>
                           <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">
                             <span className="bg-slate-100 px-2 py-0.5 rounded-md">{preset.config.aspectRatio}</span>
@@ -1157,7 +1161,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
 
                           </div>
                           <div className="p-4 flex-1 flex flex-col">
-                            <div className="text-[10px] font-mono text-slate-400 mb-1 select-all">{template.id}</div>
+                            <div className="text-[10px] font-mono text-slate-400 mb-1 select-all">{formatTemplateId(template.id, template.createdAt)}</div>
                             <div className="flex items-start justify-between mb-2">
                               <h4 className="text-sm font-black text-slate-800 line-clamp-1">{template.name || template.config.styleName}</h4>
                               {activeTab === 'market' && favorites.some(f => f.templateId === template.id) && (

@@ -11,17 +11,31 @@ export interface FavoriteDTO {
     sampleImages?: any;
     createdAt: string;
     updatedAt: string;
+    template?: {
+        name: string;
+        config: any;
+        styleMap?: any;
+        createdAt: string;
+        updatedAt: string;
+    };
 }
 
 const transformFavorite = (dto: FavoriteDTO): StylePreset => {
+    // 优先使用关联模版的数据（实现实时同步），如果没有关联模版则使用收藏时的快照数据
+    const sourceName = dto.template?.name || dto.name;
+    const sourceConfig = dto.template?.config || dto.config;
+    const sourceStyleMap = dto.template?.styleMap || dto.styleMap;
+
     return {
         id: dto.id,
         templateId: dto.templateId,
-        name: dto.name,
-        config: (typeof dto.config === 'string' ? JSON.parse(dto.config) : dto.config) as StyleConfig,
-        styleMap: dto.styleMap ? (typeof dto.styleMap === 'string' ? JSON.parse(dto.styleMap) : dto.styleMap) as GlobalStyleMap : undefined,
+        name: sourceName,
+        config: (typeof sourceConfig === 'string' ? JSON.parse(sourceConfig) : sourceConfig) as StyleConfig,
+        styleMap: sourceStyleMap ? (typeof sourceStyleMap === 'string' ? JSON.parse(sourceStyleMap) : sourceStyleMap) as GlobalStyleMap : undefined,
         sampleImages: dto.sampleImages ? (Array.isArray(dto.sampleImages) ? dto.sampleImages : JSON.parse(dto.sampleImages)) : [],
-        createdAt: new Date(dto.createdAt).getTime()
+        createdAt: new Date(dto.createdAt).getTime(),
+        templateCreatedAt: dto.template?.createdAt ? new Date(dto.template.createdAt).getTime() : undefined,
+        templateUpdatedAt: dto.template?.updatedAt ? new Date(dto.template.updatedAt).getTime() : undefined
     };
 };
 
