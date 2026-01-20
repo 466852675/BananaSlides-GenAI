@@ -328,8 +328,12 @@ const CascadingFilter: React.FC<{
       }
     };
 
-    // Close on any scroll
-    const handleScroll = () => {
+    // Close on any scroll to prevent floating menu detachment
+    const handleScroll = (event: Event) => {
+      // Ignore scroll events originating from within the menu itself
+      if (menuRef.current && menuRef.current.contains(event.target as Node)) {
+        return;
+      }
       if (isOpen) setIsOpen(false);
     };
 
@@ -420,7 +424,7 @@ const CascadingFilter: React.FC<{
         {/* Clear Option */}
         <div className="mt-2 pt-2 border-t border-slate-50 px-2">
           <button
-            onClick={() => { onChange(""); setIsOpen(false); }}
+            onClick={(e) => { e.stopPropagation(); onChange(""); setIsOpen(false); }}
             className="w-full text-center py-1.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-md transition-colors"
           >
             清除筛选

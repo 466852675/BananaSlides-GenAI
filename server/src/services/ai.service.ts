@@ -502,8 +502,30 @@ async function callOpenAIImageGeneration(
             }
             throw new Error("No image data returned from API"); // Should be caught by catch block
         } catch (error: any) {
-            const errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
+            let errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
             const statusCode = error.response?.status;
+
+            // Try to parse string response body for better error message (e.g. Proxy returning JSON inside text)
+            if (typeof error.response?.data === 'string') {
+                try {
+                    // Look for JSON-like content
+                    const jsonMatch = error.response.data.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        if (parsed.error?.message) {
+                            errMsg = `Upstream: ${parsed.error.message}`;
+                        } else if (parsed.message) {
+                            errMsg = `Upstream: ${parsed.message}`;
+                        }
+                    } else {
+                        // Use raw string if short
+                        if (error.response.data.length < 200) errMsg = error.response.data;
+                    }
+                } catch (e) {
+                    // Ignore parse error
+                }
+            }
+
             console.error(`[OpenAI Image] Attempt failed: ${errMsg} (Status: ${statusCode})`);
 
             // Only retry on specific status codes or network errors
