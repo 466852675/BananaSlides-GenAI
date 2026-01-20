@@ -27,7 +27,7 @@ model Project {
   
   thumbnailUrl String?
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime @default(now())
   completedAt  DateTime? // Fixed timestamp when status becomes 'completed'
   
   snapshots    ProjectSnapshot[]

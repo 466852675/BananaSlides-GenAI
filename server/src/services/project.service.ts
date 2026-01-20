@@ -159,6 +159,11 @@ export class ProjectService {
         // Fetch current state to prevent overwriting completedAt
         const current = await prisma.project.findUnique({ where: { id } });
 
+        const dataKeys = Object.keys(data as object);
+        const shouldUpdateUpdatedAt = dataKeys.some(key => 
+            key !== 'isPinned' && key !== 'status'
+        );
+
         // Logic: Only update completedAt if:
         // 1. Transitioning to 'completed' (from non-completed)
         // 2. Repairing: Is 'completed' but missing timestamp
@@ -172,6 +177,11 @@ export class ProjectService {
         }
         // Otherwise: Do NOT update completedAt. It stays fixed.
 
+        // Update updatedAt for meaningful changes (title, globalConfig, styleMap, items)
+        if (shouldUpdateUpdatedAt) {
+            (data as any).updatedAt = new Date();
+        }
+
         return prisma.project.update({
             where: { id },
             // @ts-ignore: Cast to any to bypass stale PrismaClient type checks
@@ -181,10 +191,13 @@ export class ProjectService {
 
     // Set Pinned Status
     async setPinnedStatus(id: string, isPinned: boolean) {
-        // Use standard Prisma update to ensure compatibility (avoids table name issues)
+        const current = await prisma.project.findUnique({ where: { id } });
         return prisma.project.update({
             where: { id },
-            data: { isPinned }
+            data: { 
+                isPinned,
+                updatedAt: current?.updatedAt
+            }
         });
     }
 
