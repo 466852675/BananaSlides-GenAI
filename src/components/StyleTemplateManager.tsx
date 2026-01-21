@@ -1078,7 +1078,23 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                 <>
                   {/* Headers removed as requested */}
 
-                  {filteredTemplates.length === 0 ? (
+                  {activeTab === 'market' && templates.length === 0 ? (
+                    <div className="py-20 flex flex-col items-center justify-center text-center space-y-6">
+                      <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center animate-bounce duration-[3s]">
+                        <Plus className="text-blue-500" size={40} />
+                      </div>
+                      <div className="max-w-md space-y-2">
+                        <h4 className="text-xl font-bold text-slate-800">开启您的第一个模版设计之旅</h4>
+                        <p className="text-slate-500 text-sm">点击下方按钮创建一个新模版，定义专属的视觉规范与内容结构。</p>
+                      </div>
+                      <button
+                        onClick={handleCreateNew}
+                        className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-bold shadow-xl shadow-blue-500/20 hover:scale-105 transition-all"
+                      >
+                        创建首个模版
+                      </button>
+                    </div>
+                  ) : filteredTemplates.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200">
                       <div className="w-24 h-24 bg-white rounded-3xl shadow-sm flex items-center justify-center mb-6 ring-4 ring-white">
                         <Search size={32} className="text-slate-200" />
