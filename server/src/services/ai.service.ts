@@ -370,6 +370,48 @@ const getClosestSupportedRatio = (inputRatio: string): string => {
 
 // --- API Callers ---
 
+const calculateFinalResolution = (qualitySetting: string | undefined, aspectRatio: string): string => {
+    // 1. Identify Quality Tier based on the "Flagship" resolution set in Global Config
+    // 1K Tier: '1024x1024' (or '1280x720')
+    // 2K Tier: '2048x2048' (or '1920x1080')
+    // 4K Tier: '3840x2160' (or '4096x4096')
+
+    let tier = '4K'; // Default
+    if (qualitySetting?.includes('1024') || qualitySetting?.includes('1280')) tier = '1K';
+    else if (qualitySetting?.includes('2048') || qualitySetting?.includes('1920')) tier = '2K';
+    else tier = '4K';
+
+    // 2. Map Tier + Ratio to Final Resolution
+    const ratio = getClosestSupportedRatio(aspectRatio);
+
+    // Dictionary: [Tier][Ratio]
+    const map: Record<string, Record<string, string>> = {
+        '1K': {
+            '16:9': '1280x720',
+            '4:3': '1024x768',
+            '1:1': '1024x1024',
+            '3:4': '768x1024',
+            '9:16': '720x1280'
+        },
+        '2K': {
+            '16:9': '1920x1080',
+            '4:3': '2048x1536', // Standard 4:3 2K-ish
+            '1:1': '2048x2048',
+            '3:4': '1536x2048',
+            '9:16': '1080x1920'
+        },
+        '4K': {
+            '16:9': '3840x2160',
+            '4:3': '4096x3072', // High res 4:3
+            '1:1': '2160x2160', // Matching 4K height pixel density, (or 4096x4096 if model supports) -> limit to 2160 for safety/balance
+            '3:4': '3072x4096',
+            '9:16': '2160x3840'
+        }
+    };
+
+    return map[tier][ratio] || map['2K']['16:9'];
+};
+
 async function callOpenAICompatible(
     config: ModelConnection,
     messages: any[],
@@ -438,7 +480,8 @@ async function callOpenAICompatible(
 async function callOpenAIImageGeneration(
     config: ModelConnection,
     prompt: string,
-    aspectRatio: string = "16:9"
+    aspectRatio: string = "16:9",
+    resolution?: string
 ): Promise<string> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -460,7 +503,6 @@ async function callOpenAIImageGeneration(
         headers['Authorization'] = `Bearer ${safeKey}`;
     }
 
-    // Map aspect ratio to size (DALL-E style)
     const sizeMap: Record<string, string> = {
         "16:9": "1792x1024",
         "4:3": "1024x768",
@@ -468,7 +510,8 @@ async function callOpenAIImageGeneration(
         "3:4": "768x1024",
         "9:16": "1024x1792"
     };
-    const size = sizeMap[aspectRatio] || "1792x1024";
+    // Use explicit resolution if provided, otherwise fallback to aspect ratio map
+    const size = resolution ? resolution : (sizeMap[aspectRatio] || "1792x1024");
 
     const body: any = {
         model: config.model,
@@ -1044,7 +1087,12 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (ç®€ä
 
             } else {
                 // OpenAI DALL-E 3 (No Reference Image Support usually)
-                const base64Result = await callOpenAIImageGeneration(config, prompt, targetRatio);
+                const qualitySetting = settings?.imageGeneration?.resolution; // e.g., '3840x2160' acting as "4K Flag"
+                const finalResolution = calculateFinalResolution(qualitySetting, targetRatio);
+
+                console.log(`[generateSlideVariant] Resolution Calc: Quality=${qualitySetting}, Ratio=${targetRatio} -> ${finalResolution}`);
+
+                const base64Result = await callOpenAIImageGeneration(config, prompt, targetRatio, finalResolution);
                 return await AssetService.save(base64Result, 'png');
             }
         } catch (error) {

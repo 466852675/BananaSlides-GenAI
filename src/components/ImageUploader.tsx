@@ -93,7 +93,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   if (variant === 'style-ref') {
     return (
-      <div className={`w-full h-full relative group ${readOnly ? 'pointer-events-none' : ''}`}>
+      <div className={`w-full h-full relative group`}>
         <input
           type="file"
           ref={fileInputRef}
@@ -107,25 +107,29 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
         {files.length > 0 ? (
           <div className="w-full h-full relative rounded-lg overflow-hidden border border-rose-200">
             <div
-              className="relative w-full h-full cursor-zoom-in"
+              className={`relative w-full h-full ${readOnly ? 'cursor-zoom-in' : 'cursor-pointer'}`}
               onClick={() => setIsPreviewOpen(true)}
             >
               <img
                 src={resolveResourceUrl(files[0])}
                 alt="style ref"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300"
               />
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemoveFile(0);
-              }}
-              className="absolute top-1 right-1 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 transition-colors z-20"
-              title="移除"
-            >
-              <X size={12} />
-            </button>
+
+            {!readOnly && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveFile(0);
+                }}
+                className="absolute top-1 right-1 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 transition-colors z-20"
+                title="移除"
+              >
+                <X size={12} />
+              </button>
+            )}
+
             {!readOnly && onGenerate && (
               <button
                 onClick={(e) => {

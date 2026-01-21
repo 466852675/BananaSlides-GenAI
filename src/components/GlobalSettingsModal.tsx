@@ -56,9 +56,9 @@ const PROVIDER_PRESETS: Partial<Record<AIProvider, ProviderPreset>> = {
 };
 
 const RESOLUTIONS: { label: string; value: ImageResolution; desc: string }[] = [
-    { label: '1K', value: '1024x1024', desc: '1024px' },
-    { label: '2K', value: '2048x2048', desc: '2048px (默认)' },
-    { label: '4K', value: '4096x4096', desc: '4096px' },
+    { label: '1K (快速)', value: '1024x1024', desc: '适合快速预览 (HD)' },
+    { label: '2K (标准)', value: '2048x2048', desc: '适合屏幕投影 (FHD)' },
+    { label: '4K (超清)', value: '3840x2160', desc: '适合打印输出 (UHD)' },
 ];
 
 const LANGUAGES: { label: string; value: OutputLanguage }[] = [
@@ -188,7 +188,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
             <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
                 <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                    
+
                     {/* Header */}
                     <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
                         <div className="flex items-center gap-2 text-slate-800">
@@ -204,13 +204,13 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
 
                     {/* Body - Scrollable */}
                     <div className={`flex-1 overflow-y-auto custom-scrollbar bg-slate-50 p-6 space-y-6 ${readOnly ? 'pointer-events-none opacity-80' : ''}`}>
-                        
+
                         {/* 1. Model Configuration */}
                         <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
                             <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
                                 <Server size={18} className="text-indigo-500" /> 模型配置
                             </h4>
-                            
+
                             {/* Provider Select */}
                             <div className="mb-6">
                                 <label className="block text-sm font-medium text-slate-700 mb-2">AI 提供商</label>
@@ -219,11 +219,10 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         <button
                                             key={p.value}
                                             onClick={() => handleProviderChange(p.value)}
-                                            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                                                settings.ai.provider === p.value 
-                                                ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500' 
+                                            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${settings.ai.provider === p.value
+                                                ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500'
                                                 : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-slate-50'
-                                            }`}
+                                                }`}
                                         >
                                             {p.label}
                                         </button>
@@ -240,12 +239,12 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                     {/* Text Settings */}
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
                                         <h5 className="font-bold text-slate-700 flex items-center gap-2 text-sm border-b border-slate-100 pb-2">
-                                            <FileText size={16} className="text-indigo-500"/> 文本生成 (Text)
+                                            <FileText size={16} className="text-indigo-500" /> 文本生成 (Text)
                                         </h5>
                                         <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">API Base URL</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.customCombo?.text.baseUrl || ''}
                                                 onChange={(e) => updateComboSettings('text', 'baseUrl', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none"
@@ -254,8 +253,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         </div>
                                         <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">API Key</label>
-                                            <input 
-                                                type="password" 
+                                            <input
+                                                type="password"
                                                 value={settings.ai.customCombo?.text.apiKey || ''}
                                                 onChange={(e) => updateComboSettings('text', 'apiKey', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-mono"
@@ -264,8 +263,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         </div>
                                         <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">模型名称 (Model)</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.customCombo?.text.model || ''}
                                                 onChange={(e) => updateComboSettings('text', 'model', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-bold text-slate-700"
@@ -277,12 +276,12 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                     {/* Image Settings */}
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
                                         <h5 className="font-bold text-slate-700 flex items-center gap-2 text-sm border-b border-slate-100 pb-2">
-                                            <ImageIcon size={16} className="text-rose-500"/> 图像生成 (Image)
+                                            <ImageIcon size={16} className="text-rose-500" /> 图像生成 (Image)
                                         </h5>
                                         <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">API Base URL</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.customCombo?.image.baseUrl || ''}
                                                 onChange={(e) => updateComboSettings('image', 'baseUrl', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none"
@@ -291,8 +290,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         </div>
                                         <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">API Key</label>
-                                            <input 
-                                                type="password" 
+                                            <input
+                                                type="password"
                                                 value={settings.ai.customCombo?.image.apiKey || ''}
                                                 onChange={(e) => updateComboSettings('image', 'apiKey', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-mono"
@@ -301,8 +300,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         </div>
                                         <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">模型名称 (Model)</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.customCombo?.image.model || ''}
                                                 onChange={(e) => updateComboSettings('image', 'model', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-bold text-slate-700"
@@ -314,12 +313,12 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                     {/* Vision Settings */}
                                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
                                         <h5 className="font-bold text-slate-700 flex items-center gap-2 text-sm border-b border-slate-100 pb-2">
-                                            <Eye size={16} className="text-green-500"/> 图片识别 (Vision)
+                                            <Eye size={16} className="text-green-500" /> 图片识别 (Vision)
                                         </h5>
                                         <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">API Base URL</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.customCombo?.vision.baseUrl || ''}
                                                 onChange={(e) => updateComboSettings('vision', 'baseUrl', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none"
@@ -328,8 +327,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         </div>
                                         <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">API Key</label>
-                                            <input 
-                                                type="password" 
+                                            <input
+                                                type="password"
                                                 value={settings.ai.customCombo?.vision.apiKey || ''}
                                                 onChange={(e) => updateComboSettings('vision', 'apiKey', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-mono"
@@ -338,8 +337,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         </div>
                                         <div>
                                             <label className="block text-xs font-medium text-slate-500 mb-1">模型名称 (Model)</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.customCombo?.vision.model || ''}
                                                 onChange={(e) => updateComboSettings('vision', 'model', e.target.value)}
                                                 className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-bold text-slate-700"
@@ -354,8 +353,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-sm font-medium text-slate-700 mb-1">API Base URL</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.baseUrl || ''}
                                                 onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, baseUrl: e.target.value } }))}
                                                 placeholder="https://api.example.com/v1"
@@ -364,8 +363,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-slate-700 mb-1">API Key</label>
-                                            <input 
-                                                type="password" 
+                                            <input
+                                                type="password"
                                                 value={settings.ai.apiKey || ''}
                                                 onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, apiKey: e.target.value } }))}
                                                 placeholder={settings.ai.provider === 'Gemini' ? "(默认使用内置 Key，无需填写)" : "sk-..."}
@@ -378,8 +377,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                     <div className="space-y-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">文本生成模型 (Text)</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.models.text || ''}
                                                 onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, models: { ...s.ai.models, text: e.target.value } } }))}
                                                 className="w-full p-2 border border-slate-200 rounded text-sm focus:outline-none focus:border-indigo-400"
@@ -388,8 +387,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">图像生成模型 (Image)</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.models.image || ''}
                                                 onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, models: { ...s.ai.models, image: e.target.value } } }))}
                                                 className="w-full p-2 border border-slate-200 rounded text-sm focus:outline-none focus:border-indigo-400"
@@ -398,8 +397,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">图片识别模型 (Vision)</label>
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={settings.ai.models.vision || ''}
                                                 onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, models: { ...s.ai.models, vision: e.target.value } } }))}
                                                 className="w-full p-2 border border-slate-200 rounded text-sm focus:outline-none focus:border-indigo-400"
@@ -413,25 +412,25 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
 
                         {/* 1.5 Document Parser Configuration (MinerU) */}
                         <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                             <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
+                            <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
                                 <FileText size={18} className="text-orange-500" /> 文档解析配置 (MinerU)
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="md:col-span-2 bg-orange-50 border border-orange-100 p-3 rounded-lg text-xs text-orange-800 flex items-start gap-2">
-                                     <span className="text-lg">💡</span>
-                                     <div>
+                                    <span className="text-lg">💡</span>
+                                    <div>
                                         <b>MinerU (Magic-PDF)</b> 是开源的高精度 PDF 转 Markdown 工具。配置后，系统将优先使用 MinerU 解析 PDF 文档，从而解决部分 AI 模型无法直接读取 PDF 的问题。
                                         <a href="https://mineru.net" target="_blank" rel="noreferrer" className="underline ml-1 font-bold">官网获取 Token &gt;</a>
-                                     </div>
+                                    </div>
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-sm font-medium text-slate-700 mb-1">MinerU API Base</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={settings.docParser?.baseUrl || 'https://mineru.net'}
-                                        onChange={(e) => setSettings(s => ({ 
-                                            ...s, 
-                                            docParser: { ...s.docParser, baseUrl: e.target.value, provider: 'MinerU' } 
+                                        onChange={(e) => setSettings(s => ({
+                                            ...s,
+                                            docParser: { ...s.docParser, baseUrl: e.target.value, provider: 'MinerU' }
                                         }))}
                                         placeholder="https://mineru.net"
                                         className="w-full p-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
@@ -440,12 +439,12 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-sm font-medium text-slate-700 mb-1">MinerU Token</label>
-                                    <input 
-                                        type="password" 
+                                    <input
+                                        type="password"
                                         value={settings.docParser?.apiKey || ''}
-                                        onChange={(e) => setSettings(s => ({ 
-                                            ...s, 
-                                            docParser: { ...s.docParser, apiKey: e.target.value, provider: 'MinerU' } 
+                                        onChange={(e) => setSettings(s => ({
+                                            ...s,
+                                            docParser: { ...s.docParser, apiKey: e.target.value, provider: 'MinerU' }
                                         }))}
                                         placeholder="sk-..."
                                         className="w-full p-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 font-mono"
@@ -464,13 +463,13 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                 <div className="flex gap-4">
                                     {RESOLUTIONS.map(res => (
                                         <label key={res.value} className={`flex-1 relative cursor-pointer group`}>
-                                            <input 
-                                                type="radio" 
-                                                name="resolution" 
-                                                value={res.value} 
+                                            <input
+                                                type="radio"
+                                                name="resolution"
+                                                value={res.value}
                                                 checked={settings.imageGeneration.resolution === res.value}
                                                 onChange={() => setSettings(s => ({ ...s, imageGeneration: { resolution: res.value } }))}
-                                                className="peer sr-only" 
+                                                className="peer sr-only"
                                             />
                                             <div className="p-4 rounded-xl border-2 border-slate-200 bg-slate-50 peer-checked:border-rose-500 peer-checked:bg-rose-50 peer-checked:text-rose-700 transition-all text-center">
                                                 <div className="font-bold text-lg mb-1">{res.label}</div>
@@ -486,13 +485,13 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Performance */}
                             <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                                 <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
+                                <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
                                     <Cpu size={18} className="text-blue-500" /> 性能配置
                                 </h4>
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center">
                                         <label className="text-sm font-medium text-slate-700">描述生成最大并发数</label>
-                                        <input 
+                                        <input
                                             type="number" min={1} max={50}
                                             value={settings.performance.textConcurrency ?? ''}
                                             onChange={(e) => {
@@ -505,7 +504,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <label className="text-sm font-medium text-slate-700">图像生成最大并发数</label>
-                                        <input 
+                                        <input
                                             type="number" min={1} max={20}
                                             value={settings.performance.imageConcurrency ?? ''}
                                             onChange={(e) => {
@@ -521,16 +520,16 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
 
                             {/* Language */}
                             <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                                 <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
+                                <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
                                     <Globe size={18} className="text-green-500" /> 输出语言设置
                                 </h4>
                                 <div className="space-y-3">
                                     {LANGUAGES.map(lang => (
                                         <label key={lang.value} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
                                             <div className="flex items-center gap-2">
-                                                <input 
-                                                    type="radio" 
-                                                    name="language" 
+                                                <input
+                                                    type="radio"
+                                                    name="language"
                                                     value={lang.value}
                                                     checked={settings.language === lang.value}
                                                     onChange={() => setSettings(s => ({ ...s, language: lang.value }))}
@@ -556,13 +555,13 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                             </div>
                         ) : (
                             <>
-                                <button 
+                                <button
                                     onClick={handleResetClick}
                                     className="flex items-center gap-2 px-4 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 rounded-lg transition-colors text-sm font-medium"
                                 >
                                     <RotateCcw size={16} /> 重置默认
                                 </button>
-                                <button 
+                                <button
                                     onClick={handleSaveClick}
                                     className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg shadow-indigo-200 transition-all font-bold active:scale-95"
                                 >
@@ -574,11 +573,11 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                 </div>
             </div>
 
-            <ConfirmDialog 
+            <ConfirmDialog
                 isOpen={confirmAction.isOpen}
                 title={confirmAction.type === 'save' ? "保存配置" : "重置默认"}
-                message={confirmAction.type === 'save' 
-                    ? "确定要保存当前修改的全局配置吗？保存后所有新生成的任务将应用此配置。" 
+                message={confirmAction.type === 'save'
+                    ? "确定要保存当前修改的全局配置吗？保存后所有新生成的任务将应用此配置。"
                     : "确定要重置所有配置为默认值吗？此操作不可撤销。"}
                 onConfirm={confirmAction.type === 'save' ? performSave : performReset}
                 onCancel={() => setConfirmAction({ ...confirmAction, isOpen: false })}

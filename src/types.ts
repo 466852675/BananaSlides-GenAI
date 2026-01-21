@@ -109,7 +109,7 @@ export interface OutlineItem {
 // --- New Settings Types ---
 
 export type AIProvider = 'OpenAI' | 'Gemini' | 'Zhipu' | 'SiliconFlow' | 'ModelScope' | 'Custom' | 'CustomCombo';
-export type ImageResolution = '1024x1024' | '2048x2048' | '4096x4096';
+export type ImageResolution = '1024x1024' | '2048x2048' | '4096x4096' | '1280x720' | '1920x1080' | '3840x2160';
 export type OutputLanguage = 'zh' | 'ja' | 'en' | 'auto';
 
 export interface ModelConnection {
