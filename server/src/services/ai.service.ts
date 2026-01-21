@@ -48,18 +48,20 @@ const analyzeStyleImage = async (
     // 全流派适用: 通用设计语言提取 Prompt
     const prompt = `
         Role: 顶级 PPT 视觉分析师 & 构图专家。
-        Task: 解构这张 PPT ${pageType} 的“视觉元属性”，为 DALL-E 重建其灵魂。
+        Task: 解构这张 PPT ${pageType} 的"视觉元属性"，为图像生成模型重建其灵魂。
         
         重点提取以下抽象设计属性 (禁止描述具象物品，禁止提取文字内容):
-        1. 【构图骨架】: 描述画面的几何重心分配（如：偏左重心、居中对称、大块非对称切割）。识别其引导线的方向和视觉流动感。
-        2. 【空间层级】: 识别其视觉深度（如：多层 3D 堆叠、极简扁平层级、半透明重叠感）。
-        3. 【背景肌理 & 渐变】: 描述背景是某种纹理（如：颗粒、金属拉丝、流体）、还是特定的颜色渐变方式。
-        4. 【配色灵魂】: 捕捉其核心的色彩对比逻辑（如：高对比度撞色、同色系渐变、极简灰白）。
+        1. 【主色调 - 最重要】: 必须明确指出画面的主导颜色名称（如：荧光绿、赛博蓝、琥珀金、科技紫等），以及辅助色。这是风格复现的核心！
+        2. 【构图骨架】: 描述画面的几何重心分配（如：偏左重心、居中对称、大块非对称切割）。
+        3. 【空间层级】: 识别其视觉深度（如：多层 3D 堆叠、极简扁平层级、半透明重叠感）。
+        4. 【背景肌理】: 描述背景是某种纹理（如：电路板肌理、流体渐变、深色纯色）以及背景颜色。
+        5. 【发光效果】: 是否有霓虹光晕、扫描线、粒子效果等科技感元素。
         
         输出要求:
         - 语言: 简体中文。
-        - 格式: 极简扫描指令（类似：“主体构图为...，视觉流向为...，背景呈现...肌理，色彩逻辑采用...，禁止添加任何具象装饰”）。
-        - 长度: 120 字以内。
+        - 格式: 极简扫描指令，必须首先明确主色调。
+        - 示例: "主色调为荧光绿配深黑背景，构图为...，视觉采用电路板肌理，配合绿色霓虹光晕效果"
+        - 长度: 150 字以内。
     `;
 
     try {
@@ -179,6 +181,20 @@ const extractPageSpecificRequirements = (fullRequirements: string, pageType: str
 };
 
 /**
+ * 提取用户在 Markdown 中明确指定的设计建议
+ * 格式: **设计建议：** 建议使用环形生态图...
+ */
+const extractDesignSuggestion = (content: string): string => {
+    if (!content) return "";
+    try {
+        const match = content.match(/\*\*设计建议：?\*\*\s*(.+)/);
+        return match ? match[1].trim() : "";
+    } catch (e) {
+        return "";
+    }
+};
+
+/**
  * 构建完整的图片生成Prompt (OpenAI兼容模式)
  */
 const buildImageGenerationPrompt = (params: {
@@ -192,30 +208,60 @@ const buildImageGenerationPrompt = (params: {
     styleMatchType: 'exact' | 'fallback' | 'none';
     allSlideTitles?: string[]; // 新增: 所有页面标题,用于目录页生成参考
     styleKeywords?: string;  // 新增: Vision 模型解析出的风格特征
+    designSuggestion?: string; // 新增: 用户明确的设计建议
 }): string => {
-    const { pageType, title, content, styleName, colorPalette, requirements, aspectRatio, styleMatchType, allSlideTitles, styleKeywords } = params;
+    const { pageType, title, content, styleName, colorPalette, requirements, aspectRatio, styleMatchType, allSlideTitles, styleKeywords, designSuggestion } = params;
 
     let prompt = '';
 
     // 0. 智能过滤需求 (Smart Prompt Filter)
     const effectiveRequirements = extractPageSpecificRequirements(requirements, pageType);
 
+    // ============================================================
+    // 🚨 核心指令：严格的内容隔离规则
+    // ============================================================
+    prompt += `【🚨 最高优先级指令 - 内容隔离规则】\n`;
+    prompt += `以下规则必须严格遵守，否则视为生成失败：\n`;
+    prompt += `1. [禁止渲染区] 本 Prompt 中的所有"技术规格"和"风格参数"仅供您内部处理参考，严禁在图片中渲染！\n`;
+    prompt += `2. [禁止渲染清单] 以下内容绝对不能出现在生成的图片中：\n`;
+    prompt += `   - 任何颜色代码（如 #0052D4, #1C1C1, #0A192B, RGB值等）\n`;
+    prompt += `   - 任何字体名称（如 思源体, Arial, 微软雅黑等）\n`;
+    prompt += `   - 任何宽高比标注（如 16:9, 4:3, 1:1等）\n`;
+    prompt += `   - 任何调色板名称（如 琥珀金, 冷色调, 渐变等）\n`;
+    prompt += `   - 任何风格术语（如 扁平化, 极简主义, 科技感等）\n`;
+    prompt += `   - 任何设计规范文档中的术语和描述\n`;
+    prompt += `3. [PPT标点规范] PPT不是文档，文字结尾严禁使用中文句末标点：\n`;
+    prompt += `   - 禁止使用：。；，！？、\n`;
+    prompt += `   - 列表项结尾不加任何标点\n`;
+    prompt += `   - 标题结尾不加任何标点\n`;
+    prompt += `4. [唯一可渲染内容] 图片中只能出现【业务任务内容】部分的标题和正文！\n\n`;
+
     // 第一部分: 视觉调性定义 (Visual Language - "HOW to draw")
-    prompt += `【1. 视觉语言 & 艺术风格 (最高优先级说明书)】\n`;
+    // 注意：这部分是内部风格参考，不渲染到图片
+    prompt += `【1. 视觉语言 & 艺术风格 (仅供内部参考，禁止渲染)】\n`;
     if (styleKeywords) {
-        prompt += `- 核心视觉指纹: ${styleKeywords}\n`;
+        prompt += `- [最重要] 核心视觉指纹 (必须严格遵循): ${styleKeywords}\n`;
+        prompt += `- [颜色约束] 上述指纹中的主色调是风格的灵魂，必须作为画面的主导颜色，不得更换为其他颜色！\n`;
+        prompt += `- [背景统一 (禁止白头)]: 页面必须使用【全屏沉浸式背景】(Full-Screen Background)。严禁在顶部出现白色的标题栏或分割区域！标题文字直接悬浮在深色背景之上。确保画面上下浑然一体，没有割裂感。\n`;
     }
     if (styleMatchType === 'exact') {
         prompt += `- 构图锁定: 必须严格复刻参考图的几何骨架、色彩权重和视觉平衡感。\n`;
     }
 
-    // Inject filtered requirements here
+    // 用户明确的设计建议 (Priority High)
+    if (designSuggestion) {
+        prompt += `- [用户设计建议 (必须采纳)]: ${designSuggestion}\n`;
+        prompt += `- [可视化强制]: 如果建议中包含了具体的图表形式（如环形图、蜂窝图），必须作为画面的核心视觉主体！\n`;
+    }
+
+    // Inject filtered requirements here (作为风格参考，不作为内容)
     if (effectiveRequirements) {
-        prompt += `- 详细设计规范:\n${effectiveRequirements}\n`;
+        prompt += `- 详细设计规范(仅供风格参考):\n${effectiveRequirements}\n`;
     }
 
     // 第二部分: 业务任务核心 (Business Core - "WHAT to draw")
-    prompt += `\n【2. 业务任务内容 (核心质料)】\n`;
+    // 这是唯一可以渲染的内容
+    prompt += `\n【2. 业务任务内容 (✅ 这是唯一可渲染的内容)】\n`;
     prompt += `- 页面标题: "${title}"\n`;
 
     if (pageType === 'directory' && (!content || content.length < 20) && allSlideTitles && allSlideTitles.length > 0) {
@@ -223,21 +269,39 @@ const buildImageGenerationPrompt = (params: {
     } else if (content) {
         const contentPreview = content.length > 800 ? content.substring(0, 800) + '...' : content;
         prompt += `- 详细业务描述: "${contentPreview}"\n`;
+
+        // 针对内容页的特殊优化指令
+        if (pageType === 'content') {
+            prompt += `\n【🌟 内容页排版与文案提炼指令 (CRITICAL)】\n`;
+            prompt += `- [文案适度丰富]: 画面不仅仅是标题堆砌！请增加信息密度，通过多层级结构展示内容的丰富度。\n`;
+            prompt += `- [智能提炼与细化]: 对每个核心板块，除标题外，必须展示 1-2 行简短说明（约 15-20 字）或关键数据，不能只有空洞的大字。\n`;
+            prompt += `- [视觉层级增强]:\n`;
+            prompt += `    1. 核心模块 (Main): 必须包含“主图标 (Hero Icon) + 标题 + 关键句 + 数据展示”。\n`;
+            prompt += `    2. 装饰元素 (Decor): 必须在每个模块内部及其周边，增加 2-3 个装饰性小标签 (Tags)、状态胶囊 (Capsules) 或数据角标 (Badges)。\n`;
+            prompt += `    3. 微型图标 (Micro-Icons): 在关键词旁自动配对微型含义图标（如：齿轮、闪电、对钩、Wifi信号），让画面细节极其丰富。\n`;
+            prompt += `    4. 子级列表 (Sub-items): 列表项必须带有 Bullet Icon 或数字序号。\n`;
+            prompt += `- [排版规范]: 保持模块化卡片布局，但卡片内部内容要充实。避免大片空白，用微小的 UI 元素（线条、点阵、小字）填充视觉空隙。\n`;
+            prompt += `- [逻辑可视化]: 继续保持清晰的逻辑连接（箭头/流程），但节点本身要内容丰富。\n`;
+            prompt += `- [核心金句 (One-liner)]: 必须在画面留白处（如标题下方、底部或侧边栏）展示一句【核心总结】。\n`;
+            prompt += `    - 内容: 从业务描述中提炼出最有价值的一个观点（不超过 15 字）。\n`;
+            prompt += `    - 样式: 使用引用样式 (Quote)、高亮背景条或从主视觉中独立出来的醒目文字。\n`;
+            prompt += `    - 目的: 用户看一眼这句话就知道本页想表达什么\n`;
+            prompt += `- [参考范式]: 类似于高密度的科技仪表盘或商业分析报告，信息量充足但井井有条。\n`;
+        }
     }
 
     // 第三部分: 形神兼备合成指令 (Synthesized Meta-Instruction)
-    prompt += `\n【3. 形神兼备合成要求】\n`;
-    prompt += `- 任务使命: 请使用第一部分定义的【视觉语言】去重构并描绘第二部分定义的【业务任务内容】。\n`;
-    prompt += `- 深度要求: 生成的图像必须在视觉上看起来与参考图逻辑一致，但在含义和内容上必须精准对应本页面的业务主题。\n`;
-    prompt += `- [CRITICAL] 内容隔离: 请**忽略**参考风格图中的任何文字、数字或具体业务信息。只提取其视觉风格，内容完全以【业务任务内容】为准。\n`;
+    prompt += `\n【3. 合成指令】\n`;
+    prompt += `- 任务使命: 请使用第一部分的【视觉语言】风格去渲染第二部分的【业务任务内容】。\n`;
+    prompt += `- 深度要求: 生成的图像在视觉风格上参考设计规范，但内容只能是业务标题和业务正文。\n`;
+    prompt += `- [CRITICAL] 再次强调：颜色代码、字体名称、比例数字、调色板名称等技术参数严禁出现在画面中！\n`;
 
-    // 第四部分: 技术规格
-    prompt += `\n【4. 技术规格】\n`;
-    prompt += `- 宽高比: ${aspectRatio}\n`;
-    if (styleName) prompt += `- 风格流派: ${styleName}\n`;
-    if (colorPalette) prompt += `- 配色方案: ${colorPalette}\n`;
-    // Note: requirements are already injected in Part 1
-    prompt += `- 画面基调: 专业商业演示, 4K 高画质, 文字严禁模糊, 线条精准。\n`;
+    // 第四部分: 技术规格 (内部处理参数，不渲染)
+    prompt += `\n【4. 技术规格 (内部处理参数，禁止渲染到画面)】\n`;
+    prompt += `- 输出宽高比: ${aspectRatio} (仅控制画布比例，不要在图中显示此数字)\n`;
+    if (styleName) prompt += `- 风格流派: ${styleName} (仅供风格参考，不要在图中显示此文字)\n`;
+    if (colorPalette) prompt += `- 配色方案: ${colorPalette} (仅供配色参考，不要在图中显示调色板名称或颜色代码)\n`;
+    prompt += `- 画面基调: 专业商业演示, 4K 高画质, 文字清晰。\n`;
 
     return prompt;
 };
@@ -481,7 +545,8 @@ async function callOpenAIImageGeneration(
     config: ModelConnection,
     prompt: string,
     aspectRatio: string = "16:9",
-    resolution?: string
+    resolution?: string,
+    styleImageUrl?: string  // 新增：风格参考图 URL（用于火山引擎图生图）
 ): Promise<string> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -510,8 +575,71 @@ async function callOpenAIImageGeneration(
         "3:4": "768x1024",
         "9:16": "1024x1792"
     };
-    // Use explicit resolution if provided, otherwise fallback to aspect ratio map
-    const size = resolution ? resolution : (sizeMap[aspectRatio] || "1792x1024");
+
+    // 火山引擎（即梦/Doubao-Image）特殊处理：最低像素要求 3686400（约 1920x1920）
+    // 检测方式：baseUrl 包含 volces.com 或 volcengine
+    const isVolcengine = config.baseUrl.toLowerCase().includes('volces.com') ||
+        config.baseUrl.toLowerCase().includes('volcengine');
+
+    let size = resolution ? resolution : (sizeMap[aspectRatio] || "1792x1024");
+
+    if (isVolcengine) {
+        // 火山引擎最低像素要求：3686400 像素
+        const VOLCENGINE_MIN_PIXELS = 3686400;
+
+        // 计算当前分辨率的像素数
+        const [w, h] = size.split('x').map(Number);
+        const currentPixels = w * h;
+
+        // 火山引擎各画质档位的分辨率映射（尊重用户画质选择，但确保不低于最低要求）
+        const volcengineResolutionMap: Record<string, Record<string, string>> = {
+            // 最低档位（满足 3686400 像素要求）
+            'min': {
+                "16:9": "2560x1440",  // 3686400 像素
+                "4:3": "2240x1680",   // 3763200 像素
+                "1:1": "1920x1920",   // 3686400 像素
+                "3:4": "1680x2240",   // 3763200 像素
+                "9:16": "1440x2560"   // 3686400 像素
+            },
+            // 2K 档位（高于最低要求）
+            '2K': {
+                "16:9": "2560x1440",  // 3686400 像素
+                "4:3": "2240x1680",   // 3763200 像素
+                "1:1": "2048x2048",   // 4194304 像素
+                "3:4": "1680x2240",   // 3763200 像素
+                "9:16": "1440x2560"   // 3686400 像素
+            },
+            // 4K 档位（最高画质）
+            '4K': {
+                "16:9": "3840x2160",  // 8294400 像素
+                "4:3": "3072x2304",   // 7077888 像素
+                "1:1": "2560x2560",   // 6553600 像素
+                "3:4": "2304x3072",   // 7077888 像素
+                "9:16": "2160x3840"   // 8294400 像素
+            }
+        };
+
+        // 判断用户选择的画质档位
+        let userTier = 'min';
+        if (resolution) {
+            const [rw, rh] = resolution.split('x').map(Number);
+            const requestedPixels = rw * rh;
+            if (requestedPixels >= 8000000) userTier = '4K';
+            else if (requestedPixels >= 4000000) userTier = '2K';
+        }
+
+        // 如果用户选择的分辨率低于最低要求，使用最低档位；否则尊重用户选择
+        if (currentPixels < VOLCENGINE_MIN_PIXELS) {
+            size = volcengineResolutionMap['min'][aspectRatio] || "1920x1920";
+            console.log(`[OpenAI Image] Volcengine: User resolution ${w}x${h} (${currentPixels}px) below minimum, upgrading to ${size}`);
+        } else {
+            // 用户选择的分辨率已满足要求，使用对应档位的分辨率
+            size = volcengineResolutionMap[userTier][aspectRatio] || size;
+            console.log(`[OpenAI Image] Volcengine: Using ${userTier} tier resolution: ${size}`);
+        }
+    }
+
+    console.log(`[OpenAI Image] Calling: ${config.baseUrl}/images/generations, Model: ${config.model}, Size: ${size}`);
 
     const body: any = {
         model: config.model,
@@ -521,11 +649,38 @@ async function callOpenAIImageGeneration(
         response_format: "b64_json" // Request base64 directly
     };
 
+    // 火山引擎特殊参数
+    if (isVolcengine) {
+        // 1. 添加 seed 以提高同一项目内风格一致性
+        const promptHash = prompt.substring(0, 200).split('').reduce((acc, char) => {
+            return ((acc << 5) - acc) + char.charCodeAt(0) | 0;
+        }, 0);
+        const seed = Math.abs(promptHash) % 2147483647;
+        body.seed = seed;
+
+        // 2. 图生图模式：如果有风格参考图，直接传给即梦 API
+        // 2. 图生图模式：如果有风格参考图，直接传给即梦 API
+        if (styleImageUrl) {
+            // 修正：API 需要完整的 Data URL (data:image/png;base64,...) 或 HTTP URL
+            // 之前的代码去掉了前缀导致 "invalid url specified" 错误
+            body.image = styleImageUrl;
+            console.log(`[OpenAI Image] Volcengine: Using style reference (URL or Data URL)`);
+
+            body.sequential_image_generation = "disabled";
+        } else {
+            body.sequential_image_generation = "disabled";
+        }
+
+        // 3. 火山引擎特有参数
+        body.watermark = false;  // 关闭水印
+        body.stream = false;
+
+        console.log(`[OpenAI Image] Volcengine: seed=${seed}, hasStyleRef=${!!styleImageUrl}`);
+    }
+
     let baseUrl = config.baseUrl.trim();
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
     let url = `${baseUrl}/images/generations`;
-
-    console.log(`[OpenAI Image] Calling: ${url}, Model: ${config.model}, Size: ${size}`);
 
     let retries = 3;
     while (retries > 0) {
@@ -968,7 +1123,29 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             1. Language: Strictly Simplified Chinese (简体中文).
             2. Include bullet points, key arguments, or data placeholders.
             3. Use a professional tone.
-            4. Content length: ${pageType === 'content' ? '150-250' : '50-100'} words.`;
+            4. Content length: ${pageType === 'content' ? '150-250' : '50-100'} words.
+            
+            [CRITICAL VISUAL INSTRUCTION]:
+            At the end of your response (after the content), you MUST append a specific design suggestion field:
+            
+            Format:
+            **设计建议：** <Your suggestion here>
+            
+            Instructions for this field:
+            - Act as a Senior Art Director.
+            - FOCUS ONLY on Layout, Structure, Charts, Shapes, and Icons.
+            - [STRICTLY FORBIDDEN]: Do NOT mention colors, palettes, art styles, or lighting.
+            - [Layout]: Suggest the best layout (e.g., 'Left-Right Split', 'Timeline', '3-Column Card').
+            - [Hierarchy]: Define visual weight (e.g., "Make the Central Concept 2x larger than supporting points", "Use size contrast to distinguish Main Title from Sub-points").
+            - [Logic]: Define connection logic (e.g., "Use arrows to show flow A -> B", "Use concentric circles to show inclusion", "Use connecting lines to show network").
+            - [Shapes]: Suggest visual metaphors (e.g., 'Funnel', 'Honeycomb', 'Pyramid').
+            - SEPARATOR REQUIRED: You MUST put the separator "---DESIGN_SUGGESTION_START---" on a new line before the design suggestion.
+            - Example: 
+            
+            (Content...)
+            
+            ---DESIGN_SUGGESTION_START---
+            **设计建议：** 采用中心发散布局。核心概念'AI大脑'位于画面中央且尺寸最大（层级1）；四个子模块环绕周边（层级2），使用虚线箭头指向中心（逻辑：汇聚）。使用蜂窝状容器包裹每个模块。"`;
 
         try {
             if (shouldUseGeminiNative(config, settings)) {
@@ -1027,17 +1204,37 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
         }
 
         // 3. 构建智能 Prompt
+        const rawContent = fullContent || (contentType === 'text' ? contentSource : "");
+        let cleanContent = rawContent;
+        let designSuggestion = "";
+
+        // NEW LOGIC: Split by explicit separator
+        const SEPARATOR = "---DESIGN_SUGGESTION_START---";
+        if (rawContent.includes(SEPARATOR)) {
+            const parts = rawContent.split(SEPARATOR);
+            cleanContent = parts[0].trim();
+            const suggestionPart = parts[1].trim();
+            designSuggestion = suggestionPart.replace(/\*\*设计建议：?\*\*/, '').trim();
+        } else {
+            // Fallback: Regex extraction for backward compatibility
+            designSuggestion = extractDesignSuggestion(rawContent);
+            if (designSuggestion) {
+                cleanContent = rawContent.replace(/\*\*设计建议：?\*\*(?:.|\r|\n)*$/, '').trim();
+            }
+        }
+
         const prompt = buildImageGenerationPrompt({
             pageType: effectivePageType,
             title: title || '',
-            content: fullContent || (contentType === 'text' ? contentSource : ""),
+            content: cleanContent,
             styleName: configStyle.styleName,
             colorPalette: configStyle.colorPalette,
             requirements: configStyle.requirements,
             aspectRatio: targetRatio,
             styleMatchType: matchType,
-            allSlideTitles,
-            styleKeywords
+            allSlideTitles: allSlideTitles,
+            styleKeywords: styleKeywords,
+            designSuggestion: designSuggestion
         });
 
         // 4. 执行模型请求
@@ -1086,13 +1283,34 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                 throw new Error("No image data in Gemini Native response");
 
             } else {
-                // OpenAI DALL-E 3 (No Reference Image Support usually)
+                // OpenAI Compatible / 火山引擎等
                 const qualitySetting = settings?.imageGeneration?.resolution; // e.g., '3840x2160' acting as "4K Flag"
                 const finalResolution = calculateFinalResolution(qualitySetting, targetRatio);
 
                 console.log(`[generateSlideVariant] Resolution Calc: Quality=${qualitySetting}, Ratio=${targetRatio} -> ${finalResolution}`);
 
-                const base64Result = await callOpenAIImageGeneration(config, prompt, targetRatio, finalResolution);
+                // 准备风格参考图 URL（用于火山引擎图生图）
+                // 🚨 关键逻辑修正：仅当参考图类型【精确匹配】当前页面类型时，才启用图生图模式！
+                // 🚨 进一步优化：对于【Content 内容页】，为了避免布局千篇一律（同质化），强制【禁用图生图】，改用【文生图 + 强风格 Prompt】。
+                // 这样可以保证风格一致（通过 Vision 提取的关键词），但布局会根据内容动态生成，实现多样性。
+                let styleImageUrl: string | undefined;
+                if (styleRef && matchType === 'exact' && pageType !== 'content') {
+                    // 判断是 URL 还是本地路径
+                    if (styleRef.startsWith('http://') || styleRef.startsWith('https://')) {
+                        styleImageUrl = styleRef;
+                    } else {
+                        // 本地文件：转换为 base64 数据 URL
+                        try {
+                            const base64 = await resourceToBase64(styleRef);
+                            styleImageUrl = `data:image/png;base64,${base64}`;
+                            console.log(`[generateSlideVariant] Converted local style ref to base64 data URL`);
+                        } catch (e) {
+                            console.warn(`[generateSlideVariant] Failed to convert style ref to base64:`, e);
+                        }
+                    }
+                }
+
+                const base64Result = await callOpenAIImageGeneration(config, prompt, targetRatio, finalResolution, styleImageUrl);
                 return await AssetService.save(base64Result, 'png');
             }
         } catch (error) {

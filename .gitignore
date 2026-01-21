@@ -38,3 +38,6 @@ server/prisma/dev.db
 # Uploads
 server/uploads/*
 !server/uploads/.gitkeep
+
+# Claude / Agent tools
+.agent/

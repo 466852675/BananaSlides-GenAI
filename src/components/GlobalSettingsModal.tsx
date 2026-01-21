@@ -19,6 +19,7 @@ const PROVIDERS: { label: string; value: AIProvider }[] = [
     { label: '智谱 AI (Zhipu)', value: 'Zhipu' },
     { label: '硅基流动 (SiliconFlow)', value: 'SiliconFlow' },
     { label: '魔塔社区 (ModelScope)', value: 'ModelScope' },
+    { label: '火山引擎 (Volcengine)', value: 'Volcengine' },
     { label: '自定义 (Custom)', value: 'Custom' },
     { label: '自定义组合 (Combo)', value: 'CustomCombo' },
 ];
@@ -52,6 +53,10 @@ const PROVIDER_PRESETS: Partial<Record<AIProvider, ProviderPreset>> = {
     'ModelScope': {
         baseUrl: 'https://api-inference.modelscope.cn/v1',
         models: { text: 'qwen-max', image: 'wanx-v1', vision: 'qwen-vl-max' }
+    },
+    'Volcengine': {
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+        models: { text: 'doubao-pro-256k', image: 'doubao-image', vision: 'doubao-vision-pro' }
     }
 };
 

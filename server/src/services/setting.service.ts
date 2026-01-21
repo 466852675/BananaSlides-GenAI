@@ -71,6 +71,7 @@ export class SettingService {
             'Zhipu': 'ZHIPU',
             'SiliconFlow': 'SILICON',
             'ModelScope': 'MODELSCOPE',
+            'Volcengine': 'VOLCENGINE',
             'Custom': 'CUSTOM'
         };
 
@@ -112,6 +113,10 @@ export class SettingService {
             'ModelScope': {
                 base: 'https://api-inference.modelscope.cn/v1',
                 text: 'qwen-max', image: 'wanx-v1', vision: 'qwen-vl-max'
+            },
+            'Volcengine': {
+                base: 'https://ark.cn-beijing.volces.com/api/v3',
+                text: 'doubao-pro-256k', image: 'doubao-image', vision: 'doubao-vision-pro'
             },
             'Custom': { base: '', text: '', image: '', vision: '' }
         };
