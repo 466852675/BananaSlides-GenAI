@@ -23,8 +23,11 @@ export const useAppSettingsMasked = () => {
         queryKey: ['settings-masked'],
         queryFn: async () => {
             const res = await client.get('/settings/masked');
-            // @ts-ignore
-            return res.data;
+            const settings = (res as any).data;
+            if ((res as any).envPresets) {
+                settings.envPresets = (res as any).envPresets;
+            }
+            return settings;
         },
         staleTime: 0, // 0 to ensure Refetch on Window Focus (Real-time sync feeling)
     });

@@ -178,6 +178,65 @@ export class SettingService {
         return await this.updateSettings(envSettings);
     }
 
+    // Get Presets from Env for Frontend to display defaults when switching providers
+    static getEnvPresets() {
+        const env = process.env;
+        const getEnv = (key: string) => env[key] || '';
+
+        const prefixMap: Record<string, string> = {
+            'Gemini': 'GEMINI',
+            'OpenAI': 'OPENAI',
+            'Zhipu': 'ZHIPU',
+            'SiliconFlow': 'SILICON',
+            'ModelScope': 'MODELSCOPE',
+            'Volcengine': 'VOLCENGINE'
+        };
+
+        const defaults: Record<string, any> = {
+            'Gemini': {
+                base: 'https://generativelanguage.googleapis.com',
+                text: 'gemini-3-pro-preview', image: 'gemini-3-pro-image', vision: 'gemini-3-pro-preview'
+            },
+            'OpenAI': {
+                base: 'https://api.openai.com/v1',
+                text: 'gpt-4-turbo', image: 'dall-e-3', vision: 'gpt-4-vision-preview'
+            },
+            'Zhipu': {
+                base: 'https://open.bigmodel.cn/api/paas/v4',
+                text: 'glm-4', image: 'cogview-3', vision: 'glm-4v'
+            },
+            'SiliconFlow': {
+                base: 'https://api.siliconflow.cn/v1',
+                text: 'deepseek-ai/DeepSeek-V2.5', image: 'black-forest-labs/FLUX.1-schnell', vision: 'deepseek-ai/DeepSeek-V2.5'
+            },
+            'ModelScope': {
+                base: 'https://api-inference.modelscope.cn/v1',
+                text: 'qwen-max', image: 'wanx-v1', vision: 'qwen-vl-max'
+            },
+            'Volcengine': {
+                base: 'https://ark.cn-beijing.volces.com/api/v3',
+                text: 'doubao-pro-256k', image: 'doubao-image', vision: 'doubao-vision-pro'
+            }
+        };
+
+        const presets: Record<string, any> = {};
+
+        for (const [provider, prefix] of Object.entries(prefixMap)) {
+            const defaultPreset = defaults[provider];
+
+            const baseUrl = getEnv(`${prefix}_BASE_URL`) || defaultPreset?.base || '';
+            const text = getEnv(`${prefix}_MODEL_TEXT`) || defaultPreset?.text || '';
+            const image = getEnv(`${prefix}_MODEL_IMAGE`) || defaultPreset?.image || '';
+            const vision = getEnv(`${prefix}_MODEL_VISION`) || defaultPreset?.vision || '';
+
+            presets[provider] = {
+                baseUrl,
+                models: { text, image, vision }
+            };
+        }
+        return presets;
+    }
+
     // Sync Env to Database on Startup
     static async syncEnvToDatabase() {
         console.log('[SettingService] Syncing .env to Database...');

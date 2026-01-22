@@ -3293,6 +3293,7 @@ const App: React.FC = () => {
         currentSettings={appSettings}
         onSave={handleSaveSettings}
         readOnly={!!previewSnapshot}
+        showToast={showToast}
       />
 
       {/* Snapshot Preview Banner */}

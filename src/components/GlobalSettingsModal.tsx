@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Settings, Cpu, Image as ImageIcon, Globe, Save, RotateCcw, Server, FileText, Eye } from 'lucide-react';
-import { AppSettings, AIProvider, ImageResolution, OutputLanguage, CustomComboConfig } from '../types';
+import { AppSettings, AIProvider, ImageResolution, OutputLanguage, CustomComboConfig, EnvPreset } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useResetSettings } from '../api/settings';
 
@@ -11,6 +11,7 @@ interface GlobalSettingsModalProps {
     currentSettings: AppSettings;
     onSave: (settings: AppSettings) => void;
     readOnly?: boolean;
+    showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const PROVIDERS: { label: string; value: AIProvider }[] = [
@@ -119,7 +120,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     language: 'zh'
 };
 
-export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen, onClose, currentSettings, onSave, readOnly = false }) => {
+export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen, onClose, currentSettings, onSave, readOnly = false, showToast }) => {
     const [settings, setSettings] = useState<AppSettings>(currentSettings);
     const [confirmAction, setConfirmAction] = useState<{ type: 'save' | 'reset', isOpen: boolean }>({ type: 'save', isOpen: false });
     const resetMutation = useResetSettings();
@@ -140,7 +141,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
     if (!isOpen) return null;
 
     const handleProviderChange = (provider: AIProvider) => {
-        const preset = PROVIDER_PRESETS[provider];
+        // Priority: Backend Env Preset (from currentSettings) > Frontend Hardcoded Preset
+        const preset = currentSettings.envPresets?.[provider] || PROVIDER_PRESETS[provider];
         setSettings(prev => ({
             ...prev,
             ai: {
@@ -159,7 +161,8 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
         resetMutation.mutate(undefined, {
             onSuccess: () => {
                 setConfirmAction({ ...confirmAction, isOpen: false });
-                onClose();
+                // 保持弹窗打开，让用户可以继续调整配置
+                showToast?.('配置已重置为默认值', 'success');
             }
         });
     };
@@ -167,7 +170,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
     const performSave = () => {
         onSave(settings);
         setConfirmAction({ ...confirmAction, isOpen: false });
-        onClose();
+        // 保持弹窗打开，让用户可以继续调整配置
     };
 
     const updateComboSettings = (type: keyof CustomComboConfig, field: keyof CustomComboConfig['text'], value: string) => {

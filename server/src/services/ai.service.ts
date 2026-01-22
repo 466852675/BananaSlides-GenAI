@@ -280,6 +280,7 @@ const buildImageGenerationPrompt = (params: {
             prompt += `    2. 装饰元素 (Decor): 必须在每个模块内部及其周边，增加 2-3 个装饰性小标签 (Tags)、状态胶囊 (Capsules) 或数据角标 (Badges)。\n`;
             prompt += `    3. 微型图标 (Micro-Icons): 在关键词旁自动配对微型含义图标（如：齿轮、闪电、对钩、Wifi信号），让画面细节极其丰富。\n`;
             prompt += `    4. 子级列表 (Sub-items): 列表项必须带有 Bullet Icon 或数字序号。\n`;
+            prompt += `    5. 具象化枚举 (Concrete Items): 如果内容提到多个具体对象（如"图片、音频、视频"），严禁只画一个通用图标！必须在卡片内平行罗列这几个对象，形式可选【小图标矩阵 (Icon Row)】或【关键词标签 (Text Capsules)】。\n`;
             prompt += `- [排版规范]: 保持模块化卡片布局，但卡片内部内容要充实。避免大片空白，用微小的 UI 元素（线条、点阵、小字）填充视觉空隙。\n`;
             prompt += `- [逻辑可视化]: 继续保持清晰的逻辑连接（箭头/流程），但节点本身要内容丰富。\n`;
             prompt += `- [核心金句 (One-liner)]: 必须在画面留白处（如标题下方、底部或侧边栏）展示一句【核心总结】。\n`;

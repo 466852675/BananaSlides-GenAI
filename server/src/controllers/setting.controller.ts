@@ -15,7 +15,8 @@ export const handleGetSettings = async (req: Request, res: Response) => {
 export const handleGetMaskedSettings = async (req: Request, res: Response) => {
     try {
         const settings = await SettingService.getMaskedSettings();
-        res.json({ success: true, data: settings });
+        const envPresets = SettingService.getEnvPresets();
+        res.json({ success: true, data: settings, envPresets });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
     }

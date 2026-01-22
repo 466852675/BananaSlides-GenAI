@@ -130,6 +130,15 @@ export interface DocParserConfig {
   apiKey: string;
 }
 
+export interface EnvPreset {
+  baseUrl: string;
+  models: {
+    text: string;
+    image: string;
+    vision: string;
+  };
+}
+
 export interface AppSettings {
   ai: {
     provider: AIProvider;
@@ -151,4 +160,5 @@ export interface AppSettings {
     imageConcurrency?: number; // Optional/Unlimited
   };
   language: OutputLanguage;
+  envPresets?: Record<string, EnvPreset>;
 }
