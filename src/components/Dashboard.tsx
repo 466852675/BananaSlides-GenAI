@@ -19,12 +19,13 @@ import {
   AlertCircle,
   Clock3,
   History,
-  Calendar,
-  RefreshCcw,
-  ChevronDown,
-  ChevronRight,
   ChevronLeft,
-  Check
+  Check,
+  Sparkles,
+  ChevronRight,
+  ChevronDown,
+  Calendar,
+  RefreshCcw
 } from 'lucide-react';
 import { ProjectSession, ProjectStatus } from '../types';
 import { STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from '../constants';
@@ -218,6 +219,7 @@ interface DashboardProps {
   setSortBy?: (val: 'createdAt' | 'lastModified' | 'progress') => void;
   sortOrder?: 'asc' | 'desc';
   setSortOrder?: (val: 'asc' | 'desc') => void;
+  onOpenSmartGenerate?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -249,7 +251,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   sortBy = 'lastModified',
   setSortBy,
   sortOrder = 'desc',
-  setSortOrder
+  setSortOrder,
+  onOpenSmartGenerate
 }) => {
   // const [methodFilter, setMethodFilter] = useState<string>('all'); // Removed
   const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
@@ -578,182 +581,239 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* --- Search & Filter Toolbar (Compact) --- */}
-        <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200/60 flex flex-nowrap items-center gap-2 sticky top-[80px] z-30 transition-all overflow-x-auto no-scrollbar">
+        {/* --- Unified Dashboard Toolbar --- */}
+        <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 sticky top-[80px] z-30 transition-all flex flex-col p-2 gap-2">
 
-          {/* 1. Search (Expanded) */}
-          <div className="relative flex-1 min-w-[240px]">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            <input
-              type="text"
-              placeholder="搜索项目名称或ID..."
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-blue-200 rounded-xl text-xs transition-all outline-none"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          {/* Row 1: Primary Actions */}
+          <div className="flex items-center gap-4 px-1">
 
-          {/* Spacer replaced by margin */}
-
-          {/* 2. Filters (Cascading & Standard) */}
-          <div className="flex items-center gap-1.5 overflow-visible">
-            {/* Status (Standard Select) */}
-            <div className="relative">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter && setStatusFilter(e.target.value as any)}
-                className={`appearance-none bg-slate-50 hover:bg-slate-100 border border-transparent hover:border-slate-200 rounded-lg py-1.5 pl-2.5 pr-6 text-xs font-medium text-slate-600 outline-none cursor-pointer transition-all ${statusFilter !== 'all' ? 'text-blue-600 font-bold bg-blue-50 border-blue-100' : ''
-                  }`}
-              >
-                <option value="all">所有状态</option>
-                <option value="idle">未开始</option>
-                <option value="in-progress">进行中</option>
-                <option value="generating">生成中</option>
-                <option value="error">失败</option>
-              </select>
-              <Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            {/* 1. Search (Fixed Width) */}
+            <div className="relative w-[320px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                type="text"
+                placeholder="搜索项目名称或ID..."
+                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-blue-200 rounded-xl text-sm transition-all outline-none"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
 
-            {/* Style Cascading */}
-            <CascadingFilter
-              label="风格"
-              value={styleFilter?.[0] || ""}
-              active={!!(styleFilter && styleFilter.length > 0)}
-              systemOptions={STYLE_PRESETS}
-              customOptions={styleTags.filter(t => !STYLE_PRESETS.includes(t!)) as string[]}
-              onChange={(val) => setStyleFilter && setStyleFilter(val ? [val] : [])}
-            />
-
-            {/* Ratio */}
-            <div className="relative">
-              <select
-                value={ratioFilter?.[0] || ""}
-                onChange={(e) => setRatioFilter && setRatioFilter(e.target.value ? [e.target.value] : [])}
-                className={`appearance-none bg-slate-50 hover:bg-slate-100 border border-transparent hover:border-slate-200 rounded-lg py-1.5 pl-2.5 pr-6 text-xs font-medium text-slate-600 outline-none cursor-pointer transition-all ${ratioFilter && ratioFilter.length > 0 ? 'text-blue-600 font-bold bg-blue-50 border-blue-100' : ''
-                  }`}
-              >
-                <option value="">所有比例</option>
-                {RATIO_PRESETS.map(r => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-              <Filter size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            </div>
-
-            {/* Palette Cascading */}
-            <CascadingFilter
-              label="配色"
-              value={paletteFilter?.[0] || ""}
-              active={!!(paletteFilter && paletteFilter.length > 0)}
-              systemOptions={COLOR_PRESETS}
-              customOptions={paletteTags.filter(t => !COLOR_PRESETS.includes(t!)) as string[]}
-              onChange={(val) => setPaletteFilter && setPaletteFilter(val ? [val] : [])}
-            />
-
-            <div className="w-px h-4 bg-slate-200 mx-0.5" />
-
-            {/* Combined Time Controls */}
-            <div className="flex items-center gap-1 bg-slate-50 rounded-lg p-0.5 border border-slate-100 shrink-0">
-              {/* Time Basis */}
-              <select
-                value={timeTypeFilter || "lastModified"}
-                onChange={(e) => setTimeTypeFilter && setTimeTypeFilter(e.target.value as any)}
-                className="bg-transparent text-[10px] font-bold text-slate-500 hover:text-blue-600 outline-none cursor-pointer pl-2 pr-1"
-              >
-                <option value="lastModified">活跃</option>
-                <option value="createdAt">创建</option>
-              </select>
-
-              <div className="w-px h-3 bg-slate-200" />
-
-              {/* Time Range */}
-              <div className="relative">
-                <select
-                  value={timeFilter || ""}
-                  onChange={(e) => {
-                    if (setTimeFilter) setTimeFilter(e.target.value);
-                    if (e.target.value !== 'custom') {
-                      if (setStartDateFilter) setStartDateFilter("");
-                      if (setEndDateFilter) setEndDateFilter("");
-                    }
-                  }}
-                  className={`appearance-none bg-transparent py-1 pl-2 pr-5 text-xs font-medium text-slate-600 outline-none cursor-pointer transition-all ${timeFilter ? 'text-blue-600 font-bold' : ''
+            {/* 2. Status Filter (Match StyleTemplateManager Style) */}
+            <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100/50 overflow-x-auto no-scrollbar">
+              {[
+                { label: '全部', value: 'all' },
+                { label: '进行中', value: 'in-progress' },
+                { label: '生成中', value: 'generating' },
+                { label: '未开始', value: 'idle' }, /* Idle mapped to 'Not Started' */
+                { label: '失败', value: 'error' }
+              ].map((s) => (
+                <button
+                  key={s.value}
+                  onClick={() => setStatusFilter && setStatusFilter(s.value as any)}
+                  className={`px-3 py-1 rounded-md text-[10px] font-black whitespace-nowrap transition-all ${statusFilter === s.value
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-600'
                     }`}
                 >
-                  <option value="">全部时间</option>
-                  <option value="24h">24H</option>
-                  <option value="7d">7天</option>
-                  <option value="30d">30天</option>
-                  <option value="custom">自定义</option>
-                </select>
-                <Calendar size={10} className="absolute right-0.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              </div>
-
-              {/* Custom Date Inputs (Always Visible for Stability) */}
-              <div className={`flex items-center gap-1 transition-all duration-200 shrink-0 ${timeFilter === 'custom' ? 'opacity-100' : 'opacity-40 pointer-events-none grayscale'}`}>
-                <div className="w-px h-3 bg-slate-200 mx-0.5" />
-                <input
-                  type="date"
-                  value={startDateFilter || ""}
-                  disabled={timeFilter !== 'custom'}
-                  onChange={(e) => setStartDateFilter && setStartDateFilter(e.target.value)}
-                  className="w-[105px] px-2 py-1 bg-white border border-slate-200 rounded-md text-[10px] text-slate-600 outline-none focus:border-blue-300 focus:ring-1 transition-all font-mono disabled:bg-slate-50"
-                  placeholder="开始"
-                />
-                <span className="text-slate-300 transform -translate-y-px">-</span>
-                <input
-                  type="date"
-                  value={endDateFilter || ""}
-                  disabled={timeFilter !== 'custom'}
-                  onChange={(e) => setEndDateFilter && setEndDateFilter(e.target.value)}
-                  className="w-[105px] px-2 py-1 bg-white border border-slate-200 rounded-md text-[10px] text-slate-600 outline-none focus:border-blue-300 focus:ring-1 transition-all font-mono disabled:bg-slate-50"
-                  placeholder="结束"
-                />
-              </div>
+                  {s.label}
+                </button>
+              ))}
             </div>
-          </div>
 
-
-          {/* 3. Sort & Actions */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="relative group hidden xl:block">
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy && setSortBy(e.target.value as any)}
-                className="appearance-none bg-transparent hover:bg-slate-50 rounded-lg py-1.5 pl-2 pr-2 text-xs font-bold text-slate-500 hover:text-slate-700 outline-none cursor-pointer transition-all text-left"
+            {/* 3. Primary Buttons (Right Aligned + Uniform Sizing) */}
+            <div className="flex items-center gap-3 ml-auto shrink-0">
+              <button
+                onClick={onOpenSmartGenerate}
+                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 active:scale-95 transition-all whitespace-nowrap min-w-[140px]"
               >
-                <option value="lastModified">按活跃</option>
-                <option value="createdAt">按创建</option>
-                <option value="progress">按进度</option>
-              </select>
+                <Sparkles size={18} strokeWidth={2.5} />
+                <span>AI智能生成</span>
+              </button>
+
+              <button
+                onClick={onCreateProject}
+                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all whitespace-nowrap min-w-[140px]"
+              >
+                <Plus size={18} strokeWidth={2.5} />
+                <span>新建项目</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Row Divider */}
+          <div className="h-px bg-slate-100/80 mx-2" />
+
+          {/* Row 2: Secondary Filters */}
+          <div className="flex items-center justify-between gap-3 px-1 overflow-x-auto no-scrollbar">
+
+            {/* Left: Dimension Filters */}
+            <div className="flex items-center gap-2">
+              <CascadingFilter
+                label="风格"
+                value={styleFilter?.[0] || ""}
+                active={!!(styleFilter && styleFilter.length > 0)}
+                systemOptions={STYLE_PRESETS}
+                customOptions={styleTags.filter(t => !STYLE_PRESETS.includes(t!)) as string[]}
+                onChange={(val) => setStyleFilter && setStyleFilter(val ? [val] : [])}
+              />
+
+              <CascadingFilter
+                label="配色"
+                value={paletteFilter?.[0] || ""}
+                active={!!(paletteFilter && paletteFilter.length > 0)}
+                systemOptions={COLOR_PRESETS}
+                customOptions={paletteTags.filter(t => !COLOR_PRESETS.includes(t!)) as string[]}
+                onChange={(val) => setPaletteFilter && setPaletteFilter(val ? [val] : [])}
+              />
+
+              {/* Ratio Filter Tags */}
+              <div className="flex items-center gap-1 bg-slate-50/50 p-1 rounded-lg border border-slate-100">
+                <button
+                  onClick={() => setRatioFilter && setRatioFilter([])}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${!ratioFilter || ratioFilter.length === 0
+                    ? 'bg-white text-blue-600 shadow-sm border border-slate-200/50 font-bold'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+                    }`}
+                >
+                  全部比例
+                </button>
+                {RATIO_PRESETS.map(r => (
+                  <button
+                    key={r}
+                    onClick={() => setRatioFilter && setRatioFilter([r])}
+                    className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${ratioFilter?.[0] === r
+                      ? 'bg-white text-blue-600 shadow-sm border border-slate-200/50 font-bold'
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+                      }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <button
-              onClick={() => setSortOrder && setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-all"
-              title={sortOrder === 'asc' ? "升序" : "降序"}
-            >
-              <ArrowUpDown size={14} className={sortOrder === 'asc' ? "rotate-180" : ""} />
-            </button>
+            {/* Right: Time & Sort */}
+            <div className="flex items-center gap-3">
+              <div className="w-px h-4 bg-slate-200" />
 
-            <button
-              onClick={handleResetFilters}
-              className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-lg transition-all"
-              title="重置"
-            >
-              <RefreshCcw size={14} />
-            </button>
+              {/* Time Controls (Reused) */}
+              {/* Time Controls (Tiled Tags) */}
+              <div className="flex items-center gap-1 bg-slate-50/50 p-1 rounded-lg border border-slate-100 shrink-0">
+                {/* Time Type Switcher */}
+                <div className="flex items-center bg-white/50 rounded-md p-0.5 border border-slate-200/50 mr-1">
+                  <button
+                    onClick={() => setTimeTypeFilter && setTimeTypeFilter('lastModified')}
+                    className={`px-2 py-0.5 text-[10px] rounded-[4px] transition-all ${timeTypeFilter === 'lastModified' || !timeTypeFilter
+                      ? 'bg-blue-600 text-white shadow-sm font-bold'
+                      : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                  >
+                    活跃
+                  </button>
+                  <button
+                    onClick={() => setTimeTypeFilter && setTimeTypeFilter('createdAt')}
+                    className={`px-2 py-0.5 text-[10px] rounded-[4px] transition-all ${timeTypeFilter === 'createdAt'
+                      ? 'bg-blue-600 text-white shadow-sm font-bold'
+                      : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                  >
+                    创建
+                  </button>
+                </div>
 
-            <div className="w-px h-4 bg-slate-200 mx-1" />
+                <div className="w-px h-3 bg-slate-200/60 mx-1" />
 
-            <button
-              onClick={onCreateProject}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs md:text-sm font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all whitespace-nowrap"
-            >
-              <Plus size={16} strokeWidth={2.5} />
-              <span className="hidden md:inline">新建项目</span>
-              <span className="md:hidden">新建</span>
-            </button>
+                {/* Time Range Tags */}
+                <div className="flex items-center gap-0.5">
+                  {[
+                    { label: '全部', value: '' },
+                    { label: '24H', value: '24h' },
+                    { label: '7天', value: '7d' },
+                    { label: '30天', value: '30d' },
+                    { label: '自定义', value: 'custom' }
+                  ].map(t => (
+                    <button
+                      key={t.value}
+                      onClick={() => {
+                        if (setTimeFilter) setTimeFilter(t.value);
+                        if (t.value !== 'custom') {
+                          if (setStartDateFilter) setStartDateFilter("");
+                          if (setEndDateFilter) setEndDateFilter("");
+                        }
+                      }}
+                      className={`px-2 py-1 text-[11px] font-medium rounded-md transition-all ${timeFilter === t.value || (!timeFilter && t.value === '')
+                        ? 'bg-white text-blue-600 shadow-sm border border-slate-200/50 font-bold'
+                        : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+                        }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom Date Inputs (Conditional) */}
+                {timeFilter === 'custom' && (
+                  <div className="flex items-center gap-1 animate-in fade-in slide-in-from-left-2 duration-300">
+                    <div className="w-px h-3 bg-slate-200/60 mx-1" />
+                    <input
+                      type="date"
+                      value={startDateFilter || ""}
+                      onChange={(e) => setStartDateFilter && setStartDateFilter(e.target.value)}
+                      className="w-[105px] px-2 py-1 bg-white border border-slate-200 rounded-md text-[10px] text-slate-600 outline-none focus:border-blue-300 focus:ring-1 transition-all font-mono"
+                    />
+                    <span className="text-slate-300">-</span>
+                    <input
+                      type="date"
+                      value={endDateFilter || ""}
+                      onChange={(e) => setEndDateFilter && setEndDateFilter(e.target.value)}
+                      className="w-[105px] px-2 py-1 bg-white border border-slate-200 rounded-md text-[10px] text-slate-600 outline-none focus:border-blue-300 focus:ring-1 transition-all font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Sort & Reset */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Sort By Tags */}
+                <div className="flex items-center gap-1 bg-slate-50/50 p-1 rounded-lg border border-slate-100">
+                  {[
+                    { label: '按活跃', value: 'lastModified' },
+                    { label: '按创建', value: 'createdAt' },
+                    { label: '按进度', value: 'progress' }
+                  ].map(s => (
+                    <button
+                      key={s.value}
+                      onClick={() => setSortBy && setSortBy(s.value as any)}
+                      className={`px-2 py-1 text-[11px] font-medium rounded-md transition-all ${sortBy === s.value
+                        ? 'bg-white text-blue-600 shadow-sm border border-slate-200/50 font-bold'
+                        : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
+                        }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setSortOrder && setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                  className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-all"
+                  title={sortOrder === 'asc' ? "升序" : "降序"}
+                >
+                  <ArrowUpDown size={14} className={sortOrder === 'asc' ? "rotate-180" : ""} />
+                </button>
+
+                <button
+                  onClick={handleResetFilters}
+                  className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-lg transition-all"
+                  title="重置"
+                >
+                  <RefreshCcw size={14} />
+                </button>
+              </div>
+            </div>
           </div>
+
         </div>
 
         {/* --- Project Grid (Active) --- */}

@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser, Eye, Edit3 } from 'lucide-react';
+import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser, Eye, Edit3, Upload, Download } from 'lucide-react';
 import { refinePrompt, smartRefine, generateOutline, generateSlideDetail, generateSingleOutlineItem } from '../services/geminiService';
+import { extractTextFromUpload } from '../utils/fileParser';
 import { OutlineItem, GeneratedSlide, StyleConfig, PageType, AppSettings } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { AIGlowContainer } from './AIGlowContainer';
@@ -25,6 +26,7 @@ interface OutlineDraft {
     step: 1 | 2 | 3;
     outlineItems: OutlineItem[];
     lastUpdated: number;
+    attachedFile?: { name: string; type: string; content?: string } | null;
 }
 
 const getPageTypeLabel = (type: PageType) => {
@@ -38,56 +40,30 @@ const getPageTypeLabel = (type: PageType) => {
 }
 
 // Full Markdown Renderer Component with react-markdown
-const MarkdownPreview: React.FC<{ content: string }> = ({ content }) => {
-    return (
-        <div className="prose prose-slate prose-sm max-w-none">
-            <ReactMarkdown
-                components={{
-                    // Custom styles for markdown elements
-                    h1: ({ children }) => <h1 className="text-2xl font-bold text-slate-800 mt-4 mb-2 border-b pb-2">{children}</h1>,
-                    h2: ({ children }) => <h2 className="text-xl font-bold text-slate-700 mt-3 mb-2">{children}</h2>,
-                    h3: ({ children }) => <h3 className="text-lg font-semibold text-slate-700 mt-3 mb-1">{children}</h3>,
-                    h4: ({ children }) => <h4 className="text-base font-semibold text-slate-600 mt-2 mb-1">{children}</h4>,
-                    p: ({ children }) => <p className="text-slate-600 mb-2 leading-relaxed">{children}</p>,
-                    ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-2 text-slate-600">{children}</ul>,
-                    ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-2 text-slate-600">{children}</ol>,
-                    li: ({ children }) => <li className="text-slate-600">{children}</li>,
-                    strong: ({ children }) => <strong className="font-bold text-slate-800">{children}</strong>,
-                    em: ({ children }) => <em className="italic text-slate-600">{children}</em>,
-                    blockquote: ({ children }) => <blockquote className="border-l-4 border-indigo-300 pl-4 py-1 my-2 bg-indigo-50 text-slate-600 italic">{children}</blockquote>,
-                    code: ({ children }) => <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono text-indigo-600">{children}</code>,
-                    img: ({ src, alt }) => {
-                        if (src?.startsWith('data:image')) {
-                            return (
-                                <img
-                                    src={src}
-                                    alt={alt || 'image'}
-                                    className="max-w-full h-auto rounded-lg my-2 shadow-sm border border-slate-200"
-                                    style={{ maxHeight: '200px' }}
-                                />
-                            );
-                        }
-                        return <span className="text-slate-400 text-xs">[图片: {alt || 'image'}]</span>;
-                    },
-                    hr: () => <hr className="border-slate-200 my-4" />,
-                }}
-            >
-                {content}
-            </ReactMarkdown>
-        </div>
-    );
-};
+
 
 export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onClose, onFinish, initialTopic = "", config, appSettings, onShowToast }) => {
     const [step, setStep] = useState<1 | 2 | 3>(1);
+    // Tab 1 input state
     const [topic, setTopic] = useState(initialTopic);
+    // Tab 2 input state (Isolated)
+    const [fileParsedContent, setFileParsedContent] = useState("");
+
     const [isRefining, setIsRefining] = useState(false);
     const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
     const [isGeneratingDetails, setIsGeneratingDetails] = useState(false);
     const [outlineItems, setOutlineItems] = useState<OutlineItem[]>([]);
     const [deletedItemsPool, setDeletedItemsPool] = useState<OutlineItem[]>([]); // 追踪被删除的项以便原位找回 content
-    const [isPreviewMode, setIsPreviewMode] = useState(false); // Step 1 preview toggle
+
     const [previewItems, setPreviewItems] = useState<Record<string, boolean>>({}); // Step 3 per-item preview toggle
+
+    // Step 1 Tabs & File Upload State
+    const [activeTab, setActiveTab] = useState<'text' | 'file'>('text');
+    const [isReadingFile, setIsReadingFile] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const [attachedFile, setAttachedFile] = useState<{ name: string; type: string; content?: string } | null>(null);
+    const [isPreviewFileOpen, setIsPreviewFileOpen] = useState(false);
 
     // Track regeneration loading states per item ID
     const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
@@ -105,26 +81,35 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         title: string;
         message: string;
         onConfirm: () => void;
-    }>({ isOpen: false, title: '', message: '', onConfirm: () => { } });
+        type?: 'info' | 'danger';
+        confirmText?: string;
+        cancelText?: string;
+        onCancel?: () => void;
+    }>({ isOpen: false, title: '', message: '', onConfirm: () => { }, type: 'info' });
 
     // --- Auto-Save Logic ---
     useEffect(() => {
         if (!isOpen) return;
-        // Don't save if practically empty (Step 1 with no topic)
-        if (step === 1 && !topic.trim()) return;
+
+        // Fix: logic to include fileParsedContent in validity check
+        const hasContent = topic.trim() || (attachedFile && fileParsedContent?.trim());
+
+        // Don't save if practically empty (Step 1 with no content in either tab)
+        if (step === 1 && !hasContent) return;
 
         const timer = setTimeout(() => {
             const draft: OutlineDraft = {
-                topic,
+                topic: activeTab === 'text' ? topic : '',
                 step,
                 outlineItems,
-                lastUpdated: Date.now()
+                lastUpdated: Date.now(),
+                attachedFile: attachedFile ? { ...attachedFile, content: fileParsedContent } : null,
             };
             localStorage.setItem(OUTLINE_DRAFT_KEY, JSON.stringify(draft));
         }, 1000);
 
         return () => clearTimeout(timer);
-    }, [topic, step, outlineItems, isOpen]);
+    }, [topic, step, outlineItems, attachedFile, fileParsedContent, isOpen]);
 
     // --- Restore Logic ---
     useEffect(() => {
@@ -133,8 +118,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
             if (saved) {
                 try {
                     const draft = JSON.parse(saved) as OutlineDraft;
-                    // Only ask if there's meaningful content
-                    if ((draft.topic && draft.topic.trim()) || draft.outlineItems.length > 0) {
+                    const hasDraftContent = (draft.topic && draft.topic.trim()) || (draft.attachedFile && draft.attachedFile.content) || draft.outlineItems.length > 0;
+
+                    if (hasDraftContent) {
                         // Avoid conflict with initialTopic if it's the same
                         if (initialTopic && initialTopic === draft.topic && draft.step === 1) return;
 
@@ -142,12 +128,26 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                             isOpen: true,
                             title: '发现未保存的草稿',
                             message: `上次编辑于 ${new Date(draft.lastUpdated).toLocaleString()}。是否恢复未保存的内容？`,
+                            confirmText: '恢复编辑',
+                            cancelText: '清空草稿',
                             onConfirm: () => {
                                 setTopic(draft.topic);
                                 setStep(draft.step);
                                 setOutlineItems(draft.outlineItems);
+                                if (draft.attachedFile) {
+                                    setAttachedFile(draft.attachedFile);
+                                    if (draft.attachedFile.content) setFileParsedContent(draft.attachedFile.content);
+                                    setActiveTab('file');
+                                } else {
+                                    setActiveTab('text');
+                                }
                                 setConfirmState(prev => ({ ...prev, isOpen: false }));
                                 onShowToast('已恢复上次的编辑内容', 'success');
+                            },
+                            onCancel: () => {
+                                localStorage.removeItem(OUTLINE_DRAFT_KEY);
+                                setConfirmState(prev => ({ ...prev, isOpen: false }));
+                                onShowToast('草稿已清空', 'info');
                             }
                         });
                     }
@@ -169,17 +169,109 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
 
     // --- Actions ---
 
+    // File Upload Handlers
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(false);
+    };
+
+    const handleDrop = async (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            await processFile(files[0]);
+        }
+    };
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            await processFile(file);
+        }
+    };
+
+    const processFile = async (file: File) => {
+        if (isReadingFile) return;
+
+        // Check limit
+        /* 
+           NOTE: Originally App.tsx checked items.length vs config.targetPageCount.
+           Here, generating an outline resets the process (Step 1), so existing items 
+           in the background (App's items) might be relevant if we are appending.
+           However, OutlineGenerator generates a FRESH outline (Step 2).
+           We will enforce logic at the END (onFinish). 
+           So for now, we just parse.
+        */
+        setIsReadingFile(true);
+        try {
+            const { text, isFallback } = await extractTextFromUpload(file, appSettings, (msg, type) => {
+                // Map 'loading' to standard toast type, or handle custom
+                const toastType = type === 'loading' ? 'loading' : type === 'error' ? 'error' : 'success';
+                onShowToast(msg, toastType);
+            });
+
+            if (text) {
+                if (isFallback) {
+                    onShowToast('MinerU 解析失败，已切换至视觉模型', 'info');
+                }
+
+                // CRITICAL FIX: Only update Tab 2's content
+                setFileParsedContent(text);
+
+                setAttachedFile({
+                    name: file.name,
+                    type: file.type || 'TXT',
+                    content: text
+                });
+
+                // Do NOT switch tab or update 'topic' (Tab 1)
+                onShowToast("文件解析成功，您可以切换到文件预览查看内容", "success");
+            }
+        } catch (error: any) {
+            const msg = error instanceof Error ? error.message : "解析失败";
+            onShowToast(msg, "error");
+        } finally {
+            setIsReadingFile(false);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+    };
+
+    // Download attachment
+    const handleDownloadAttachment = () => {
+        if (!attachedFile || !attachedFile.content) return;
+        const blob = new Blob([attachedFile.content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `parsed_${attachedFile.name}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const handleRefine = async () => {
-        if (!topic.trim()) return;
+        const contentToRefine = activeTab === 'file' ? fileParsedContent : topic;
+        if (!contentToRefine.trim()) return;
+
         setIsRefining(true);
         const providerName = getProviderName('text');
-        onShowToast(`调用 ${providerName} API 服务修饰主题中...`, 'loading');
+        onShowToast(`调用 ${providerName} API 服务修饰内容中...`, 'loading');
 
         try {
             // Use 'content' type for topic/content refinement, NOT 'requirement' (which is for visual styles)
-            const refined = await smartRefine(topic, 'content');
+            const refined = await smartRefine(contentToRefine, 'content');
             if (refined && refined.trim()) {
-                setTopic(refined);
+                if (activeTab === 'file') {
+                    setFileParsedContent(refined);
+                } else {
+                    setTopic(refined);
+                }
                 onShowToast(`调用 ${providerName} API 服务成功`, 'success');
             } else {
                 onShowToast(`调用 ${providerName} API 服务返回内容为空`, 'error');
@@ -193,14 +285,39 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         }
     };
 
+    const handleClearFileAndContent = () => {
+        setConfirmState({
+            isOpen: true,
+            title: '确认清空内容？',
+            message: '移除此附件及其解析内容，清空后将无法恢复，是否继续？',
+            onConfirm: () => {
+                setAttachedFile(null);
+                setFileParsedContent('');
+                if (activeTab === 'file') {
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                }
+                setConfirmState(prev => ({ ...prev, isOpen: false }));
+                onShowToast('内容已清空', 'success');
+            },
+            type: 'danger'
+        });
+    };
+
     const handleGenerateOutline = async () => {
-        if (!topic.trim()) return;
+        // Determine source based on active tab
+        const sourceContent = activeTab === 'file' ? fileParsedContent : topic;
+
+        if (!sourceContent.trim()) {
+            onShowToast("请输入主题或上传文件", "error");
+            return;
+        }
+
         setIsGeneratingOutline(true);
         const providerName = getProviderName('text');
         onShowToast(`调用 ${providerName} API 服务生成大纲中，请耐心等待⌛️`, 'loading');
 
         try {
-            const items = await generateOutline(topic, config);
+            const items = await generateOutline(sourceContent, config);
             if (items && items.length > 0) {
                 setOutlineItems(items);
                 setDeletedItemsPool([]); // 重新生成大纲时，清空旧任务的回收站
@@ -539,8 +656,16 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 title={confirmState.title}
                 message={confirmState.message}
                 onConfirm={confirmState.onConfirm}
-                onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
-                type="info"
+                onCancel={() => {
+                    if (confirmState.onCancel) {
+                        confirmState.onCancel();
+                    } else {
+                        setConfirmState(prev => ({ ...prev, isOpen: false }));
+                    }
+                }}
+                type={confirmState.type || 'info'}
+                confirmText={confirmState.confirmText}
+                cancelText={confirmState.cancelText}
             />
 
             <div className="bg-[#fafafa] rounded-2xl w-full max-w-7xl h-[90vh] flex flex-col overflow-hidden shadow-2xl relative border border-white/20">
@@ -581,97 +706,244 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                     </button>
                 </div>
 
+                {/* Persistent Attachment Bar */}
+                {attachedFile && (
+                    <div className="px-8 py-3 bg-white border-t border-slate-200 flex items-center justify-between shrink-0 slide-in-from-bottom-2 fade-in animate-in">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                                <FileText size={16} />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-slate-700">{attachedFile.name}</p>
+                                <p className="text-[10px] text-slate-400 uppercase">{attachedFile.type || 'UNKNOWN'}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setIsPreviewFileOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                            >
+                                <Eye size={12} /> 预览
+                            </button>
+                            <button
+                                onClick={handleDownloadAttachment}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                            >
+                                <Download size={12} /> 下载
+                            </button>
+                            <button
+                                onClick={handleClearFileAndContent}
+                                className="p-1.5 text-slate-400 hover:text-red-500 rounded-md hover:bg-red-50"
+                                title="移除附件"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* File Preview Modal */}
+                {isPreviewFileOpen && attachedFile && attachedFile.content && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-8 bg-black/80 backdrop-blur-sm" onClick={() => setIsPreviewFileOpen(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+                            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-white">
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                    <FileText size={18} className="text-indigo-500" />
+                                    {attachedFile.name}
+                                </h3>
+                                <button onClick={() => setIsPreviewFileOpen(false)} className="p-1 hover:bg-slate-100 rounded-full"><X size={20} /></button>
+                            </div>
+                            <div className="flex-1 overflow-auto p-6 bg-slate-50">
+                                <div className="prose prose-slate prose-sm max-w-none p-4">
+                                    <ReactMarkdown>{attachedFile.content}</ReactMarkdown>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto bg-slate-50/50 p-8">
                     {/* Step 1 ... (Same as before) */}
+                    {/* Step 1 ... */}
                     {step === 1 && (
                         <div className="h-full flex flex-col items-center justify-center max-w-3xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="w-full bg-white rounded-2xl shadow-lg border border-slate-200 p-6 relative group focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-300 transition-all">
-                                <div className="flex items-center justify-between mb-3">
-                                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                                        <FileText size={16} className="text-indigo-500" />
-                                        输入 PPT 主题或粘贴内容
-                                    </label>
-                                    {/* Preview Toggle */}
-                                    <button
-                                        onClick={() => setIsPreviewMode(!isPreviewMode)}
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isPreviewMode
-                                            ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
-                                            : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-600'
-                                            }`}
-                                        title={isPreviewMode ? "切换到编辑模式" : "预览富文本内容（含图片）"}
-                                    >
-                                        {isPreviewMode ? <Edit3 size={12} /> : <Eye size={12} />}
-                                        {isPreviewMode ? '编辑' : '预览'}
-                                    </button>
-                                </div>
 
-                                {/* Conditional Render: Preview or Edit */}
-                                {isPreviewMode ? (
-                                    <div className="w-full h-64 p-4 overflow-y-auto rounded-xl bg-slate-50 border border-slate-100">
-                                        {topic ? (
-                                            <MarkdownPreview content={topic} />
-                                        ) : (
-                                            <span className="text-slate-300">暂无内容...</span>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <AIGlowContainer
-                                        isActive={isRefining || isGeneratingOutline}
-                                        className="h-64 rounded-xl"
-                                        colorFrom="#4f46e5"
-                                        colorTo="#8b5cf6"
-                                    >
-                                        <textarea
-                                            value={topic}
-                                            onChange={(e) => setTopic(e.target.value)}
-                                            placeholder="请输入 PPT 主题，例如：'关于2025年人工智能发展趋势的商业路演'，或者上传文件后在此处查看识别内容..."
-                                            className={`w-full h-full p-4 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl transition-colors ${(isRefining || isGeneratingOutline)
-                                                ? 'bg-slate-50 border-transparent'
-                                                : 'bg-slate-50 border border-slate-100 focus:bg-white'
-                                                }`}
-                                        />
-                                    </AIGlowContainer>
-                                )}
+                            {/* Step 1 Content Container with Tabs */}
+                            <div className="w-full bg-white rounded-2xl shadow-lg border border-slate-200 p-6 relative group focus-within:ring-2 focus-within:ring-indigo-100 focus-within:border-indigo-300 transition-all min-h-[500px] flex flex-col">
 
-                                <div className="flex justify-between items-center mt-4">
-                                    <span className="text-xs text-slate-400">系统将按照全局设置的 {config.targetPageCount} 页结构生成</span>
-                                    <div className="flex gap-2">
+                                {/* Header with Tabs (Centered) */}
+                                <div className="flex items-center justify-center mb-5 relative">
+                                    <div className="flex bg-slate-100 p-1 rounded-lg">
                                         <button
-                                            onClick={() => setTopic('')}
-                                            className="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                                            onClick={() => setActiveTab('text')}
+                                            className={`px-6 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'text'
+                                                ? 'bg-white text-indigo-600 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700'}`}
                                         >
-                                            清空
+                                            <Sparkles size={14} /> 一句话生成
                                         </button>
                                         <button
-                                            onClick={handleRefine}
-                                            disabled={isRefining || !topic.trim()}
-                                            className="text-xs flex items-center gap-1 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50 font-medium"
+                                            onClick={() => setActiveTab('file')}
+                                            className={`px-6 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'file'
+                                                ? 'bg-white text-indigo-600 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700'}`}
                                         >
-                                            {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                            AI 智能修饰
+                                            <Upload size={14} /> 解析文件
                                         </button>
                                     </div>
+
                                 </div>
-                            </div>
-                            <div className="mt-10 w-full max-w-sm">
-                                {isGeneratingOutline ? (
-                                    <div className="text-center py-4 bg-white rounded-xl shadow-sm border border-slate-100">
-                                        <div className="flex items-center justify-center gap-3 text-indigo-600 mb-2">
-                                            <Loader2 size={24} className="animate-spin" />
-                                            <span className="font-semibold">正在按照 {config.targetPageCount} 页结构生成...</span>
+
+
+                                {/* TAB 1: TEXT INPUT */}
+                                {activeTab === 'text' && (
+                                    <div className="flex-1 flex flex-col min-h-0 gap-4">
+                                        <AIGlowContainer
+                                            isActive={isRefining || isGeneratingOutline}
+                                            className="flex-1 min-h-0 rounded-xl"
+                                            colorFrom="#4f46e5"
+                                            colorTo="#8b5cf6"
+                                        >
+                                            <textarea
+                                                value={topic}
+                                                onChange={(e) => setTopic(e.target.value)}
+                                                placeholder="请输入 PPT 主题，例如：'关于2025年人工智能发展趋势的商业路演'..."
+                                                className={`w-full h-full p-4 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl transition-colors ${(isRefining || isGeneratingOutline)
+                                                    ? 'bg-slate-50 border-transparent'
+                                                    : 'bg-slate-50 border border-slate-100 focus:bg-white'
+                                                    }`}
+                                            />
+                                        </AIGlowContainer>
+
+                                        <div className="flex justify-between items-center shrink-0">
+                                            <span className="text-xs text-slate-400">系统将按照全局设置的 {config.targetPageCount} 页结构生成</span>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setTopic('')}
+                                                    className="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                                                >
+                                                    清空
+                                                </button>
+                                                <button
+                                                    onClick={handleRefine}
+                                                    disabled={isRefining || !topic.trim()}
+                                                    className="text-xs flex items-center gap-1 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50 font-medium"
+                                                >
+                                                    {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                                    AI 智能修饰
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                ) : (
-                                    <button
-                                        onClick={handleGenerateOutline}
-                                        disabled={!topic.trim()}
-                                        className="w-full py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl font-bold text-lg shadow-xl shadow-indigo-200 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:shadow-none"
-                                    >
-                                        <Wand2 size={20} /> 一键生成 PPT 大纲
-                                    </button>
                                 )}
+
+                                {/* TAB 2: FILE UPLOAD + EDIT */}
+                                {activeTab === 'file' && (
+                                    <div className="flex flex-col gap-4 flex-1 min-h-0">
+                                        {/* Upload Area - Show ONLY when NO file is attached */}
+                                        {!attachedFile ? (
+                                            <div
+                                                className={`flex-1 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all gap-3 relative shrink-0
+                                                    ${isDragOver
+                                                        ? 'border-indigo-400 bg-indigo-50/30'
+                                                        : 'border-slate-300 bg-slate-50/30 hover:bg-slate-50 hover:border-indigo-300'}`}
+                                                onDragOver={handleDragOver}
+                                                onDragLeave={handleDragLeave}
+                                                onDrop={handleDrop}
+                                                onClick={() => fileInputRef.current?.click()}
+                                            >
+                                                <input
+                                                    type="file"
+                                                    ref={fileInputRef}
+                                                    className="hidden"
+                                                    onChange={handleFileSelect}
+                                                    accept=".txt,.md,.json,.pdf,.doc,.docx"
+                                                />
+
+                                                {isReadingFile ? (
+                                                    <div className="flex flex-col items-center gap-2">
+                                                        <Loader2 size={32} className="text-indigo-500 animate-spin" />
+                                                        <p className="text-sm font-medium text-slate-600">正在解析文档内容...</p>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <div className="p-3 bg-indigo-50 rounded-full text-indigo-400">
+                                                            <Upload size={32} />
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-base font-medium text-slate-700 mb-1">点击或拖拽文件至此</p>
+                                                            <p className="text-xs text-slate-400">支持 PDF, Word, MD, TXT</p>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            /* Editor Area - Show ONLY when file IS attached (Replaces Upload Area) */
+                                            <>
+                                                <AIGlowContainer
+                                                    isActive={isRefining || isGeneratingOutline}
+                                                    className="flex-1 min-h-0 rounded-xl"
+                                                    colorFrom="#4f46e5"
+                                                    colorTo="#8b5cf6"
+                                                >
+                                                    <textarea
+                                                        value={fileParsedContent}
+                                                        onChange={(e) => setFileParsedContent(e.target.value)}
+                                                        placeholder="解析后的文档内容将显示在这里，您可以进行二次编辑..."
+                                                        className="w-full h-full p-4 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl bg-slate-50 border border-slate-100 focus:bg-white transition-colors"
+                                                    />
+                                                </AIGlowContainer>
+
+                                                <div className="flex justify-between items-center shrink-0">
+                                                    <span className="text-xs text-slate-400">系统将按照全局设置的 {config.targetPageCount} 页结构生成</span>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={handleClearFileAndContent}
+                                                            className="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                                                        >
+                                                            清空
+                                                        </button>
+                                                        <button
+                                                            onClick={handleRefine}
+                                                            disabled={isRefining || !fileParsedContent.trim()}
+                                                            className="text-xs flex items-center gap-1 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50 font-medium"
+                                                        >
+                                                            {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                                            AI 智能修饰
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+
+                                {/* Shared Footer: Generate Button */}
+                                <div className="mt-6 shrink-0">
+                                    {isGeneratingOutline ? (
+                                        <div className="text-center py-4 bg-slate-50 rounded-xl border border-slate-100">
+                                            <div className="flex items-center justify-center gap-3 text-indigo-600">
+                                                <Loader2 size={24} className="animate-spin" />
+                                                <span className="font-semibold text-sm">正在生成...</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={handleGenerateOutline}
+                                            // Determine disabled state based on active tab content
+                                            disabled={!(activeTab === 'file' ? fileParsedContent.trim() : topic.trim())}
+                                            className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl font-bold text-base shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:shadow-none"
+                                        >
+                                            <Wand2 size={18} /> 一键生成 PPT 大纲
+                                        </button>
+                                    )}
+                                </div>
                             </div>
+
+                            {/* Removed external button container */}
+
                         </div>
                     )}
 
@@ -792,7 +1064,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                             {/* Conditional Render: Preview or Edit */}
                                             {previewItems[item.id] && item.fullContent ? (
                                                 <div className="w-full h-full min-h-[200px] overflow-y-auto custom-scrollbar">
-                                                    <MarkdownPreview content={item.fullContent} />
+                                                    <div className="prose prose-slate prose-sm max-w-none">
+                                                        <ReactMarkdown>{item.fullContent}</ReactMarkdown>
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <AIGlowContainer
@@ -818,6 +1092,6 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 };

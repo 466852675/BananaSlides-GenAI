@@ -9,9 +9,20 @@ interface ConfirmDialogProps {
     onConfirm: () => void;
     onCancel: () => void;
     type?: 'danger' | 'info';
+    confirmText?: string;
+    cancelText?: string;
 }
 
-export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ isOpen, title, message, onConfirm, onCancel, type = 'info' }) => {
+export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+    isOpen,
+    title,
+    message,
+    onConfirm,
+    onCancel,
+    type = 'info',
+    confirmText = '确认',
+    cancelText = '取消'
+}) => {
     if (!isOpen) return null;
     return (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
@@ -24,13 +35,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ isOpen, title, mes
                 <p className="text-sm text-slate-500 mb-6 leading-relaxed whitespace-pre-wrap text-center">{message}</p>
                 <div className="flex gap-3">
                     <button onClick={onCancel} className="flex-1 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-medium transition-colors">
-                        取消
+                        {cancelText}
                     </button>
-                    <button 
-                        onClick={onConfirm} 
+                    <button
+                        onClick={onConfirm}
                         className={`flex-1 py-2 text-white rounded-lg font-medium transition-colors ${type === 'danger' ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'}`}
                     >
-                        确认
+                        {confirmText}
                     </button>
                 </div>
             </div>

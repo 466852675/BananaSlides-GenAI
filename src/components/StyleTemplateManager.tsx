@@ -34,6 +34,7 @@ import { useSaveTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/te
 import { useAddFavorite, useRemoveFavorite } from '../api/favorites';
 import { Filter, ArrowUpNarrowWide, ArrowDownWideNarrow, ChevronDown, ChevronUp } from 'lucide-react';
 import { STYLE_PRESETS, RATIO_PRESETS, COLOR_PRESETS } from '../constants';
+import { CreateTemplateModal } from './CreateTemplateModal';
 
 // Helper to format Template ID
 import { formatTemplateId } from '../utils/idFormatter';
@@ -285,6 +286,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
 
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const [isQuickModalOpen, setIsQuickModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Confirmation State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -562,9 +564,13 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   const paletteTags = Array.from(new Set([...PALETTE_TAGS, ...templates.map(t => t.config.colorPalette)])).filter(Boolean);
 
   const handleCreateNew = () => {
+    setIsCreateModalOpen(true);
+  };
+
+  const handleConfirmCreate = (name: string) => {
     const newTemplate: StyleTemplate = {
       id: generateTemplateId(),
-      name: '',
+      name: name,
       isCustom: true,
       createdAt: Date.now(),
       config: {
@@ -1352,6 +1358,11 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
         onAnalyzeSuccess={handleQuickAnalyzeSuccess}
         onShowToast={onShowToast}
         appSettings={appSettings}
+      />
+      <CreateTemplateModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreate={handleConfirmCreate}
       />
     </div>
   );

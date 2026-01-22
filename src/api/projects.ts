@@ -233,7 +233,7 @@ export const useCreateProject = () => {
             };
             // client.post returns data directly due to interceptor
             const result = await client.post('/projects', payload) as unknown as ProjectDTO;
-            return result;
+            return transformProject(result);
         },
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ['projects'] });

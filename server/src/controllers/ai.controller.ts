@@ -51,10 +51,18 @@ export const handleSmartRefine = async (req: Request, res: Response) => {
     }
 };
 
+import * as path from 'path';
+
 export const handleExtractText = async (req: Request, res: Response) => {
-    const { resourcePath, fileType } = req.body;
+    let { resourcePath, fileType } = req.body;
     try {
         if (!resourcePath) throw new Error("Resource path is required");
+
+        // FIX: Resolve relative upload path (e.g. /uploads/file.pdf) to absolute path for MinerU/FS
+        if (typeof resourcePath === 'string' && resourcePath.startsWith('/uploads/')) {
+            resourcePath = path.resolve(process.cwd(), resourcePath.slice(1));
+        }
+
         const settings = await getServerSettings();
         const result = await AIService.extractTextFromFile(resourcePath, fileType || 'application/octet-stream', settings);
 

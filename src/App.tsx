@@ -31,7 +31,7 @@ import {
   Check,
   ListChecks,
   Sparkles,
-  FileInput,
+
   Loader2,
   Flag,
   BookOpen,
@@ -81,7 +81,6 @@ import {
 } from "./types";
 import {
   generateSlideVariant,
-  extractTextFromFile,
   smartRefine,
 } from "./services/geminiService";
 
@@ -1234,6 +1233,7 @@ const App: React.FC = () => {
   const [isOutlineGeneratorOpen, setIsOutlineGeneratorOpen] = useState(false);
   const [outlineInitialTopic, setOutlineInitialTopic] = useState(""); // Cache for outline
   const [outlineResetKey, setOutlineResetKey] = useState(0); // KEY for force resetting OutlineGenerator
+  const [outlineGeneratorSource, setOutlineGeneratorSource] = useState<'workbench' | 'dashboard'>('workbench');
 
   // Favorites UI State
   const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
@@ -1274,7 +1274,7 @@ const App: React.FC = () => {
   });
   const [tempImageFiles, setTempImageFiles] = useState<StoredResource[]>([]);
 
-  const outlineFileInputRef = useRef<HTMLInputElement>(null);
+
   const styleInputRef = useRef<HTMLInputElement>(null);
 
   // --- History Mode State ---
@@ -1679,131 +1679,107 @@ const App: React.FC = () => {
   };
 
   // --- Outline / Topic Logic ---
-  const openOutlineGenerator = (initialText: string = "") => {
-    // 1. Check Total Limit before opening
-    if (items.length >= config.targetPageCount) {
+  const openOutlineGenerator = (initialText: string = "", source: 'workbench' | 'dashboard' = 'workbench') => {
+    // 1. Check Total Limit before opening (only if adding to current project)
+    if (source === 'workbench' && items.length >= config.targetPageCount) {
       showToast(
         `当前页面已满 (${items.length}/${config.targetPageCount})，请先清理页面或增加全局页面数量上限。`,
         'error'
       );
       return;
     }
+    setOutlineGeneratorSource(source);
     setOutlineInitialTopic(initialText); // Use passed text or keep existing cache
     setIsOutlineGeneratorOpen(true);
   };
 
-  const handleOutlineFileSelect = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    // Check limit
-    if (items.length >= config.targetPageCount) {
-      showToast(`当前页面已满，无法导入。`, 'error');
-      e.target.value = "";
-      return;
-    }
 
-    // CRITICAL: Read text file content BEFORE any state updates to prevent reference loss
-    // The file object can become invalid after React re-renders
-    const isPDF = file.type === 'application/pdf';
-    const isWord = file.name.endsWith('.docx') || file.name.endsWith('.doc') ||
-      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      file.type === 'application/msword';
-    const isText = file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.json') || file.name.endsWith('.txt');
-
-    // For text files, read content using FileReader (more reliable than file.text())
-    let preReadTextContent: string | null = null;
-    if (isText) {
-      try {
-        // Use FileReader for more reliable reading
-        preReadTextContent = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(reader.error);
-          reader.readAsText(file, 'UTF-8');
-        });
-      } catch (readError) {
-        console.error('[Pre-Read] Failed to read text file:', readError);
-      }
-    }
-
-    // For Word files, read array buffer immediately
-    let preReadWordBuffer: ArrayBuffer | null = null;
-    if (isWord) {
-      try {
-        preReadWordBuffer = await file.arrayBuffer();
-      } catch (readError) {
-        console.error('[Pre-Read] Failed to read Word file:', readError);
-      }
-    }
-
-    // Now safe to update state
-    setIsReadingFile(true);
-
-    // Show appropriate loading message
-    let loadingMsg = "";
-    let successMsg = "";
-    let errorMsg = "";
-
-    if (isPDF && appSettings.docParser?.apiKey) {
-      loadingMsg = "调用 MinerU 解析 PDF 中...";
-      successMsg = "MinerU 解析成功";
-      errorMsg = "MinerU 解析失败";
-    } else if (isWord) {
-      loadingMsg = "正在解析 Word 文档...";
-      successMsg = "Word 文档解析成功";
-      errorMsg = "Word 文档解析失败";
-    } else if (isText) {
-      loadingMsg = "正在读取文本文件...";
-      successMsg = "文本文件读取成功";
-      errorMsg = "文本文件读取失败";
-    } else {
-      const providerName = getProviderName("vision");
-      loadingMsg = `调用 ${providerName} API 识别文件中...`;
-      successMsg = `调用 ${providerName} API 识别成功`;
-      errorMsg = `调用 ${providerName} API 失败`;
-    }
-
-    showToast(loadingMsg, "loading");
-
+  const handleCreateProjectFromOutline = async (slides: GeneratedSlide[], topic: string) => {
     try {
-      let text: string;
+      showToast("正在创建项目...", "loading");
 
-      // Use pre-read content if available
-      if (preReadTextContent !== null) {
-        text = preReadTextContent;
-      } else if (preReadWordBuffer !== null) {
-        // Use mammoth with pre-read buffer
-        const mammoth = await import('mammoth');
-        const result = await mammoth.default.extractRawText({ arrayBuffer: preReadWordBuffer });
-        text = result.value || '';
-      } else {
-        // For PDF and other files, use the standard extraction
-        const result = await extractTextFromFile(file);
-        text = result.text;
+      const newProjectId = generateId();
+      const newProjectData: Partial<ProjectSession> = {
+        title: topic || "智能生成演示文稿",
+        items: slides,
+        status: "generating", // Start as generating since we might have pending tasks
+        methods: ['text', 'file'] // Assume mixed or at least intelligent
+      };
 
-        if (result.isFallback) {
-          showToast("MinerU 解析暂不可用，已自动切换至视觉模型为您服务。", "info");
-        }
+      // 1. Create Project via Mutation (Backend + React Query Update)
+      // Note: createProjectMutation handles optimistic updates or invalidation
+      const createdProject = await createProjectMutation.mutateAsync({
+        title: newProjectData.title || "未命名项目",
+        status: 'generating',
+        globalConfig: DEFAULT_STYLE_CONFIG,
+        globalStyleMap: {
+          cover: null,
+          directory: null,
+          transition: null,
+          content: null,
+          end: null,
+          custom: null,
+        },
+        isPinned: false
+      });
+
+      // 2. Sync Items (Slides)
+      // Since createProjectMutation might only create the shell, we need to sync items to it.
+      if (slides.length > 0) {
+        await syncSlidesMutation.mutateAsync({
+          projectId: createdProject.id,
+          slides: slides
+        });
       }
 
-      openOutlineGenerator(text);
-      showToast(successMsg, "success");
-    } catch (err) {
-      console.error("File read error", err);
-      showToast(errorMsg, "error");
-      const msg = err instanceof Error ? err.message : "读取文件失败，请重试或直接复制内容。";
-      showToast(msg, 'error');
-    } finally {
-      setIsReadingFile(false);
-      e.target.value = "";
+      // 3. Switch Context & Navigate
+      setCurrentProjectId(createdProject.id);
+
+      // Load into local state immediately to avoid lag
+      // Load into local state immediately to avoid key
+      const newConfig = createdProject.globalConfig || DEFAULT_STYLE_CONFIG;
+      const newStyleMap = createdProject.globalStyleMap || {
+        cover: null,
+        directory: null,
+        transition: null,
+        content: null,
+        end: null,
+        custom: null,
+      };
+
+      setConfig(newConfig);
+      configRef.current = newConfig;
+      setStyleMap(newStyleMap);
+      styleMapRef.current = newStyleMap;
+      setItems(slides);
+      itemsRef.current = slides;
+      setLocalTitle(createdProject.title);
+
+      // 4. Navigate
+      setViewMode('workbench');
+      showToast("项目已创建并导入大纲内容", "success");
+
+    } catch (error) {
+      console.error("Failed to create project from outline:", error);
+      showToast("创建项目失败", "error");
     }
   };
 
   const handleOutlineImport = (slides: GeneratedSlide[]) => {
+    // Branch logic based on Source
+    if (outlineGeneratorSource === 'dashboard') {
+      // Create New Project logic
+      // We need the topic for title. OutlineGenerator doesn't pass it back strictly in onFinish,
+      // but we have outlineInitialTopic? Or better, we can infer from first slide or generic.
+      // Actually, OutlineGenerator should ideally pass the topic back or we use state.
+      // Let's use outlineInitialTopic if set, or just "智能生成项目"
+      handleCreateProjectFromOutline(slides, outlineInitialTopic || "智能生成演示文稿");
+      return;
+    }
 
+
+    // Existing Workbench Logic (Append)
     // Check if importing causes overflow
     if (items.length + slides.length > config.targetPageCount) {
       const allowed = config.targetPageCount - items.length;
@@ -2066,7 +2042,7 @@ const App: React.FC = () => {
       contentType: "text",
       pageType: nextType,
       originalFile: null,
-      title: "新页面",
+      title: "添加文本页面",
       textContent: "",
       previewUrl: "",
       variants: [],
@@ -2153,6 +2129,7 @@ const App: React.FC = () => {
           id: generateId(),
           contentType: "image" as const,
           pageType: type,
+          title: "添加图片页面",
           // CRITICAL FIX: Store URL string, NEVER File object
           originalFile: finalUrl,
           previewUrl: finalUrl,
@@ -3974,6 +3951,7 @@ const App: React.FC = () => {
                     onDeleteProject={handleDeleteProject}
                     onTogglePin={handleTogglePin}
                     onStartProject={handleStartProjectRequest}
+                    onOpenSmartGenerate={() => openOutlineGenerator('', 'dashboard')}
                     // Lifted States
                     searchQuery={dashboardSearchQuery}
                     setSearchQuery={setDashboardSearchQuery}
@@ -4272,45 +4250,25 @@ const App: React.FC = () => {
                             disabled={!!previewSnapshot}
                             className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
-                            <Plus size={14} /> 添加文本
+                            <Plus size={14} /> 添加文本页面
                           </button>
                           <button
                             onClick={openImageTaskModal}
                             disabled={!!previewSnapshot}
                             className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 text-slate-600 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
-                            <Plus size={14} /> 添加图片
+                            <Plus size={14} /> 添加图片页面
                           </button>
                           <div className="h-5 w-px bg-slate-200 mx-0.5"></div>
 
                           <button
                             onClick={() => openOutlineGenerator()}
                             disabled={!!previewSnapshot}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white rounded-lg text-xs font-medium transition-all shadow-md hover:shadow-lg whitespace-nowrap ${previewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title="AI 智能生成 PPT 大纲（支持一句话或解析文件）"
                           >
-                            <Sparkles size={14} /> 一句话生成
+                            <Sparkles size={14} /> 智能生成页面
                           </button>
-                          <button
-                            onClick={() => outlineFileInputRef.current?.click()}
-                            disabled={!!previewSnapshot || isReadingFile}
-                            title="支持的格式: PDF, Word (.doc/.docx), Markdown (.md), 文本 (.txt), JSON"
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:border-blue-300 rounded-lg text-xs font-medium transition-all shadow-sm disabled:opacity-50 whitespace-nowrap"
-                          >
-                            {isReadingFile ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <FileInput size={14} />
-                            )}{" "}
-                            {isReadingFile ? "解析中..." : "解析文件生成"}
-                          </button>
-
-                          <input
-                            type="file"
-                            ref={outlineFileInputRef}
-                            onChange={handleOutlineFileSelect}
-                            accept=".txt,.md,.json,.pdf,.doc,.docx"
-                            className="hidden"
-                          />
 
                           <button
                             onClick={handleGenerateBatch}
