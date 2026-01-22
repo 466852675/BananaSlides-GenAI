@@ -1417,6 +1417,7 @@ const App: React.FC = () => {
 
       // Switch to the new project
       setCurrentProjectId(newProject.id);
+      prevProjectIdRef.current = newProject.id;
       setConfig(globalConfig || config);
       setStyleMap(snapshotStyleMap || {});
       setItems(forkedItems);
@@ -1700,8 +1701,11 @@ const App: React.FC = () => {
       showToast("正在创建项目...", "loading");
 
       const newProjectId = generateId();
+      const coverTitle = slides.find(s => s.pageType === 'cover')?.title;
+      const finalTitle = coverTitle || topic || "智能生成演示文稿";
+
       const newProjectData: Partial<ProjectSession> = {
-        title: topic || "智能生成演示文稿",
+        title: finalTitle,
         items: slides,
         status: "generating", // Start as generating since we might have pending tasks
         methods: ['text', 'file'] // Assume mixed or at least intelligent
@@ -1710,7 +1714,7 @@ const App: React.FC = () => {
       // 1. Create Project via Mutation (Backend + React Query Update)
       // Note: createProjectMutation handles optimistic updates or invalidation
       const createdProject = await createProjectMutation.mutateAsync({
-        title: newProjectData.title || "未命名项目",
+        title: finalTitle,
         status: 'generating',
         globalConfig: DEFAULT_STYLE_CONFIG,
         globalStyleMap: {
@@ -1735,6 +1739,7 @@ const App: React.FC = () => {
 
       // 3. Switch Context & Navigate
       setCurrentProjectId(createdProject.id);
+      prevProjectIdRef.current = createdProject.id;
 
       // Load into local state immediately to avoid lag
       // Load into local state immediately to avoid key
@@ -1754,7 +1759,7 @@ const App: React.FC = () => {
       styleMapRef.current = newStyleMap;
       setItems(slides);
       itemsRef.current = slides;
-      setLocalTitle(createdProject.title);
+      setLocalTitle(finalTitle);
 
       // 4. Navigate
       setViewMode('workbench');
@@ -1775,6 +1780,7 @@ const App: React.FC = () => {
       // Actually, OutlineGenerator should ideally pass the topic back or we use state.
       // Let's use outlineInitialTopic if set, or just "智能生成项目"
       handleCreateProjectFromOutline(slides, outlineInitialTopic || "智能生成演示文稿");
+      setOutlineResetKey(prev => prev + 1); // Reset generator for next time
       return;
     }
 
@@ -1829,6 +1835,7 @@ const App: React.FC = () => {
           slides: slidesToSync
         });
         setHasUserInteraction(true); // 标记交互以触发保存
+        setOutlineResetKey(prev => prev + 1); // Reset generator for next time
         setTimeout(
           () => showToast(`已成功添加 ${slides.length} 个页面`, "success"),
           100
@@ -2914,6 +2921,7 @@ const App: React.FC = () => {
         // Fallback or empty
       }
       setCurrentProjectId(session.id);
+      prevProjectIdRef.current = session.id;
       setViewMode("workbench");
       closeConfirm();
     });
@@ -2963,6 +2971,7 @@ const App: React.FC = () => {
 
 
       setCurrentProjectId(newProject.id);
+      prevProjectIdRef.current = newProject.id;
       setConfig(defaultConfig);
       setStyleMap({
         cover: null,
@@ -3053,6 +3062,7 @@ const App: React.FC = () => {
     }
 
     setCurrentProjectId(id);
+    prevProjectIdRef.current = id;
 
     // NEW: Read-Only Mode for Completed Projects
     if (project.status === 'completed') {
@@ -3075,6 +3085,7 @@ const App: React.FC = () => {
         });
         // Set View to Workbench
         setCurrentProjectId(id);
+        prevProjectIdRef.current = id;
         setViewMode('workbench');
         closeConfirm();
         showToast("项目已恢复编辑状态", "success");
@@ -3091,6 +3102,7 @@ const App: React.FC = () => {
         deleteProjectMutation.mutate(id);
         if (currentProjectId === id) {
           setCurrentProjectId(null);
+          prevProjectIdRef.current = null;
           setIsHistoryOpen(false); // Ensure history sidebar closes if open
         }
         showToast("项目已删除", "success");
