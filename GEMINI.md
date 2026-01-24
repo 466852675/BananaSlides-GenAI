@@ -1,75 +1,67 @@
-# ⚡ 混合 AI 引擎配置手册 (Hybrid AI Engine)
+# 🍌 BananaSlides-GenAI 项目核心手册
 
-> **BananaSlides-GenAI** 并不绑定单一供应商。通过其强大的 **Router-Adapter** 架构，您可以自由组合全球最顶尖的 AI 模型，以达到成本、速度与质量的最佳平衡。  
-> 本文档主要关注 **AI 模型配置** 与 **性能调优**。关于系统架构、数据库模型与前端组件，请参阅 [README.md - 架构深度解析](./README.md#架构深度解析-architecture-deep-dive)。
-
----
-
-## 1. 核心模型矩阵 (Key Model Matrix)
-
-我们在代码中预置了以下四类任务的最佳实践模型，同时也支持您通过 OpenAI 兼容接口接入任意模型（包括本地 LLM）。
-
-| 任务层 (Layer) | 推荐模型 (Google) | 推荐模型 (OpenAI / Local) | 推荐模型 (Open Source / Dedicated) | 职责描述 |
-| :--- | :--- | :--- | :--- | :--- |
-| **🧠 Text (大脑)** | `gemini-3-pro-preview` | `gpt-4o` / `qwen-2.5` | `deepseek-v3` / `glm-4.7` | 负责逻辑推理、大纲生成、演讲稿撰写。需要长上下文。 |
-| **🎨 Image (画布)** | `gemini-3-pro-image` | `dall-e-3` | `flux-pro` | 负责生成 16:9 的高审美背景图。支持原生的 Gemini Image 2.0 接口。 |
-| **👁️ Vision (视觉)** | `gemini-3-flash` | `gpt-4o-mini` | `qwen-vl-max` | **[优化]** 负责图片理解、参考图风格分析。使用 Flash 模型以获得极致速度。 |
-| **📄 DocParser** | N/A | N/A | **MinerU** (Recommended) | 专用于 PDF/文档的高保真解析，准确识别表格、公式与多栏排版。 |
+> **最后更新时间**: 2026-01-25
+> **核心原则**: 全局遵守 **中文原生协议 v5.0**
 
 ---
 
-## 2. 交互逻辑演进 (Intelligence Flow)
+## 1. 🇨🇳 首要原则 (Prime Directives)
 
-系统在生成图片前，会执行一个隐藏的 **"视觉预处理"** 步骤：
+> **⚠️ 所有 Agent / 开发者必须遵守以下规则：**
 
-1.  **Vision 提取**: 首先调用 `Vision` 模型对风格参考图进行深度切片，提取构图、空间层级、背景肌理和配色灵魂。
-2.  **Prompt 合成**: 将上述特征与业务内容（如：幻灯片标题、正文）合并，构建出极具针对性的 **4 层级结构化 Prompt**。
-3.  **精确渲染**: 确保 AI 绘图不仅是“好看”，而是“逻辑一致”地还原了参考图的核心设计语言。
-
----
-
-## 3. 接入方式详解 (Integration Guide)
-
-所有配置均位于前端界面的 **"全局设置 (Global Settings)"** 面板中。配置数据将安全存储在本地 SQLite 数据库中。
-
-![引擎配置](./image/04-智算管理底座/01-引擎配置-全协议AI模型配置+模型自由自由切换+助您整合全球最顶尖智力资源.gif)
-*支持全协议 AI 模型配置，实现智力资源的全球化整合。*
-
-### A. Google Gemini (Native Mode)
-直接调用 Google 原生 API，支持高级参数控制（如 Safety Settings）。
-- **API Key**: 前往 [Google AI Studio](https://aistudio.google.com/) 免费申请。
-- **Base URL**: 默认为 `https://generativelanguage.googleapis.com`。
-
-### B. OpenAI Compatible (Universal Mode)
-支持所有兼容 OpenAI 接口规范的服务商，也支持 **Ollama / LM Studio** 等本地模型。
-- **Base URL**: 
-  - DeepSeek: `https://api.deepseek.com`
-  - Ollama: `http://localhost:11434/v1`
-- **Model ID**: 手动输入目标模型名称（如 `deepseek-chat` 或 `llama3`）。
+*   **始终使用中文回答**：无论用户使用何种语言，输出必须强制使用中文。
+*   **中文原生协议 v5.0**：
+    *   **输出语言**：所有解释、计划 (Plans)、任务 (Tasks)、提交信息 (Commit Messages) 必须使用中文。
+    *   **技术术语**：保留英文 (如 API, JWT, Docker)。
+    *   **代码符号**：保留英文 (如 `fileName`, `functionName`)。
 
 ---
 
-## 4. 性能调优 (Performance Tuning)
+## 2. 🛠️ 运维与脚本指南 (Operations)
 
-在 "Performance" 选项卡中，您可以微调引擎的“油门”与“刹车”。
+为了提升易用性与数据安全，项目已对脚本进行了全面重构。
 
-![参数调优](./image/04-智算管理底座/02-参数调优-高性能参数自定义+极致生成效率调优+让您的AI引擎完美适配硬件实力.png)
-*通过高性能参数自定义，让 AI 引擎完美适配您的硬件实力。*
+### A. 启动应用 (Start Up)
+*   **入口**：直接点击根目录下的 **`一键启动.bat`**。
+*   **特性**：
+    *   ✅ **自动备份**：启动时自动备份 `dev.db`（保留最近 10 份）。
+    *   ✅ **清理进程**：自动结束残留的 Node.js 进程。
+    *   ✅ **端口管理**：前端 (1000) + 后端 (1111)。
 
-### 🚀 并发控制 (Concurrency)
-- **Text Concurrency (Default: 3)**: 同时生成多少页的正文。建议保持在 3-5 之间。
-- **Image Concurrency (Default: 1)**: 同时渲染多少张图片。因绘图昂贵且 API 限制较严，建议设置为 1。
-
-### 🖼️ 分辨率策略 (Resolution)
-系统支持基于目标场景的动态分辨率：
-- **1024x1024 / 16:9**: 快速预览。
-- **2048x1024 (2K)**: **系统默认标准**，适合 1080P 投影仪。
-- **4096x2048 (4K)**: 超高清导出。
+### B. 维护脚本 (Maintenance)
+所有高级维护工具均位于 **`scripts/`** 目录下：
+1.  **`备份数据库.bat`**：手动创建数据库快照。
+2.  **`初始化数据库.bat`**：重新同步 Schema (无损)。
+3.  **`强制重置数据库(慎用).bat`**：**[高危]** 删除并重建数据库。已添加“二次确认”安全锁。
 
 ---
 
-## 5. 常见错误排查 (Troubleshooting)
+## 3. ⚡ 混合 AI 引擎配置 (Hybrid AI Engine)
 
-- **Vision 解析失败**: 检查 `ai.service.ts` 中的模型 ID 映射。如果模型不支持 Vision，系统会降级到纯文字描述模式。
-- **Error 429**: 并发过高。请在 Performance 面板降低 Concurrency。
-- **MinerU 解析慢**: 处理大型 PDF 时可能需要 30-60 秒，请耐心等待或检查 MinerU API 状态。
+> **BananaSlides-GenAI** 并不绑定单一供应商。通过其强大的 **Router-Adapter** 架构，您可以自由组合全球最顶尖的 AI 模型。
+
+### A. 核心模型矩阵 (Key Model Matrix)
+
+| 任务层 (Layer) | 推荐模型 (Google) | 推荐模型 (Local/OpenAI) | 职责描述 |
+| :--- | :--- | :--- | :--- |
+| **🧠 Text (大脑)** | `gemini-3-pro-preview` | `deepseek-v3` / `gpt-4o` | 负责逻辑推理、大纲生成。 |
+| **🎨 Image (画布)** | `gemini-3-pro-image` | `flux-pro` / `dall-e-3` | 负责生成 16:9 高审美背景图。 |
+| **👁️ Vision (视觉)** | `gemini-3-flash` | `gpt-4o-mini` | 负责图片理解、参考图分析。 |
+
+### B. 接入力方式 (Integration)
+所有配置均位于前端界面的 **"全局设置 (Global Settings)"** 面板中。
+*   **Google Native**: 直接填入 API Key。
+*   **OpenAI Compatible**: 支持 DeepSeek, Ollama 等 (需填 Base URL)。
+
+---
+
+## 4. 性能与排查 (Performance & Troubleshooting)
+
+### 🚀 性能参数
+*   **Text Concurrency**: 建议 3-5 (控制正文生成速度)。
+*   **Image Concurrency**: 建议 1 (控制绘图成本与限流)。
+
+### 🔧 常见问题
+*   **数据丢失?**：请检查 `server/prisma/` 下的 `dev.db.backup` 备份文件。
+*   **启动闪退?**：请直接使用 `一键启动.bat`，它已内置字符集修复 (`chcp 65001`)。
+*   **Vision 报错**：检查模型是否支持视觉能力，否则请切换至纯文本模式。
