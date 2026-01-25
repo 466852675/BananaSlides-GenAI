@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PointsBadge } from './PointsBadge';
 import {
   X,
   Plus,
@@ -785,6 +786,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                     >
                       <Sparkles size={18} />
                       AI 一键生成
+
                     </button>
                     <button
                       onClick={handleCreateNew}

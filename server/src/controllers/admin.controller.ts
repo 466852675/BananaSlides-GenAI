@@ -1,0 +1,436 @@
+// server/src/controllers/admin.controller.ts
+// 管理员控制器：处理管理后台的 HTTP 请求
+
+import { Request, Response } from 'express';
+import * as AdminService from '../services/admin.service';
+import * as OrderService from '../services/order.service';
+import * as PointsService from '../services/points.service';
+import { UserRole, UserStatus, OrderStatus } from '@prisma/client';
+
+// ============================================================
+// 用户管理
+// ============================================================
+
+/**
+ * 获取用户列表
+ * GET /api/admin/users
+ */
+export async function listUsers(req: Request, res: Response): Promise<void> {
+    try {
+        const {
+            page = '1',
+            limit = '20',
+            search,
+            role,
+            status,
+            sortBy,
+            sortOrder,
+        } = req.query;
+
+        const result = await AdminService.listUsers(
+            {
+                search: search as string,
+                role: role as UserRole,
+                status: status as UserStatus,
+                sortBy: sortBy as 'createdAt' | 'points' | 'lastLoginAt',
+                sortOrder: sortOrder as 'asc' | 'desc',
+            },
+            {
+                page: parseInt(page as string, 10) || 1,
+                limit: Math.min(parseInt(limit as string, 10) || 20, 100),
+            }
+        );
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        console.error('[Admin] 获取用户列表失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取用户列表失败' }
+        });
+    }
+}
+
+/**
+ * 获取用户详情
+ * GET /api/admin/users/:id
+ */
+export async function getUser(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const user = await AdminService.getUserById(id);
+
+        if (!user) {
+            res.status(404).json({
+                success: false,
+                error: { code: 'NOT_FOUND', message: '用户不存在' }
+            });
+            return;
+        }
+
+        res.json({ success: true, data: user });
+    } catch (error) {
+        console.error('[Admin] 获取用户详情失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取用户详情失败' }
+        });
+    }
+}
+
+/**
+ * 更新用户信息
+ * PUT /api/admin/users/:id
+ */
+export async function updateUser(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const { nickname, role, status, points } = req.body;
+
+        // 检查是否尝试修改自己
+        if (req.user?.id === id && status === UserStatus.DISABLED) {
+            res.status(400).json({
+                success: false,
+                error: { code: 'INVALID_OPERATION', message: '无法禁用当前登录账户' }
+            });
+            return;
+        }
+
+        const updated = await AdminService.updateUser(
+            id,
+            { nickname, role, status, points },
+            req.user!.id
+        );
+
+        res.json({ success: true, data: updated });
+    } catch (error: any) {
+        console.error('[Admin] 更新用户失败:', error);
+        res.status(400).json({
+            success: false,
+            error: { code: 'UPDATE_FAILED', message: error.message || '更新用户失败' }
+        });
+    }
+}
+
+/**
+ * 重置用户密码
+ * POST /api/admin/users/:id/reset-password
+ */
+export async function resetUserPassword(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const { newPassword } = req.body;
+
+        if (!newPassword) {
+            res.status(400).json({
+                success: false,
+                error: { code: 'MISSING_FIELDS', message: '新密码不能为空' }
+            });
+            return;
+        }
+
+        await AdminService.resetUserPassword(id, newPassword);
+
+        res.json({ success: true, message: '密码已重置' });
+    } catch (error) {
+        console.error('[Admin] 重置密码失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '重置密码失败' }
+        });
+    }
+}
+
+/**
+ * 批量用户操作
+ * POST /api/admin/users/batch
+ */
+export async function batchUserAction(req: Request, res: Response): Promise<void> {
+    try {
+        const { action, userIds } = req.body;
+
+        if (!action || !userIds || !Array.isArray(userIds)) {
+            res.status(400).json({
+                success: false,
+                error: { code: 'MISSING_FIELDS', message: '操作类型和用户ID列表不能为空' }
+            });
+            return;
+        }
+
+        // 过滤掉当前用户自己
+        const filteredIds = userIds.filter((id: string) => id !== req.user?.id);
+
+        const result = await AdminService.batchUserAction(action, filteredIds, req.user!.id);
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        console.error('[Admin] 批量操作失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '批量操作失败' }
+        });
+    }
+}
+
+// ============================================================
+// 订单管理
+// ============================================================
+
+/**
+ * 获取订单列表
+ * GET /api/admin/orders
+ */
+export async function listOrders(req: Request, res: Response): Promise<void> {
+    try {
+        const { page = '1', limit = '20', userId, status, sortBy, sortOrder } = req.query;
+
+        const result = await OrderService.listOrders(
+            {
+                userId: userId as string,
+                status: status as OrderStatus,
+                sortBy: sortBy as 'createdAt' | 'finalPrice',
+                sortOrder: sortOrder as 'asc' | 'desc',
+            },
+            {
+                page: parseInt(page as string, 10) || 1,
+                limit: Math.min(parseInt(limit as string, 10) || 20, 100),
+            }
+        );
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        console.error('[Admin] 获取订单列表失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取订单列表失败' }
+        });
+    }
+}
+
+/**
+ * 更新订单状态
+ * PUT /api/admin/orders/:id
+ */
+export async function updateOrder(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const { status } = req.body;
+
+        const updated = await OrderService.updateOrderStatus(id, status);
+
+        res.json({ success: true, data: updated });
+    } catch (error) {
+        console.error('[Admin] 更新订单失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '更新订单失败' }
+        });
+    }
+}
+
+/**
+ * 订单退款
+ * POST /api/admin/orders/:id/refund
+ */
+export async function refundOrder(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const { reason } = req.body;
+
+        await OrderService.refundOrder(id, reason || '管理员操作退款');
+
+        res.json({ success: true, message: '退款成功' });
+    } catch (error: any) {
+        console.error('[Admin] 退款失败:', error);
+        res.status(400).json({
+            success: false,
+            error: { code: 'REFUND_FAILED', message: error.message || '退款失败' }
+        });
+    }
+}
+
+// ============================================================
+// 积分规则管理
+// ============================================================
+
+/**
+ * 获取积分规则列表
+ * GET /api/admin/points-rules
+ */
+export async function listPointsRules(req: Request, res: Response): Promise<void> {
+    try {
+        const rules = await PointsService.listPointsRules();
+        res.json({ success: true, data: rules });
+    } catch (error) {
+        console.error('[Admin] 获取积分规则失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取积分规则失败' }
+        });
+    }
+}
+
+/**
+ * 创建积分规则
+ * POST /api/admin/points-rules
+ */
+export async function createPointsRule(req: Request, res: Response): Promise<void> {
+    try {
+        const { code, name, costPoints, description } = req.body;
+
+        if (!code || !name || costPoints === undefined) {
+            res.status(400).json({
+                success: false,
+                error: { code: 'MISSING_FIELDS', message: '规则代码、名称和积分数不能为空' }
+            });
+            return;
+        }
+
+        const rule = await PointsService.createPointsRule({ code, name, costPoints, description });
+
+        res.status(201).json({ success: true, data: rule });
+    } catch (error) {
+        console.error('[Admin] 创建积分规则失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '创建积分规则失败' }
+        });
+    }
+}
+
+/**
+ * 更新积分规则
+ * PUT /api/admin/points-rules/:id
+ */
+export async function updatePointsRule(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const { name, costPoints, description, isActive } = req.body;
+
+        const rule = await PointsService.updatePointsRule(id, { name, costPoints, description, isActive });
+
+        res.json({ success: true, data: rule });
+    } catch (error) {
+        console.error('[Admin] 更新积分规则失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '更新积分规则失败' }
+        });
+    }
+}
+
+/**
+ * 删除积分规则
+ * DELETE /api/admin/points-rules/:id
+ */
+export async function deletePointsRule(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        await PointsService.deletePointsRule(id);
+        res.json({ success: true, message: '规则已删除' });
+    } catch (error) {
+        console.error('[Admin] 删除积分规则失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '删除积分规则失败' }
+        });
+    }
+}
+
+// ============================================================
+// 角色权限管理
+// ============================================================
+
+/**
+ * 获取角色列表
+ * GET /api/admin/roles
+ */
+export async function listRoles(req: Request, res: Response): Promise<void> {
+    try {
+        const roles = await AdminService.listRoles();
+        res.json({ success: true, data: roles });
+    } catch (error) {
+        console.error('[Admin] 获取角色列表失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取角色列表失败' }
+        });
+    }
+}
+
+/**
+ * 获取权限列表
+ * GET /api/admin/permissions
+ */
+export async function listPermissions(req: Request, res: Response): Promise<void> {
+    try {
+        const permissions = await AdminService.listPermissions();
+        res.json({ success: true, data: permissions });
+    } catch (error) {
+        console.error('[Admin] 获取权限列表失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取权限列表失败' }
+        });
+    }
+}
+
+/**
+ * 获取角色权限
+ * GET /api/admin/roles/:role/permissions
+ */
+export async function getRolePermissions(req: Request, res: Response): Promise<void> {
+    try {
+        const role = req.params.role as UserRole;
+        const permissions = await AdminService.getRolePermissions(role);
+        res.json({ success: true, data: permissions });
+    } catch (error) {
+        console.error('[Admin] 获取角色权限失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取角色权限失败' }
+        });
+    }
+}
+
+/**
+ * 更新角色权限
+ * PUT /api/admin/roles/:role/permissions
+ */
+export async function updateRolePermissions(req: Request, res: Response): Promise<void> {
+    try {
+        const role = req.params.role as UserRole;
+        const { permissionIds } = req.body;
+
+        await AdminService.updateRolePermissions(role, permissionIds);
+        res.json({ success: true, message: '权限更新成功' });
+    } catch (error) {
+        console.error('[Admin] 更新角色权限失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '更新角色权限失败' }
+        });
+    }
+}
+
+
+// ============================================================
+// 系统统计
+// ============================================================
+
+/**
+ * 获取系统统计
+ * GET /api/admin/system/stats
+ */
+export async function getSystemStats(req: Request, res: Response): Promise<void> {
+    try {
+        const stats = await AdminService.getSystemStats();
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        console.error('[Admin] 获取系统统计失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取系统统计失败' }
+        });
+    }
+}

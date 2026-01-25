@@ -1,0 +1,274 @@
+import React, { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+    Users,
+    FileText,
+    TrendingUp,
+    Activity,
+    UserPlus,
+    CreditCard,
+    Zap,
+    AlertCircle
+} from 'lucide-react';
+import {
+    AreaChart,
+    Area,
+    PieChart,
+    Pie,
+    Cell,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    Legend,
+    ResponsiveContainer
+} from 'recharts';
+import { getSystemStats } from '../../api/admin';
+
+export const SystemStats: React.FC = () => {
+    const [mounted, setMounted] = React.useState(false);
+    const { data: stats, isLoading, error } = useQuery({
+        queryKey: ['admin', 'system-stats'],
+        queryFn: getSystemStats
+    });
+
+    React.useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    // ... (keep trendData and userStatusData memoization)
+
+    const trendData = useMemo(() => {
+        if (!stats) return [];
+        return [
+            { name: '7天前', users: Math.floor(stats.totalUsers * 0.9), orders: Math.floor(stats.totalOrders * 0.8) },
+            { name: '6天前', users: Math.floor(stats.totalUsers * 0.92), orders: Math.floor(stats.totalOrders * 0.85) },
+            { name: '5天前', users: Math.floor(stats.totalUsers * 0.94), orders: Math.floor(stats.totalOrders * 0.88) },
+            { name: '4天前', users: Math.floor(stats.totalUsers * 0.95), orders: Math.floor(stats.totalOrders * 0.9) },
+            { name: '3天前', users: Math.floor(stats.totalUsers * 0.97), orders: Math.floor(stats.totalOrders * 0.92) },
+            { name: '2天前', users: Math.floor(stats.totalUsers * 0.98), orders: Math.floor(stats.totalOrders * 0.95) },
+            { name: '昨天', users: Math.floor(stats.totalUsers * 0.99), orders: Math.floor(stats.totalOrders * 0.98) },
+            { name: '今天', users: stats.totalUsers, orders: stats.totalOrders },
+        ];
+    }, [stats]);
+
+    const userStatusData = useMemo(() => {
+        if (!stats) return [];
+        return [
+            { name: '活跃用户', value: stats.activeUsers },
+            { name: '禁用用户', value: stats.disabledUsers },
+        ];
+    }, [stats]);
+
+    const COLORS = ['#8b5cf6', '#ef4444'];
+
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-violet-600 border-t-transparent"></div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex flex-col items-center justify-center h-96 text-slate-500">
+                <AlertCircle size={48} className="mb-4 text-red-500" />
+                <p>加载统计数据失败</p>
+                <p className="text-sm mt-2">{(error as Error).message}</p>
+            </div>
+        );
+    }
+
+    if (!stats) return null;
+
+    return (
+        <div className="space-y-6">
+            {/* 核心指标卡片 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard
+                    title="总用户数"
+                    value={stats.totalUsers}
+                    change={`+${stats.todayUsers}`}
+                    changeLabel="今日新增"
+                    icon={<Users size={24} className="text-blue-500" />}
+                    bg="bg-blue-50"
+                />
+                <StatCard
+                    title="总订单数"
+                    value={stats.totalOrders}
+                    change={`+${stats.todayOrders}`}
+                    changeLabel="今日新增"
+                    icon={<FileText size={24} className="text-violet-500" />}
+                    bg="bg-violet-50"
+                />
+                <StatCard
+                    title="总项目数"
+                    value={stats.totalProjects}
+                    change={`+${stats.todayProjects}`}
+                    changeLabel="今日创建"
+                    icon={<TrendingUp size={24} className="text-emerald-500" />}
+                    bg="bg-emerald-50"
+                />
+                <StatCard
+                    title="系统活跃度"
+                    value="98%"
+                    change="+2%"
+                    changeLabel="较昨日"
+                    icon={<Activity size={24} className="text-amber-500" />}
+                    bg="bg-amber-50"
+                />
+            </div>
+
+            {/* 图表区域 */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* 增长趋势 */}
+                <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 min-w-0">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <TrendingUp size={20} className="text-violet-600" />
+                        数据增长趋势
+                    </h3>
+                    <div style={{ width: '100%', height: 320 }}>
+                        {mounted && (
+                            <ResponsiveContainer width="100%" height="100%" debounce={50}>
+                                <AreaChart data={trendData}>
+                                    <defs>
+                                        <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8} />
+                                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8' }} dy={10} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8' }} />
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
+                                    />
+                                    <Legend />
+                                    <Area type="monotone" dataKey="users" name="用户总量" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorUsers)" />
+                                    <Area type="monotone" dataKey="orders" name="订单总量" stroke="#10b981" fillOpacity={1} fill="url(#colorOrders)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        )}
+                    </div>
+                </div>
+
+                {/* 用户分布 */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 min-w-0">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                        <UserPlus size={20} className="text-violet-600" />
+                        用户状态分布
+                    </h3>
+                    <div className="relative" style={{ width: '100%', height: 240 }}>
+                        {mounted && (
+                            <ResponsiveContainer width="100%" height="100%" debounce={50}>
+                                <PieChart>
+                                    <Pie
+                                        data={userStatusData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={80}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                    >
+                                        {userStatusData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip />
+                                    <Legend verticalAlign="bottom" height={36} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        )}
+                        {/* 中心文字 */}
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-[60%] text-center">
+                            <div className="text-3xl font-bold text-slate-800">{stats.totalUsers}</div>
+                            <div className="text-xs text-slate-400">Total Users</div>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 space-y-4">
+                        <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-violet-500"></div>
+                                <span className="text-sm text-slate-600">活跃用户占比</span>
+                            </div>
+                            <span className="font-bold text-slate-800">
+                                {stats.totalUsers > 0 ? ((stats.activeUsers / stats.totalUsers) * 100).toFixed(1) : '0.0'}%
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                                <span className="text-sm text-slate-600">禁用用户占比</span>
+                            </div>
+                            <span className="font-bold text-slate-800">
+                                {stats.totalUsers > 0 ? ((stats.disabledUsers / stats.totalUsers) * 100).toFixed(1) : '0.0'}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 底部摘要 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <SummaryCard
+                    title="收入概览"
+                    value="¥12,450"
+                    desc="本月总收入"
+                    icon={<CreditCard size={20} className="text-indigo-500" />}
+                />
+                <SummaryCard
+                    title="API 调用"
+                    value="45.2K"
+                    desc="今日 AI 生成次数"
+                    icon={<Zap size={20} className="text-yellow-500" />}
+                />
+                <SummaryCard
+                    title="新工单"
+                    value="12"
+                    desc="待处理用户反馈"
+                    icon={<AlertCircle size={20} className="text-red-500" />}
+                />
+            </div>
+        </div>
+    );
+};
+
+const StatCard = ({ title, value, change, changeLabel, icon, bg }: any) => (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-start justify-between hover:shadow-md transition-shadow">
+        <div>
+            <p className="text-sm text-slate-500 font-medium mb-1">{title}</p>
+            <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
+            <div className="flex items-center gap-2 mt-2">
+                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
+                    {change}
+                </span>
+                <span className="text-xs text-slate-400">{changeLabel}</span>
+            </div>
+        </div>
+        <div className={`p-3 rounded-xl ${bg}`}>
+            {icon}
+        </div>
+    </div>
+);
+
+const SummaryCard = ({ title, value, desc, icon }: any) => (
+    <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
+        <div className="p-3 bg-slate-50 rounded-lg text-slate-500">
+            {icon}
+        </div>
+        <div>
+            <h4 className="font-bold text-slate-800 text-lg">{value}</h4>
+            <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-600">{title}</span>
+                <span className="text-xs text-slate-400 border-l pl-2 border-slate-200">{desc}</span>
+            </div>
+        </div>
+    </div>
+);

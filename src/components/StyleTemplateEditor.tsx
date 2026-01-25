@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { PointsBadge } from './PointsBadge';
 import {
     Sparkles,
     ChevronDown,
@@ -268,6 +269,7 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
                         >
                             {generatingTypes.size > 0 ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
                             {generatingTypes.size > 0 ? '正在生成...' : '一键生成全套'}
+                            <PointsBadge actionCode="slide_image" compact />
                         </button>
                     )}
                 </h4>
@@ -497,6 +499,7 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
                             >
                                 <Sparkles size={14} className={isRefining ? "animate-spin" : ""} />
                                 {isRefining ? "正在优化..." : "AI 智能润色"}
+                                <PointsBadge actionCode="style_apply" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
                             </button>
                         </div>
                     )}

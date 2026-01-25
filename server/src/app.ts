@@ -12,8 +12,13 @@ import notificationRoutes from './routes/notification.routes';
 import templateRoutes from './routes/template.routes';
 import favoriteRoutes from './routes/favorite.routes';
 import settingRoutes from './routes/setting.routes';
+import authRoutes from './routes/auth.routes';
+import adminRoutes from './routes/admin.routes';
+import pointsRoutes from './routes/points.routes';
+
 
 // Load env from server directory
+
 dotenv.config();
 
 const app = express();
@@ -43,8 +48,13 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/points', pointsRoutes);
 
 import { SettingService } from './services/setting.service';
+
+
 
 // Watch for .env changes (Hot Reload)
 const envPath = path.join(process.cwd(), '.env');
@@ -74,6 +84,15 @@ const server = app.listen(port, async () => {
     } catch (err) {
         console.error('[App] Failed to sync settings from .env:', err);
     }
+
+    // 🆕 Bootstrap: 初始化管理员和种子数据
+    try {
+        const { runBootstrap } = await import('./bootstrap/admin.bootstrap');
+        await runBootstrap();
+    } catch (err) {
+        console.error('[App] Bootstrap failed:', err);
+    }
+
 
     console.log(`API Endpoints:
     - POST /api/upload

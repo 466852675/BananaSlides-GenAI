@@ -3,6 +3,7 @@ import { Upload, X, Loader2, Wand2 } from 'lucide-react';
 import { StoredResource } from '../types';
 import { resolveResourceUrl } from '../utils/resource';
 import { uploadFile } from '../api/client';
+import { PointsBadge } from './PointsBadge';
 
 interface ImageUploaderProps {
   label?: string;
@@ -16,7 +17,9 @@ interface ImageUploaderProps {
   onClick?: () => void;
   autoUpload?: boolean;
   readOnly?: boolean;
+
   onGenerate?: () => void;
+  pointsActionCode?: string;
 }
 
 export const ImageUploader: React.FC<ImageUploaderProps> = ({
@@ -31,7 +34,8 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   onClick,
   autoUpload = false,
   readOnly = false,
-  onGenerate
+  onGenerate,
+  pointsActionCode = 'slide_image'
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -140,6 +144,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
                 title="AI 重新生成"
               >
                 <Wand2 size={12} />
+                <PointsBadge actionCode={pointsActionCode as any} compact showIcon={false} className="scale-75 ml-0.5" />
               </button>
             )}
 
@@ -183,6 +188,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
                 title="AI 自动生成"
               >
                 <Wand2 size={14} />
+                <PointsBadge actionCode={pointsActionCode as any} compact showIcon={false} className="ml-0.5" />
               </button>
             )}
             {isUploading ? (

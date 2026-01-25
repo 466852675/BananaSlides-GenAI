@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, ClipboardEvent } from "react";
+import { PointsBadge } from './components/PointsBadge';
 import { createPortal } from 'react-dom';
 import {
   Wand2,
@@ -103,6 +104,10 @@ import { StyleTemplateEditor } from './components/StyleTemplateEditor';
 import { CreateProjectModal } from "./components/CreateProjectModal";
 import { SharedStyleCard } from "./components/SharedStyleCard";
 import { LandingPage } from "./components/LandingPageComp";
+import { UserWidget } from "./components/auth";
+import { ProfileCenter } from './components/user/ProfileCenter';
+import { PointsHistory } from './components/user/PointsHistory';
+import { AdminLayout } from "./components/admin";
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from './api/projects';
 import { useTemplates, useSaveTemplate } from './api/templates';
 import { useFavorites, useAddFavorite, useRemoveFavorite } from './api/favorites';
@@ -735,17 +740,22 @@ const App: React.FC = () => {
 
   // --- State ---
   const [viewMode, setViewMode] = useState<
-    "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates"
+    "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "admin"
   >(() => {
     const urlParams = new URLSearchParams(window.location.search);
+    // 检查是否访问管理后台
+    if (window.location.pathname === '/admin') return 'admin';
     return urlParams.get('project') ? 'workbench' : 'landing';
   });
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const handleCloseToast = useCallback(() => setToast(null), []);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showPointsHistory, setShowPointsHistory] = useState(false);
 
   // Scrolled State for Header Animation
   const [isScrolled, setIsScrolled] = useState(false);
+
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
@@ -1067,8 +1077,7 @@ const App: React.FC = () => {
 
   // Sync Workbench State with Current Project (only when actually switching projects)
   useEffect(() => {
-    console.log('[Workbench Debug] viewMode:', viewMode, 'currentProjectId:', currentProjectId, 'prevProjectIdRef.current:', prevProjectIdRef.current);
-    console.log('[Workbench Debug] currentProject:', currentProject ? 'exists' : 'null');
+
 
     // Only sync when in workbench AND switching to a different project
     if (viewMode === 'workbench' && currentProjectId && currentProjectId !== prevProjectIdRef.current) {
@@ -3786,8 +3795,8 @@ const App: React.FC = () => {
 
 
 
-          {/* --- HEADER --- */}
-          {viewMode !== 'landing' && (
+          {/* Header - Global (Except Landing & Admin) */}
+          {viewMode !== 'landing' && viewMode !== 'admin' && (
             <>
               <header
                 className={`fixed z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]
@@ -3942,14 +3951,23 @@ const App: React.FC = () => {
                     >
                       <Settings size={18} />
                     </button>
+
+                    {/* 用户组件 */}
+                    {/* User Widget */}
+                    <UserWidget
+                      onAdminClick={() => setViewMode('admin')}
+                      onProfileClick={() => setShowProfile(true)}
+                      onPointsClick={() => setShowPointsHistory(true)}
+                    />
                   </div>
                 </div>
               </header>
               <div className="h-16 shrink-0" />
             </>
           )}
-
-          {viewMode === "landing" ? (
+          {viewMode === "admin" ? (
+            <AdminLayout onBack={() => setViewMode('dashboard')} />
+          ) : viewMode === "landing" ? (
             <LandingPage onEnter={() => setViewMode('dashboard')} />
           ) : (
             viewMode !== 'templates' ? (
@@ -4236,6 +4254,7 @@ const App: React.FC = () => {
                                 <Sparkles size={14} />
                               )}
                               {isRefiningRequirements ? "修饰中..." : "AI 修饰"}
+                              {!isRefiningRequirements && <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-1" />}
                             </button>
                           </div>
                         </div>
@@ -4296,7 +4315,7 @@ const App: React.FC = () => {
                               </>
                             ) : (
                               <>
-                                <Wand2 size={14} /> 批量生成图片
+                                <Wand2 size={14} /> 批量生成图片 <PointsBadge actionCode="slide_image" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
                               </>
                             )}
                           </button>
@@ -4861,6 +4880,10 @@ const App: React.FC = () => {
             />
           )}
         </div>
+
+        {/* User Modals */}
+        <ProfileCenter isOpen={showProfile} onClose={() => setShowProfile(false)} />
+        <PointsHistory isOpen={showPointsHistory} onClose={() => setShowPointsHistory(false)} />
 
         <StartProjectModal
           isOpen={startProjectModalData.isOpen}

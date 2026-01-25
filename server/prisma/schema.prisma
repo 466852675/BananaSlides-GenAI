@@ -9,6 +9,253 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ============================================================
+// 枚举定义 (Enums)
+// ============================================================
+
+// 用户角色
+enum UserRole {
+  USER        // 普通用户
+  ADMIN       // 管理员
+  SUPER_ADMIN // 超级管理员
+}
+
+// 用户状态
+enum UserStatus {
+  ACTIVE      // 正常
+  DISABLED    // 已禁用
+  PENDING     // 待验证
+}
+
+// 订单状态
+enum OrderStatus {
+  PENDING     // 待支付
+  PAID        // 已支付
+  CANCELLED   // 已取消
+  REFUNDED    // 已退款
+}
+
+// ============================================================
+// 用户与认证模型 (User & Auth)
+// ============================================================
+
+model User {
+  id            String      @id @default(uuid())
+  
+  // ========== 登录凭证 ==========
+  email         String?     @unique  // 邮箱登录
+  phone         String?     @unique  // 手机号登录
+  username      String?     @unique  // 用户名登录 (如 admin)
+  passwordHash  String?              // bcrypt 哈希后的密码
+  
+  // ========== 用户资料 ==========
+  nickname      String?              // 显示昵称
+  avatar        String?              // 头像 URL
+  bio           String?              // 个人简介
+  
+  // ========== 角色与状态 ==========
+  role          UserRole    @default(USER)
+  status        UserStatus  @default(ACTIVE)
+  
+  // ========== 积分与会员 ==========
+  points        Int         @default(30)   // 当前可用积分
+  pointsUsed    Int         @default(0)    // 累计消耗积分
+  vipLevel      Int         @default(0)    // 会员等级 (0=无, 1=基础, 2=专业, 3=企业)
+  vipExpiresAt  DateTime?               // 会员过期时间
+  
+  // ========== 安全与审计 ==========
+  lastLoginAt   DateTime?               // 最后登录时间
+  lastLoginIp   String?                 // 最后登录 IP
+  loginFailCount Int        @default(0)    // 连续登录失败次数
+  lockedUntil   DateTime?               // 锁定截止时间
+  
+  // ========== 验证码 (密码重置) ==========
+  resetCode     String?                 // 6位验证码
+  resetCodeExp  DateTime?               // 验证码过期时间
+  
+  // ========== 时间戳 ==========
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // ========== 关联 ==========
+  projects       Project[]
+  socialAccounts SocialAccount[]
+  transactions   Transaction[]
+  orders         Order[]
+  favorites      Favorite[]
+  styleTemplates StyleTemplate[]
+  
+  // ========== 索引 ==========
+  @@index([role])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// 社交账号绑定
+model SocialAccount {
+  id          String   @id @default(uuid())
+  
+  // ========== 用户关联 ==========
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // ========== 第三方信息 ==========
+  provider    String             // github | google | wechat | dingtalk
+  providerId  String             // 第三方用户 ID
+  accessToken String?           // 访问令牌 (加密存储)
+  
+  // ========== 时间戳 ==========
+  createdAt   DateTime @default(now())
+  
+  // ========== 唯一约束 ==========
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
+// ============================================================
+// 积分与交易模型 (Points & Transactions)
+// ============================================================
+
+// 积分规则配置
+model PointsRule {
+  id          String   @id @default(uuid())
+  
+  // ========== 规则标识 ==========
+  code        String   @unique   // 规则代码 (如 "outline_generation")
+  name        String             // 规则名称 (如 "AI大纲生成")
+  description String?            // 规则描述
+  
+  // ========== 扣费配置 ==========
+  costPoints  Int                // 消耗积分数
+  costType    String   @default("fixed") // fixed=固定, percent=百分比
+  
+  // ========== 状态控制 ==========
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)  // 排序权重
+  
+  // ========== 时间戳 ==========
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 积分流水记录
+model Transaction {
+  id          String   @id @default(uuid())
+  
+  // ========== 用户关联 ==========
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // ========== 交易信息 ==========
+  type        String             // consume | recharge | bonus | refund | adjust
+  amount      Int                // 变动数量 (正数加/负数减)
+  balance     Int                // 变动后余额快照
+  
+  // ========== 关联信息 ==========
+  ruleCode    String?            // 关联的积分规则代码
+  projectId   String?            // 关联的项目 ID
+  orderId     String?            // 关联的订单 ID
+  operatorId  String?            // 操作人 ID (管理员调整时)
+  
+  // ========== 描述 ==========
+  description String?            // 交易描述
+  
+  // ========== 时间戳 ==========
+  createdAt   DateTime @default(now())
+  
+  // ========== 索引 ==========
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ============================================================
+// 订单模型 (Orders)
+// ============================================================
+
+model Order {
+  id            String      @id @default(uuid())
+  
+  // ========== 订单标识 ==========
+  orderNo       String      @unique  // 商户订单号 (如 ORD20260125001)
+  
+  // ========== 用户关联 ==========
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // ========== 商品信息 ==========
+  productType   String               // 商品类型: "vip" | "points"
+  productName   String               // 商品名称 (如 "专业版月卡")
+  productDesc   String?              // 商品描述
+  quantity      Int         @default(1) // 数量
+  
+  // ========== 金额信息 ==========
+  originalPrice Float                // 原价 (元)
+  discountPrice Float?               // 折扣价 (元)
+  finalPrice    Float                // 实付金额 (元)
+  
+  // ========== 状态与支付 ==========
+  status        OrderStatus @default(PENDING)
+  paymentMethod String?              // 支付方式: alipay | wechat | stripe
+  paymentNo     String?              // 第三方支付单号
+  paidAt        DateTime?            // 支付时间
+  
+  // ========== 退款信息 ==========
+  refundReason  String?              // 退款原因
+  refundedAt    DateTime?            // 退款时间
+  
+  // ========== 时间戳 ==========
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // ========== 索引 ==========
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================
+// 权限模型 (RBAC)
+// ============================================================
+
+model Permission {
+  id          String           @id @default(uuid())
+  
+  // ========== 权限标识 ==========
+  code        String           @unique  // 如 "admin.users.read"
+  name        String                   // 如 "查看用户列表"
+  module      String                   // 如 "users"
+  
+  // ========== 元数据 ==========
+  description String?
+  sortOrder   Int              @default(0)
+  
+  // ========== 关联 ==========
+  rolePermissions RolePermission[]
+  
+  // ========== 时间戳 ==========
+  createdAt   DateTime         @default(now())
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  
+  // ========== 角色-权限映射 ==========
+  role         UserRole
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  
+  // ========== 时间戳 ==========
+  createdAt    DateTime   @default(now())
+  
+  // ========== 唯一约束 ==========
+  @@unique([role, permissionId])
+}
+
+// ============================================================
+// 现有业务模型 (Existing Models - 已扩展用户关联)
+// ============================================================
+
 model Project {
   id           String   @id @default(uuid())
   title        String
@@ -31,6 +278,14 @@ model Project {
   completedAt  DateTime? // Fixed timestamp when status becomes 'completed'
   
   snapshots    ProjectSnapshot[]
+  
+  // ========== 🆕 用户关联 (可选，支持现有数据迁移) ==========
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  // ========== 索引 ==========
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model ProjectSnapshot {
@@ -87,6 +342,10 @@ model StyleTemplate {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   favorites      Favorite[]
+  
+  // ========== 🆕 用户关联 (可选) ==========
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model Favorite {
@@ -99,6 +358,10 @@ model Favorite {
   sampleImages String?  // JSON string array
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  
+  // ========== 🆕 用户关联 (可选) ==========
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model AppSettings {

@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles/animations.css';
+import { AuthProvider } from './contexts/AuthContext';
+import { LoginModal } from './components/auth';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -16,7 +18,11 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <AuthProvider>
+        <App />
+        <LoginModal />
+      </AuthProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );
+

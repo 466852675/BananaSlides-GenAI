@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { PointsBadge } from './PointsBadge';
 import { X, Sparkles, Upload, FileText, Image as ImageIcon, Loader2, ArrowRight } from 'lucide-react';
 import { analyzeTemplateConcept, refinePrompt } from '../services/geminiService';
 import { AIGlowContainer } from './AIGlowContainer';
@@ -182,6 +183,7 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
                         >
                             <Sparkles className="w-3 h-3" />
                             {isRefining ? '优化中...' : 'AI 润色描述'}
+                            <PointsBadge actionCode="style_apply" compact />
                         </button>
                     </div>
 
@@ -223,6 +225,7 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
                         >
                             <Sparkles className="w-5 h-5" />
                             开始生成模版规范 (Start Analysis)
+                            <PointsBadge actionCode="vision_analyze" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
                             <ArrowRight className="w-5 h-5 opacity-50" />
                         </button>
                     )}

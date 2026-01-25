@@ -5,6 +5,7 @@ import { downloadImage } from '../utils';
 import { exportToPdf, exportToPptx } from '../services/exportService';
 import { Download, Loader2, AlertCircle, Clock, FileText, Image as ImageIcon, GripVertical, RefreshCw, Zap, Edit, Upload, Maximize2, Layers, Trash2, Copy, BookOpen, Flag, Home, LayoutList, FileOutput, FileType, Sparkles, Eye, Edit3 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { PointsBadge } from './PointsBadge';
 import { AIGlowContainer } from './AIGlowContainer';
 
 interface ResultCardProps {
@@ -315,6 +316,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                         >
                                             {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                             {isRefining ? '修饰中...' : 'AI 修饰'}
+                                            {!isRefining && <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-1" />}
                                         </button>
                                     )}
                                 </>
@@ -401,7 +403,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                         className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 text-xs font-medium transition-all border border-rose-100 shadow-sm"
                                         title="仅生成此页"
                                     >
-                                        <Zap size={12} /> 生成
+                                        <Zap size={12} /> 生成 <PointsBadge actionCode="slide_image" compact showIcon={false} className="ml-0.5" />
                                     </button>
                                 )}
 

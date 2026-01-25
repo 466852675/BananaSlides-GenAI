@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { AIService } from '../services/ai.service';
 import { SettingService } from '../services/setting.service';
+import * as PointsService from '../services/points.service';
 
 // Helper to get settings from database (API keys never leave server)
 const getServerSettings = async () => {
@@ -9,8 +10,27 @@ const getServerSettings = async () => {
 };
 
 export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) => {
-    const { input } = req.body; // input can be string or { path, mimeType }
+    const { input, projectId } = req.body; // input can be string or { path, mimeType }
     try {
+        // Vision 分析扣费：仅当输入为图片时扣费
+        const isImageInput = input && typeof input === 'object' &&
+            input.mimeType?.startsWith('image/');
+        if (req.user && isImageInput) {
+            const deductResult = await PointsService.deductPoints(
+                req.user.id,
+                'vision_analyze',
+                projectId,
+                'AI 视觉分析模版'
+            );
+            if (!deductResult.success) {
+                res.status(402).json({
+                    success: false,
+                    error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
+                });
+                return;
+            }
+        }
+
         const settings = await getServerSettings();
         const result = await AIService.analyzeTemplateConcept(input, settings);
         res.json({ success: true, data: result });
@@ -87,8 +107,24 @@ export const handleExtractText = async (req: Request, res: Response) => {
 };
 
 export const handleGenerateOutline = async (req: Request, res: Response) => {
-    const { topic, configStyle } = req.body;
+    const { topic, configStyle, projectId } = req.body;
     try {
+        // 积分扣费（登录用户扣费，未登录免费）
+        if (req.user) {
+            const deductResult = await PointsService.deductPoints(
+                req.user.id,
+                'outline_generation',
+                projectId
+            );
+            if (!deductResult.success) {
+                res.status(402).json({
+                    success: false,
+                    error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
+                });
+                return;
+            }
+        }
+
         const settings = await getServerSettings();
         const result = await AIService.generateOutline(topic, configStyle, settings);
         res.json({ success: true, data: result });
@@ -110,8 +146,25 @@ export const handleGenerateSingleOutlineItem = async (req: Request, res: Respons
 };
 
 export const handleGenerateSlideDetail = async (req: Request, res: Response) => {
-    const { title, brief, topicContext, index, total, pageType } = req.body;
+    const { title, brief, topicContext, index, total, pageType, projectId } = req.body;
     try {
+        // 积分扣费（登录用户扣费，未登录免费）
+        if (req.user) {
+            const deductResult = await PointsService.deductPoints(
+                req.user.id,
+                'slide_content',
+                projectId,
+                `幻灯片内容: ${title}`
+            );
+            if (!deductResult.success) {
+                res.status(402).json({
+                    success: false,
+                    error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
+                });
+                return;
+            }
+        }
+
         const settings = await getServerSettings();
         const result = await AIService.generateSlideDetail(title, brief, topicContext, index, total, pageType, settings);
         res.json({ success: true, data: result });
@@ -133,12 +186,33 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
         pageType,
         fullContent,
         globalStyleMap,
-        allSlideTitles
+        allSlideTitles,
+        projectId
     } = req.body;
 
     console.log(`[handleGenerateSlideVariant] Request for: ${variantLabel} (Title: ${title || 'N/A'}), PageType: ${pageType || 'N/A'}`);
 
     try {
+        // 配图生成扣费（仅当 variantLabel 包含 image 时扣费）
+        const isImageGeneration = variantLabel?.toLowerCase().includes('image') ||
+            variantLabel?.toLowerCase().includes('背景') ||
+            variantLabel?.toLowerCase().includes('配图');
+        if (req.user && isImageGeneration) {
+            const deductResult = await PointsService.deductPoints(
+                req.user.id,
+                'slide_image',
+                projectId,
+                `配图生成: ${title || variantLabel}`
+            );
+            if (!deductResult.success) {
+                res.status(402).json({
+                    success: false,
+                    error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
+                });
+                return;
+            }
+        }
+
         const settings = await getServerSettings();
         const result = await AIService.generateSlideVariant(
             contentSource,

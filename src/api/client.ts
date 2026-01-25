@@ -1,5 +1,8 @@
 import axios from 'axios';
 
+// Token 存储键名
+export const TOKEN_KEY = 'bananaslides_token';
+
 // Base API client
 export const client = axios.create({
     baseURL: '/api', // Proxy handles forwarding to localhost:1111
@@ -8,11 +11,35 @@ export const client = axios.create({
     },
 });
 
+// 🆕 请求拦截器：自动附加 Token
+client.interceptors.request.use(
+    (config) => {
+        const token = localStorage.getItem(TOKEN_KEY);
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
+
 // Response interceptor for error handling
 client.interceptors.response.use(
     (response) => response.data,
     (error) => {
-        let message = error.response?.data?.error || error.message;
+        let message = error.response?.data?.error?.message || error.response?.data?.error || error.message;
+
+        // 🆕 处理 401 未授权：自动清除 Token 并触发登出事件
+        if (error.response?.status === 401) {
+            localStorage.removeItem(TOKEN_KEY);
+            window.dispatchEvent(new CustomEvent('auth:logout'));
+            message = error.response?.data?.error?.message || '登录已过期，请重新登录';
+        }
+
+        // 🆕 处理 403 权限不足
+        if (error.response?.status === 403) {
+            message = error.response?.data?.error?.message || '权限不足';
+        }
 
         // Friendly error for 502/504 (Proxy Issues)
         if (error.response?.status === 502) {
@@ -27,6 +54,7 @@ client.interceptors.response.use(
         return Promise.reject(new Error(message));
     }
 );
+
 
 /**
  * Upload a file to the backend

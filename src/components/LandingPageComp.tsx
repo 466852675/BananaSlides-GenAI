@@ -27,6 +27,7 @@ import { ShowcaseTabs } from './ShowcaseTabs'; // Import new component
 import { DeliveryShowcase } from './DeliveryShowcase';
 import { MagneticButton } from './MagneticButton';
 import { MacWindowHeader } from './MacWindowHeader';
+import { UserWidget } from './auth';
 
 const TESTIMONIALS = [
     { name: "Alex Chen", role: "科技博主", comment: "BananaSlides 是我见过的最懂'结构'的 PPT 工具。它不是在堆砌素材，而是在帮你梳理逻辑。Router-Adapter 架构让我在不同模型间切换自如。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" },
@@ -323,7 +324,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
                             >
                                 <Layout size={20} />
                             </button>
-                            <button className="hidden md:block text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">登录</button>
+                            <div className="hidden md:block">
+                                <UserWidget compact onEnterApp={onEnter} />
+                            </div>
                             <button
                                 onClick={onEnter}
                                 className="px-5 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-full hover:bg-blue-600 hover:scale-105 active:scale-95 transition-all shadow-lg shadow-blue-500/20 flex items-center gap-2"

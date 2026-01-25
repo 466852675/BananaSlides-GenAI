@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { PointsBadge } from './PointsBadge';
 import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser, Eye, Edit3, Upload, Download } from 'lucide-react';
 import { refinePrompt, smartRefine, generateOutline, generateSlideDetail, generateSingleOutlineItem } from '../services/geminiService';
 import { extractTextFromUpload } from '../utils/fileParser';
 import { OutlineItem, GeneratedSlide, StyleConfig, PageType, AppSettings } from '../types';
+
 import { ConfirmDialog } from './ConfirmDialog';
 import { AIGlowContainer } from './AIGlowContainer';
 import { ToastMessage } from './Toast';
@@ -831,7 +833,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                                     className="text-xs flex items-center gap-1 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50 font-medium"
                                                 >
                                                     {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                                    AI 智能修饰
+                                                    AI 智能修饰 <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-1" />
                                                 </button>
                                             </div>
                                         </div>
@@ -910,7 +912,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                                             className="text-xs flex items-center gap-1 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50 font-medium"
                                                         >
                                                             {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                                            AI 智能修饰
+                                                            AI 智能修饰 <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-1" />
                                                         </button>
                                                     </div>
                                                 </div>
@@ -936,7 +938,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                             disabled={!(activeTab === 'file' ? fileParsedContent.trim() : topic.trim())}
                                             className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl font-bold text-base shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:shadow-none"
                                         >
-                                            <Wand2 size={18} /> 一键生成 PPT 大纲
+                                            <Wand2 size={18} /> 一键生成 PPT 大纲 <PointsBadge actionCode="outline_generation" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
                                         </button>
                                     )}
                                 </div>
@@ -958,7 +960,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                 </div>
                                 <div className="flex gap-2">
                                     <button onClick={handleClearAllOutlineItems} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-red-50 transition-all"><Eraser size={14} /> 清空内容</button>
-                                    <button onClick={handleGenerateOutline} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 shadow-sm transition-all"><RefreshCw size={14} /> 重新生成大纲</button>
+                                    <button onClick={handleGenerateOutline} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 shadow-sm transition-all"><RefreshCw size={14} /> 重新生成大纲 <PointsBadge actionCode="outline_generation" compact /></button>
                                     <button onClick={proceedToDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200 font-medium">
                                         下一步: 生成详细内容 <ArrowRight size={18} />
                                     </button>
