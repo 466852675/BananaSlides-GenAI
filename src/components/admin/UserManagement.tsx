@@ -1,19 +1,22 @@
 // src/components/admin/UserManagement.tsx
-// 用户管理页面
+// 用户管理页面 - 视觉重构版 (Glassmorphism)
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
     Search,
     Filter,
-    MoreVertical,
     Edit2,
     Key,
     Ban,
     Check,
     ChevronLeft,
     ChevronRight,
+    User as UserIcon,
+    MoreHorizontal,
     Shield,
-    User as UserIcon
+    Mail,
+    Calendar,
+    CheckCircle
 } from 'lucide-react';
 import * as AdminAPI from '../../api/admin';
 
@@ -61,23 +64,34 @@ export const UserManagement: React.FC = () => {
     // 格式化时间
     const formatDate = (dateStr: string | null) => {
         if (!dateStr) return '-';
-        return new Date(dateStr).toLocaleString('zh-CN');
+        return new Date(dateStr).toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
     };
 
     // 角色标签
     const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
-        const colors: Record<string, string> = {
-            'SUPER_ADMIN': 'bg-red-100 text-red-700',
-            'ADMIN': 'bg-amber-100 text-amber-700',
-            'USER': 'bg-slate-100 text-slate-600'
+        const styles: Record<string, string> = {
+            'SUPER_ADMIN': 'bg-amber-100 text-amber-700 border-amber-200',
+            'ADMIN': 'bg-blue-100 text-blue-700 border-blue-200',
+            'ENTERPRISE': 'bg-indigo-100 text-indigo-700 border-indigo-200',
+            'PROFESSIONAL': 'bg-violet-100 text-violet-700 border-violet-200',
+            'USER': 'bg-slate-100 text-slate-600 border-slate-200'
         };
         const labels: Record<string, string> = {
             'SUPER_ADMIN': '超级管理员',
             'ADMIN': '管理员',
+            'ENTERPRISE': '企业用户',
+            'PROFESSIONAL': '专业用户',
             'USER': '普通用户'
         };
         return (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[role] || colors['USER']}`}>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${styles[role] || styles['USER']} flex items-center gap-1 w-fit`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
                 {labels[role] || role}
             </span>
         );
@@ -85,174 +99,237 @@ export const UserManagement: React.FC = () => {
 
     // 状态标签
     const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
-        const colors: Record<string, string> = {
-            'ACTIVE': 'bg-green-100 text-green-700',
-            'DISABLED': 'bg-red-100 text-red-700',
-            'PENDING': 'bg-yellow-100 text-yellow-700'
+        const styles: Record<string, string> = {
+            'ACTIVE': 'bg-emerald-50 text-emerald-600 border-emerald-100',
+            'DISABLED': 'bg-rose-50 text-rose-600 border-rose-100',
+            'PENDING': 'bg-amber-50 text-amber-600 border-amber-100'
         };
         const labels: Record<string, string> = {
             'ACTIVE': '正常',
-            'DISABLED': '已禁用',
+            'DISABLED': '禁用',
             'PENDING': '待验证'
         };
         return (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] || colors['PENDING']}`}>
+            <div className={`px-2.5 py-1 rounded-lg text-xs font-bold border flex items-center gap-1.5 w-fit ${styles[status] || styles['PENDING']}`}>
+                {status === 'ACTIVE' && <CheckCircle size={12} />}
+                {status === 'DISABLED' && <Ban size={12} />}
                 {labels[status] || status}
-            </span>
+            </div>
         );
     };
 
     return (
-        <div className="space-y-6">
-            {/* 筛选栏 */}
-            <div className="flex flex-wrap items-center gap-4">
-                {/* 搜索框 */}
-                <div className="relative flex-1 min-w-[200px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Header / Intro */}
+            <div className="bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-3xl p-8 text-white shadow-xl shadow-violet-500/20 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
+                <div className="relative z-10 flex items-center gap-6">
+                    <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
+                        <UserIcon size={32} />
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-black tracking-tight mb-2">用户中心</h2>
+                        <p className="text-violet-100 font-medium opacity-90 max-w-xl">
+                            全平台用户账号管理，支持搜索筛选、状态冻结及角色权限变更。
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-white/60 shadow-sm flex flex-wrap items-center gap-4">
+                <div className="relative flex-1 min-w-[240px]">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
                     <input
                         type="text"
                         placeholder="搜索邮箱、用户名、昵称..."
                         value={keyword}
                         onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
-                        className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 outline-none transition-all"
+                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none transition-all font-medium"
                     />
                 </div>
 
-                {/* 角色筛选 */}
-                <select
-                    value={roleFilter}
-                    onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
-                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-violet-500 outline-none"
-                >
-                    <option value="">全部角色</option>
-                    <option value="USER">普通用户</option>
-                    <option value="ADMIN">管理员</option>
-                    <option value="SUPER_ADMIN">超级管理员</option>
-                </select>
+                <div className="flex gap-3">
+                    <div className="relative">
+                        <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <select
+                            value={roleFilter}
+                            onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
+                            className="pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[140px]"
+                        >
+                            <option value="">全部角色</option>
+                            <option value="USER">普通用户</option>
+                            <option value="PROFESSIONAL">专业用户</option>
+                            <option value="ENTERPRISE">企业用户</option>
+                            <option value="ADMIN">管理员</option>
+                            <option value="SUPER_ADMIN">超级管理员</option>
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Filter size={12} />
+                        </div>
+                    </div>
 
-                {/* 状态筛选 */}
-                <select
-                    value={statusFilter}
-                    onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:border-violet-500 outline-none"
-                >
-                    <option value="">全部状态</option>
-                    <option value="ACTIVE">正常</option>
-                    <option value="DISABLED">已禁用</option>
-                    <option value="PENDING">待验证</option>
-                </select>
+                    <div className="relative">
+                        <CheckCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                            className="pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[140px]"
+                        >
+                            <option value="">全部状态</option>
+                            <option value="ACTIVE">正常</option>
+                            <option value="DISABLED">已禁用</option>
+                            <option value="PENDING">待验证</option>
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Filter size={12} />
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            {/* 用户表格 */}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            {/* Users Table */}
+            <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
                 {loading ? (
-                    <div className="flex items-center justify-center h-64">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-violet-600 border-t-transparent" />
+                    <div className="flex items-center justify-center h-80">
+                        <div className="relative">
+                            <div className="w-12 h-12 rounded-full border-4 border-violet-100 animate-pulse"></div>
+                            <div className="absolute top-0 left-0 w-12 h-12 rounded-full border-4 border-violet-500 border-t-transparent animate-spin"></div>
+                        </div>
                     </div>
                 ) : error ? (
-                    <div className="p-6 text-center text-red-600">{error}</div>
+                    <div className="p-12 text-center flex flex-col items-center gap-4">
+                        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center text-red-500">
+                            <Ban size={32} />
+                        </div>
+                        <div className="text-slate-600 font-medium">{error}</div>
+                        <button onClick={loadUsers} className="text-violet-600 font-bold hover:underline">重试</button>
+                    </div>
                 ) : users.length === 0 ? (
-                    <div className="p-12 text-center text-slate-400">
-                        <UserIcon size={48} className="mx-auto mb-4 opacity-50" />
-                        <div>暂无用户数据</div>
+                    <div className="p-16 text-center flex flex-col items-center gap-4">
+                        <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-300">
+                            <UserIcon size={40} />
+                        </div>
+                        <div className="text-slate-500 font-medium">没找到符合条件的用户</div>
+                        <button onClick={() => { setKeyword(''); setRoleFilter(''); setStatusFilter(''); }} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-bold text-slate-600 transition-colors">
+                            清除筛选条件
+                        </button>
                     </div>
                 ) : (
-                    <table className="w-full">
-                        <thead className="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">用户</th>
-                                <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">角色</th>
-                                <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">状态</th>
-                                <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">积分</th>
-                                <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">项目数</th>
-                                <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">注册时间</th>
-                                <th className="text-right text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {users.map((user) => (
-                                <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white text-sm font-medium">
-                                                {user.avatar ? (
-                                                    <img src={user.avatar} alt="" className="w-full h-full rounded-full object-cover" />
-                                                ) : (
-                                                    (user.nickname || user.email || 'U')[0].toUpperCase()
-                                                )}
-                                            </div>
-                                            <div>
-                                                <div className="text-sm font-medium text-slate-800">
-                                                    {user.nickname || user.username || '未设置昵称'}
-                                                </div>
-                                                <div className="text-xs text-slate-500">{user.email}</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <RoleBadge role={user.role} />
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <StatusBadge status={user.status} />
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className="text-sm text-slate-600">{user.points}</span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className="text-sm text-slate-600">{user.projectCount || 0}</span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className="text-sm text-slate-500">{formatDate(user.createdAt)}</span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <button
-                                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                                                title="编辑"
-                                            >
-                                                <Edit2 size={16} />
-                                            </button>
-                                            <button
-                                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                                                title="重置密码"
-                                            >
-                                                <Key size={16} />
-                                            </button>
-                                            <button
-                                                className={`p-2 rounded-lg transition-colors ${user.status === 'DISABLED'
-                                                    ? 'text-green-500 hover:text-green-600 hover:bg-green-50'
-                                                    : 'text-red-400 hover:text-red-600 hover:bg-red-50'
-                                                    }`}
-                                                title={user.status === 'DISABLED' ? '启用' : '禁用'}
-                                            >
-                                                {user.status === 'DISABLED' ? <Check size={16} /> : <Ban size={16} />}
-                                            </button>
-                                        </div>
-                                    </td>
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b border-slate-100/60 bg-slate-50/50">
+                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">基本信息</th>
+                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">身份角色</th>
+                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">账号状态</th>
+                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">积分余额</th>
+                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">项目数据</th>
+                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">注册时间</th>
+                                    <th className="text-right text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">操作</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100/60">
+                                {users.map((user) => (
+                                    <tr key={user.id} className="group hover:bg-violet-50/30 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-violet-500/20">
+                                                    {user.avatar ? (
+                                                        <img src={user.avatar} alt="" className="w-full h-full rounded-full object-cover" />
+                                                    ) : (
+                                                        (user.nickname || user.email || 'U')[0].toUpperCase()
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-bold text-slate-800">
+                                                        {user.nickname || (user.username ? `@${user.username}` : '未命名用户')}
+                                                    </div>
+                                                    <div className="text-xs text-slate-500 font-mono mt-0.5 flex items-center gap-1">
+                                                        <Mail size={10} />
+                                                        {user.email || '无邮箱'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <RoleBadge role={user.role} />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <StatusBadge status={user.status} />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="font-mono font-bold text-slate-700">
+                                                {user.points.toLocaleString()} <span className="text-xs text-slate-400 font-normal">PTS</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm font-medium text-slate-600">
+                                                {user.projectCount || 0} <span className="text-slate-400 text-xs">个项目</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                <Calendar size={12} />
+                                                {formatDate(user.createdAt).split(' ')[0]}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 pl-4.5">
+                                                {formatDate(user.createdAt).split(' ')[1]}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                                                <button
+                                                    className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                                                    title="编辑详情"
+                                                >
+                                                    <Edit2 size={16} />
+                                                </button>
+                                                <button
+                                                    className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                    title="重置密码"
+                                                >
+                                                    <Key size={16} />
+                                                </button>
+                                                <button
+                                                    className={`p-2 rounded-lg transition-colors ${user.status === 'DISABLED'
+                                                        ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50'
+                                                        : 'text-rose-400 hover:text-rose-600 hover:bg-rose-50'
+                                                        }`}
+                                                    title={user.status === 'DISABLED' ? '启用账号' : '禁用账号'}
+                                                >
+                                                    {user.status === 'DISABLED' ? <Check size={16} /> : <Ban size={16} />}
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
 
-                {/* 分页 */}
+                {/* Pagination */}
                 {!loading && users.length > 0 && (
-                    <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200">
-                        <div className="text-sm text-slate-500">
-                            共 {pagination.total} 条记录，第 {page} / {pagination.totalPages} 页
+                    <div className="flex items-center justify-between px-8 py-5 border-t border-slate-100/60 bg-slate-50/30">
+                        <div className="text-sm text-slate-500 font-medium">
+                            显示第 <span className="font-bold text-slate-800">{(page - 1) * 20 + 1}</span> 到 <span className="font-bold text-slate-800">{Math.min(page * 20, pagination.total)}</span> 条，共 <span className="font-bold text-slate-800">{pagination.total}</span> 条
                         </div>
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={() => setPage(p => Math.max(1, p - 1))}
                                 disabled={page <= 1}
-                                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-white hover:border-violet-200 hover:text-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                             >
                                 <ChevronLeft size={16} />
                             </button>
+                            <span className="px-4 py-2 bg-white rounded-xl border border-slate-200 text-sm font-bold text-slate-700 shadow-sm">
+                                {page} / {pagination.totalPages}
+                            </span>
                             <button
                                 onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
                                 disabled={page >= pagination.totalPages}
-                                className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-white hover:border-violet-200 hover:text-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                             >
                                 <ChevronRight size={16} />
                             </button>

@@ -16,6 +16,8 @@ const safeJSONStringify = (obj: any) => {
     return JSON.stringify(obj);
 };
 
+const getOwnerId = (req: Request) => (req as any).user?.id as string;
+
 const transformTemplateOut = (t: any) => {
     if (!t) return null;
     return {
@@ -27,7 +29,8 @@ const transformTemplateOut = (t: any) => {
 
 export const getTemplates = async (req: Request, res: Response) => {
     try {
-        const raw = await templateService.findAll();
+        const ownerId = getOwnerId(req);
+        const raw = await templateService.findAll(ownerId);
         const templates = raw.map(transformTemplateOut);
         res.json(templates);
     } catch (error: any) {
@@ -37,6 +40,7 @@ export const getTemplates = async (req: Request, res: Response) => {
 
 export const createTemplate = async (req: Request, res: Response) => {
     try {
+        const ownerId = getOwnerId(req);
         const { name, config, styleMap, isCustom } = req.body;
         const data = {
             name,
@@ -44,7 +48,7 @@ export const createTemplate = async (req: Request, res: Response) => {
             styleMap: safeJSONStringify(styleMap),
             isCustom: isCustom !== undefined ? isCustom : true
         };
-        const result = await templateService.create(data);
+        const result = await templateService.create(ownerId, data);
         res.status(201).json(transformTemplateOut(result));
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -53,6 +57,7 @@ export const createTemplate = async (req: Request, res: Response) => {
 
 export const updateTemplate = async (req: Request, res: Response) => {
     try {
+        const ownerId = getOwnerId(req);
         const id = req.params.id as string;
         const { name, config, styleMap, isRecommended, recommendCount, favoriteCount, usageCount, isOfficial } = req.body;
 
@@ -66,7 +71,7 @@ export const updateTemplate = async (req: Request, res: Response) => {
         if (usageCount !== undefined) updateData.usageCount = usageCount;
         if (isOfficial !== undefined) updateData.isOfficial = isOfficial;
 
-        const result = await templateService.update(id, updateData);
+        const result = await templateService.update(id, ownerId, updateData);
         res.json(transformTemplateOut(result));
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -75,8 +80,9 @@ export const updateTemplate = async (req: Request, res: Response) => {
 
 export const deleteTemplate = async (req: Request, res: Response) => {
     try {
+        const ownerId = getOwnerId(req);
         const id = req.params.id as string;
-        await templateService.delete(id);
+        await templateService.delete(id, ownerId);
         res.json({ success: true });
     } catch (error: any) {
         res.status(500).json({ error: error.message });

@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
 import { snapshotService } from '../services/snapshot.service';
 
+const getOwnerId = (req: Request) => (req as any).user?.id as string | undefined;
+
 export class SnapshotController {
-    
-    async create(req: Request, res: Response) {
+    create = async (req: Request, res: Response) => {
         try {
+            const ownerId = getOwnerId(req);
+            if (!ownerId) return res.status(401).json({ error: 'UNAUTHORIZED' });
             const projectId = req.params.projectId as string;
             // Frontend should define structure: { projectData: ..., settings: ... }
             const { projectData, settings } = req.body;
@@ -14,7 +17,7 @@ export class SnapshotController {
             }
             
             console.log(`[SnapshotController] Creating snapshot for project: ${projectId}`);
-            const snapshot = await snapshotService.create(projectId, projectData, settings);
+            const snapshot = await snapshotService.create(projectId, ownerId, projectData, settings);
             console.log(`[SnapshotController] Snapshot created: id=${snapshot.id}, version=${snapshot.version}`);
             
             res.json(snapshot);
@@ -22,14 +25,16 @@ export class SnapshotController {
             console.error("[SnapshotController] Snapshot create error:", error);
             res.status(500).json({ error: error.message });
         }
-    }
+    };
 
-    async findAll(req: Request, res: Response) {
+    findAll = async (req: Request, res: Response) => {
         try {
+            const ownerId = getOwnerId(req);
+            if (!ownerId) return res.status(401).json({ error: 'UNAUTHORIZED' });
             const projectId = req.params.projectId as string;
             console.log(`[SnapshotController] Listing snapshots for project: ${projectId}`);
             
-            const snapshots = await snapshotService.findAll(projectId);
+            const snapshots = await snapshotService.findAll(projectId, ownerId);
             console.log(`[SnapshotController] Found ${snapshots.length} snapshots:`, snapshots.map((s: any) => ({ id: s.id, version: s.version })));
             
             res.json(snapshots);
@@ -37,14 +42,16 @@ export class SnapshotController {
              console.error("[SnapshotController] Snapshot list error:", error);
             res.status(500).json({ error: error.message });
         }
-    }
+    };
 
-    async getOne(req: Request, res: Response) {
+    getOne = async (req: Request, res: Response) => {
         try {
+            const ownerId = getOwnerId(req);
+            if (!ownerId) return res.status(401).json({ error: 'UNAUTHORIZED' });
             const snapshotId = req.params.snapshotId as string;
             console.log(`[SnapshotController] Fetching snapshot with ID: ${snapshotId}`);
             
-            const snapshot = await snapshotService.findById(snapshotId);
+            const snapshot = await snapshotService.findById(snapshotId, ownerId);
             
             if (!snapshot) {
                 console.warn(`[SnapshotController] Snapshot not found: ${snapshotId}`);
@@ -57,28 +64,36 @@ export class SnapshotController {
             console.error("[SnapshotController] Error fetching snapshot:", error);
             res.status(500).json({ error: error.message });
         }
-    }
+    };
     
-    async restore(req: Request, res: Response) {
+    restore = async (req: Request, res: Response) => {
         try {
+            const ownerId = getOwnerId(req);
+            if (!ownerId) return res.status(401).json({ error: 'UNAUTHORIZED' });
             const snapshotId = req.params.snapshotId as string;
-            const result = await snapshotService.restore(snapshotId);
+            const result = await snapshotService.restore(snapshotId, ownerId);
             res.json(result);
         } catch (error: any) {
              console.error("Snapshot restore error", error);
             res.status(500).json({ error: error.message });
         }
-    }
+    };
     
-    async delete(req: Request, res: Response) {
+    delete = async (req: Request, res: Response) => {
         try {
+            const ownerId = getOwnerId(req);
+            if (!ownerId) return res.status(401).json({ error: 'UNAUTHORIZED' });
             const snapshotId = req.params.snapshotId as string;
-            await snapshotService.delete(snapshotId);
+            const result = await snapshotService.delete(snapshotId, ownerId);
+            if (!result) {
+                res.status(404).json({ error: "Snapshot not found" });
+                return;
+            }
             res.json({ success: true });
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
-    }
+    };
 }
 
 export const snapshotController = new SnapshotController();

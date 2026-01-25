@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { projectService } from '../services/project.service';
+import { quotaService } from '../services/quota.service';
 
 // --- Helpers ---
 const safeJSONParse = (str: string | null | any) => {
@@ -20,6 +21,9 @@ const safeJSONStringify = (obj: any) => {
     return JSON.stringify(obj);
 };
 
+const getOwnerId = (req: Request) => (req as any).user?.id as string;
+const allowedScenarioTypes = new Set(['ACADEMIC', 'BUSINESS', 'CREATIVE']);
+
 const transformProjectOut = (p: any) => {
     if (!p) return null;
     return {
@@ -38,7 +42,8 @@ const transformProjectOut = (p: any) => {
 
 export const getProjects = async (req: Request, res: Response) => {
     try {
-        const rawProjects = await projectService.findAll();
+        const ownerId = getOwnerId(req);
+        const rawProjects = await projectService.findAll(ownerId);
         const projects = rawProjects.map(transformProjectOut);
         res.json(projects);
     } catch (error: any) {
@@ -48,7 +53,8 @@ export const getProjects = async (req: Request, res: Response) => {
 
 export const getProject = async (req: Request, res: Response) => {
     try {
-        const rawProject = await projectService.findById(req.params.id as string);
+        const ownerId = getOwnerId(req);
+        const rawProject = await projectService.findById(req.params.id as string, ownerId);
         if (!rawProject) {
             res.status(404).json({ error: 'Project not found' });
             return;
@@ -61,7 +67,20 @@ export const getProject = async (req: Request, res: Response) => {
 
 export const createProject = async (req: Request, res: Response) => {
     try {
-        const { title, status, isPinned, globalConfig, styleMap, globalStyleMap, items, thumbnailUrl } = req.body;
+        const ownerId = getOwnerId(req);
+        const isPro = Boolean((req as any).user?.isPro);
+        const { title, status, isPinned, globalConfig, styleMap, globalStyleMap, items, thumbnailUrl, scenarioType } = req.body;
+        if (scenarioType !== undefined && scenarioType !== null && !allowedScenarioTypes.has(String(scenarioType))) {
+            res.status(400).json({ error: 'INVALID_SCENARIO_TYPE' });
+            return;
+        }
+
+        const limit = quotaService.getDefaultLimit('project_count', isPro);
+        const currentCount = await projectService.countActive(ownerId);
+        if (limit > 0 && currentCount >= limit) {
+            res.status(403).json({ error: 'QUOTA_PROJECT_LIMIT', limit, currentCount });
+            return;
+        }
 
         // Transform Input -> Prisma Format
         const projectData: any = {
@@ -69,25 +88,28 @@ export const createProject = async (req: Request, res: Response) => {
             status: status || 'idle', // Use provided status or default to idle
             isPinned: isPinned || false,
             thumbnailUrl,
+            scenarioType: scenarioType || 'BUSINESS',
             globalConfig: safeJSONStringify(globalConfig) || "{}",
             styleMap: safeJSONStringify(styleMap || globalStyleMap),
             items: {
                 create: (items || []).map((item: any, idx: number) => ({
+                    ownerId,
                     index: idx,
                     pageType: item.pageType,
                     contentType: item.contentType,
                     title: item.title || "Untitled",
-                    content: item.content || "",
+                    content: item.textContent || item.content || "",
                     brief: item.brief || "",
                     variantCount: Math.min(Math.max(item.variantCount || 2, 1), 4),
                     variants: safeJSONStringify(item.variants) || "[]",
-                    originalFileRef: safeJSONStringify(item.originalFileRef),
-                    status: item.status || "idle"
+                    previewUrl: item.previewUrl || null,
+                    originalFileRef: safeJSONStringify(item.originalFileRef ?? item.originalFile),
+                    status: item.status === 'completed' ? 'success' : (item.status || "idle")
                 }))
             }
         };
 
-        const result = await projectService.create(projectData);
+        const result = await projectService.create(ownerId, projectData);
         res.status(201).json(transformProjectOut(result));
     } catch (error: any) {
         console.error("Create Project Error:", error);
@@ -97,8 +119,13 @@ export const createProject = async (req: Request, res: Response) => {
 
 export const updateProject = async (req: Request, res: Response) => {
     try {
+        const ownerId = getOwnerId(req);
         const { id } = req.params;
-        const { title, globalConfig, styleMap, status, isPinned, items } = req.body;
+        const { title, globalConfig, styleMap, status, isPinned, scenarioType } = req.body;
+        if (scenarioType !== undefined && scenarioType !== null && !allowedScenarioTypes.has(String(scenarioType))) {
+            res.status(400).json({ error: 'INVALID_SCENARIO_TYPE' });
+            return;
+        }
 
         // This is a simplified update 
         // Real-world might need 'upsert' for items, but Phase 1 focuses on top-level
@@ -114,6 +141,7 @@ export const updateProject = async (req: Request, res: Response) => {
         if (title !== undefined) updateData.title = title;
         if (status !== undefined) updateData.status = status;
         if (isPinned !== undefined) updateData.isPinned = isPinned;
+        if (scenarioType !== undefined) updateData.scenarioType = scenarioType;
         if (globalConfig !== undefined) updateData.globalConfig = safeJSONStringify(globalConfig);
         if (styleMap !== undefined) updateData.styleMap = safeJSONStringify(styleMap);
         // Fallback for frontend alias
@@ -124,7 +152,7 @@ export const updateProject = async (req: Request, res: Response) => {
         // so that pinning/unpinning doesn't change the project's sort order (last active time).
         const updateKeys = Object.keys(updateData);
         if (updateKeys.length === 1 && updateKeys[0] === 'isPinned') {
-            const result = await projectService.setPinnedStatus(id as string, isPinned);
+            const result = await projectService.setPinnedStatus(id as string, ownerId, isPinned);
             if (result) {
                 res.json(transformProjectOut(result));
             } else {
@@ -133,7 +161,11 @@ export const updateProject = async (req: Request, res: Response) => {
             return;
         }
 
-        const result = await projectService.update(id as string, updateData);
+        const result = await projectService.update(id as string, ownerId, updateData);
+        if (!result) {
+            res.status(404).json({ error: 'Project not found' });
+            return;
+        }
         res.json(transformProjectOut(result));
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -142,6 +174,7 @@ export const updateProject = async (req: Request, res: Response) => {
 
 export const syncProjectSlides = async (req: Request, res: Response) => {
     try {
+        const ownerId = getOwnerId(req);
         const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
         const { slides } = req.body;
 
@@ -150,7 +183,11 @@ export const syncProjectSlides = async (req: Request, res: Response) => {
             return;
         }
 
-        const result = await projectService.syncSlides(id, slides);
+        const result = await projectService.syncSlides(id, ownerId, slides);
+        if (!result) {
+            res.status(404).json({ error: 'Project not found' });
+            return;
+        }
         res.json(transformProjectOut(result));
     } catch (error: any) {
         console.error('Sync Slides Error:', error);
@@ -158,10 +195,41 @@ export const syncProjectSlides = async (req: Request, res: Response) => {
     }
 };
 
+export const getTrashProjects = async (req: Request, res: Response) => {
+    try {
+        const ownerId = getOwnerId(req);
+        const rawProjects = await projectService.listTrash(ownerId);
+        const projects = rawProjects.map(transformProjectOut);
+        res.json(projects);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const restoreProject = async (req: Request, res: Response) => {
+    try {
+        const ownerId = getOwnerId(req);
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const result = await projectService.restore(id, ownerId);
+        if (!result) {
+            res.status(404).json({ error: 'Project not found' });
+            return;
+        }
+        res.json(transformProjectOut(result));
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 export const deleteProject = async (req: Request, res: Response) => {
     try {
+        const ownerId = getOwnerId(req);
         const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-        await projectService.delete(id);
+        const result = await projectService.softDelete(id, ownerId);
+        if (!result) {
+            res.status(404).json({ error: 'Project not found' });
+            return;
+        }
         res.json({ success: true });
     } catch (error: any) {
         res.status(500).json({ error: error.message });

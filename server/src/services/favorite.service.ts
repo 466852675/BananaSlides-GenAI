@@ -5,32 +5,36 @@ const prisma = new PrismaClient();
 export class FavoriteService {
 
     // Get all
-    async findAll() {
+    async findAll(userId: string) {
         return prisma.favorite.findMany({
+            where: { userId },
             include: { template: true },
             orderBy: { createdAt: 'desc' }
         });
     }
 
     // Get by ID
-    async findById(id: string) {
-        return prisma.favorite.findUnique({
-            where: { id }
-        });
+    async findById(id: string, userId: string) {
+        const favorite = await prisma.favorite.findUnique({ where: { id } });
+        if (!favorite || favorite.userId !== userId) return null;
+        return favorite;
     }
 
     // Create
-    async create(data: Prisma.FavoriteCreateInput) {
+    async create(userId: string, data: any) {
         return prisma.favorite.create({
-            data
+            data: {
+                ...data,
+                userId
+            } as any
         });
     }
 
     // Delete
-    async delete(id: string) {
-        return prisma.favorite.delete({
-            where: { id }
-        });
+    async delete(id: string, userId: string) {
+        const favorite = await prisma.favorite.findUnique({ where: { id } });
+        if (!favorite || favorite.userId !== userId) return null;
+        return prisma.favorite.delete({ where: { id } });
     }
 }
 

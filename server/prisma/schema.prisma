@@ -16,6 +16,8 @@ generator client {
 // 用户角色
 enum UserRole {
   USER        // 普通用户
+  PROFESSIONAL // 专业用户
+  ENTERPRISE  // 企业用户
   ADMIN       // 管理员
   SUPER_ADMIN // 超级管理员
 }
@@ -262,6 +264,7 @@ model Project {
   displayId    String?  // Human-readable ID like PID-240114-ABCD
   status       String   @default("idle") // 'idle' | 'generating' | 'completed' | 'error'
   isPinned     Boolean  @default(false)
+  scenarioType String   @default("BUSINESS") // 'ACADEMIC' | 'BUSINESS' | 'CREATIVE'
   
   // JSON Blobs (Store complex config structures)
   // Maps to Frontend: StyleConfig

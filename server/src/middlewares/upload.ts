@@ -20,5 +20,34 @@ const storage = multer.diskStorage({
     }
 });
 
-// Filter? Maybe images/docs only later.
-export const uploadMiddleware = multer({ storage: storage });
+const allowedMimeTypes = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain'
+]);
+
+const allowedExt = new Set(['.png', '.jpg', '.jpeg', '.webp', '.pdf', '.docx', '.txt']);
+
+const fileFilter: multer.Options['fileFilter'] = (_req, file, cb) => {
+    if (!allowedMimeTypes.has(file.mimetype)) {
+        cb(new Error('UNSUPPORTED_FILE_TYPE'));
+        return;
+    }
+    const ext = (path.extname(file.originalname) || '').toLowerCase();
+    if (ext && !allowedExt.has(ext)) {
+        cb(new Error('UNSUPPORTED_FILE_EXTENSION'));
+        return;
+    }
+    cb(null, true);
+};
+
+export const uploadMiddleware = multer({
+    storage,
+    fileFilter,
+    limits: {
+        fileSize: 50 * 1024 * 1024
+    }
+});

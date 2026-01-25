@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { client } from './client';
 import { StylePreset, StyleConfig, GlobalStyleMap } from '../types';
+import { getAuthToken } from '../utils/auth';
 
 export interface FavoriteDTO {
     id: string;
@@ -46,6 +47,7 @@ export const useFavorites = () => {
             const res = await client.get('/favorites');
             return (res as unknown as FavoriteDTO[]).map(transformFavorite);
         },
+        enabled: Boolean(getAuthToken()),
         staleTime: 1000 * 60 * 5 // 5 minutes
     });
 };

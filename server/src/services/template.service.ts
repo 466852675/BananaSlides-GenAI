@@ -5,28 +5,45 @@ const prisma = new PrismaClient();
 export class TemplateService {
 
     // Get all (system + user)
-    async findAll() {
+    // Get all (system + user)
+    async findAll(userId: string) {
         return prisma.styleTemplate.findMany({
+            where: {
+                OR: [
+                    { isOfficial: true },
+                    { userId }
+                ]
+            },
             orderBy: { createdAt: 'desc' }
         });
     }
 
     // Get by ID
-    async findById(id: string) {
-        return prisma.styleTemplate.findUnique({
-            where: { id }
-        });
+    async findById(id: string, userId: string) {
+        const template = await prisma.styleTemplate.findUnique({ where: { id } });
+        if (!template) return null;
+        if ((template as any).isOfficial) return template;
+        if (template.userId !== userId) return null;
+        return template;
     }
 
     // Create
-    async create(data: Prisma.StyleTemplateCreateInput) {
+    async create(userId: string, data: any) {
         return prisma.styleTemplate.create({
-            data
+            data: {
+                ...data,
+                userId
+            } as any
         });
     }
 
     // Update
-    async update(id: string, data: Prisma.StyleTemplateUpdateInput) {
+    async update(id: string, userId: string, data: Prisma.StyleTemplateUpdateInput) {
+        const existing = await prisma.styleTemplate.findUnique({ where: { id } });
+        if (!existing) return null;
+        if (existing.isOfficial) return null;
+        if (existing.userId !== userId) return null;
+
         const result = await prisma.styleTemplate.update({
             where: { id },
             data
@@ -53,10 +70,12 @@ export class TemplateService {
     }
 
     // Delete
-    async delete(id: string) {
-        return prisma.styleTemplate.delete({
-            where: { id }
-        });
+    async delete(id: string, userId: string) {
+        const existing = await prisma.styleTemplate.findUnique({ where: { id } });
+        if (!existing) return null;
+        if (existing.isOfficial) return null;
+        if (existing.userId !== userId) return null;
+        return prisma.styleTemplate.delete({ where: { id } });
     }
 }
 

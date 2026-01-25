@@ -1,15 +1,36 @@
 const { chromium } = require('playwright');
 const path = require('path');
+const fs = require('fs');
 
 const BASE_URL = 'http://localhost:1000';
 const PROJECT_NAME = `UAT_${Date.now()}`;
 
 (async () => {
-  console.log('🍌 Starting Robust UAT Suite (Landing Page Aware)...');
+  console.log('Starting Robust UAT Suite...');
   
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
+  let failures = 0;
+
+  const bootstrapAuth = async () => {
+      const email = `uat_${Date.now()}@test.local`;
+      const password = 'Passw0rd!123';
+      const resp = await fetch('http://127.0.0.1:1111/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json.token) {
+          throw new Error(`Auth bootstrap failed: ${JSON.stringify(json)}`);
+      }
+      await context.addInitScript(({ token }) => {
+          localStorage.setItem('bananaslides_token_v1', token);
+          localStorage.setItem('bananaslides_onboarding_v1', 'completed');
+          sessionStorage.setItem('hasVisitedLanding', 'true');
+      }, { token: json.token });
+  };
 
   const step = async (name, fn) => {
       process.stdout.write(`[TEST] ${name}... `);
@@ -19,10 +40,12 @@ const PROJECT_NAME = `UAT_${Date.now()}`;
       } catch (e) {
           console.log('❌ FAIL');
           console.error(`   Error: ${e.message}`);
+          failures += 1;
       }
   };
 
   try {
+      await bootstrapAuth();
       // 1. Initial Load & Landing Page Bypass
       await step('DB-001: Load & Enter', async () => {
           await page.goto(BASE_URL);
@@ -31,61 +54,52 @@ const PROJECT_NAME = `UAT_${Date.now()}`;
           const title = await page.title();
           console.log(`   (Page Title: "${title}")`);
 
-          // Check if we are on Landing Page
-          const enterBtn = page.locator('button', { hasText: /进入创作室/i });
-          if (await enterBtn.count() > 0) {
-              console.log('   (Landing Page detected, entering Dashboard...)');
+          const enterBtn = page.locator('button', { hasText: /免费开始/i }).first();
+          if (await enterBtn.isVisible()) {
               await enterBtn.click();
-              // Wait for Dashboard
-              await page.waitForSelector('.lucide-plus', { timeout: 10000 });
-          } else {
-              console.log('   (Already on Dashboard)');
           }
+          await page.locator('button', { hasText: /新建项目/i }).first().waitFor({ state: 'visible', timeout: 15000 });
       });
 
       // 2. Create Project (Using Icon Selector)
       await step('PRJ-001: Create New Project', async () => {
-          // Look for the "Create Project" button (Plus icon)
-          // Adjust selector to be more specific if multiple plus icons exist
-          // Dashboard usually has a big "Create" button or card
-          const createBtn = page.locator('button').filter({ has: page.locator('svg.lucide-plus') }).first();
+          const createBtn = page.locator('button', { hasText: /新建项目/i }).first();
           await createBtn.click();
           
-          // Wait for modal input
-          const input = page.locator('input[type="text"]').first(); 
-          await input.waitFor({ state: 'visible' });
+          const input = page.locator('input[id="projectTitle"]');
+          await input.waitFor({ state: 'visible', timeout: 5000 });
           await input.fill(PROJECT_NAME);
           
-          // Submit
-          const submitBtn = page.locator('div[role="dialog"] button.bg-blue-600'); 
-          await submitBtn.click();
+          await page.locator('button', { hasText: /立即创建/i }).first().click();
           
-          // Wait for Workbench (Toolbar should appear)
-          await page.waitForSelector('.lucide-wand2', { timeout: 10000 });
+          await page.waitForURL(/[\?&]project=/i, { timeout: 15000 });
+          await page.locator('text=页面任务列表').first().waitFor({ state: 'visible', timeout: 15000 });
       });
 
       // 3. Workbench: Outline (Using Placeholder)
       await step('OUT-001: Generate Outline', async () => {
-          const input = page.locator('textarea').first();
-          await input.fill('AI Future');
-          
-          // Click Generate
-          const genBtn = page.locator('button.bg-blue-600').first(); 
-          await genBtn.click();
-          
-          // Wait for outline modal
-          await page.waitForTimeout(3000);
+          await page.locator('button', { hasText: /智能生成页面/i }).first().click();
+          const topic = page.locator('textarea[placeholder*="PPT 主题"]').first();
+          await topic.waitFor({ state: 'visible', timeout: 10000 });
+          await topic.fill('AI Future');
+          await page.locator('button', { hasText: /一键生成 PPT 大纲/i }).first().click();
+          await page.locator('text=大纲预览').first().waitFor({ state: 'visible', timeout: 20000 });
+          await page.locator('button', { hasText: /下一步: 生成详细内容/i }).first().click();
+          const confirmBtn = page.locator('button', { hasText: /确认/i }).first();
+          await confirmBtn.waitFor({ state: 'visible', timeout: 10000 });
+          await confirmBtn.click();
+          await page.locator('text=详细内容生成').first().waitFor({ state: 'visible', timeout: 15000 });
+          await page.locator('button', { hasText: /完成并导入工作台/i }).first().click();
+          const importConfirmBtn = page.locator('button', { hasText: /确认/i }).first();
+          await importConfirmBtn.waitFor({ state: 'visible', timeout: 10000 });
+          await importConfirmBtn.click();
+          await page.locator('text=页面任务列表').first().waitFor({ state: 'visible', timeout: 15000 });
       });
 
       // 4. Import Outline
       await step('OUT-002: Import Outline', async () => {
-          // Click import button in modal (usually right-most button)
-          const importBtn = page.locator('div[role="dialog"] button').last();
-          if (await importBtn.isVisible()) {
-              await importBtn.click();
-          }
-          // Wait for cards
-          await page.waitForSelector('img', { timeout: 5000 }); 
+          const badge = page.locator('text=页面任务列表').first();
+          await badge.waitFor({ state: 'visible', timeout: 5000 });
       });
 
       // 5. Settings (Using Icon)
@@ -110,6 +124,7 @@ const PROJECT_NAME = `UAT_${Date.now()}`;
       console.error('Fatal:', e);
   } finally {
       await browser.close();
-      console.log('🏁 Suite Finished.');
+      console.log('Robust UAT Suite Finished.');
+      if (failures > 0) process.exitCode = 1;
   }
 })();

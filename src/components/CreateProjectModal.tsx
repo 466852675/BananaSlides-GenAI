@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, Sparkles } from 'lucide-react';
+import { ScenarioType } from '../types';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (title: string) => void;
+  onCreate: (title: string, scenarioType: ScenarioType) => void;
 }
 
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
@@ -13,12 +14,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   onCreate,
 }) => {
   const [title, setTitle] = useState('');
+  const [scenarioType, setScenarioType] = useState<ScenarioType>('BUSINESS');
   const [error, setError] = useState('');
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setTitle('');
+      setScenarioType('BUSINESS');
       setError('');
     }
   }, [isOpen]);
@@ -27,17 +30,24 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
       setError('请输入项目名称');
       return;
     }
-    onCreate(title.trim());
+    if (trimmedTitle.length > 200) {
+      setError('项目名称不能超过200个字符');
+      return;
+    }
+    onCreate(trimmedTitle, scenarioType);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+    <div onClick={onClose} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
       <div 
+        role="dialog"
+        aria-modal="true"
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
@@ -74,6 +84,22 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               autoFocus
             />
             {error && <p className="text-xs text-rose-500 font-medium">{error}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="scenarioType" className="block text-sm font-medium text-slate-700">
+              场景类型
+            </label>
+            <select
+              id="scenarioType"
+              value={scenarioType}
+              onChange={(e) => setScenarioType(e.target.value as ScenarioType)}
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-blue-200 focus:border-blue-500 focus:ring-4 transition-all outline-none text-slate-700 bg-white"
+            >
+              <option value="BUSINESS">商务汇报</option>
+              <option value="ACADEMIC">学术演示</option>
+              <option value="CREATIVE">创意展示</option>
+            </select>
           </div>
 
           <div className="pt-2 flex gap-3">

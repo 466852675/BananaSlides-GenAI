@@ -10,6 +10,7 @@ import { OrderManagement } from './OrderManagement';
 import { PointsRuleEditor } from './PointsRuleEditor';
 import { RoleManagement } from './RoleManagement';
 import { SystemStats } from './SystemStats';
+import { AICoreEngine } from './AICoreEngine';
 import { SystemSettings } from './SystemSettings';
 import { ProfileCenter } from '../user/ProfileCenter';
 import { PointsHistory } from '../user/PointsHistory';
@@ -26,11 +27,11 @@ const pageTitles: Record<AdminPage, { title: string; subtitle?: string }> = {
     'orders': { title: '订单管理', subtitle: '查看和管理订单' },
     'points-rules': { title: '积分规则', subtitle: '配置积分消耗规则' },
     'roles': { title: '角色权限', subtitle: '管理角色和权限分配' },
+    'ai-engine': { title: 'AI 核心引擎', subtitle: '全局模型路由与参数配置' },
     'settings': { title: '系统设置', subtitle: '系统配置项' },
 };
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
-    console.log('AdminLayout rendering, pageTitles:', pageTitles);
     const [currentPage, setCurrentPage] = useState<AdminPage>('dashboard');
     const { isAdmin, isLoading } = useAuth();
 
@@ -65,6 +66,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
         );
     }
 
+
     // 渲染当前页面内容
     const renderPageContent = () => {
         switch (currentPage) {
@@ -78,9 +80,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
                 return <PointsRuleEditor />;
             case 'roles':
                 return <RoleManagement />;
+            case 'ai-engine':
+                return <AICoreEngine />;
             case 'settings':
                 return <SystemSettings />;
-
             default:
                 return <SystemStats />;
         }

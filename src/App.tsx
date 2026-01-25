@@ -3965,13 +3965,13 @@ const App: React.FC = () => {
                       {isFullscreen ? <Minimize size={18} /> : <Maximize2 size={18} />}
                     </button>
 
-                    <button
+                    {/* <button
                       onClick={() => setIsGlobalSettingsOpen(true)}
                       className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
                       title="全局设置"
                     >
                       <Settings size={18} />
-                    </button>
+                    </button> */}
 
                     {/* 用户组件 */}
                     {/* User Widget */}

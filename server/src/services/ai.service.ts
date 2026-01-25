@@ -749,6 +749,11 @@ async function callOpenAIImageGeneration(
 export const AIService = {
 
     async smartRefine(text: string, type: 'requirement' | 'content' | 'requirement_polish', settings?: AppSettings): Promise<string> {
+        if (process.env.MOCK_AI === '1') {
+            const t = text === undefined || text === null ? '' : String(text);
+            if (!t.trim()) return '';
+            return t.trim();
+        }
         const config = getTaskConfig(settings, 'text');
         let prompt = '';
         if (type === 'requirement_polish') {
@@ -843,6 +848,11 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
     },
 
     async generateSnapshotSummary(diffContext: string, settings?: AppSettings): Promise<string> {
+        if (process.env.MOCK_AI === '1') {
+            const ctx = diffContext === undefined || diffContext === null ? '' : String(diffContext);
+            if (!ctx.trim()) return '常规保存';
+            return '常规保存';
+        }
         const config = getTaskConfig(settings, 'text');
         const prompt = `
             Task: Summarize the changes in a presentation project based on the provided diff context.
@@ -956,6 +966,34 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
     },
 
     async generateOutline(topic: string, configStyle: StyleConfig, settings: AppSettings): Promise<OutlineItem[]> {
+        if (process.env.MOCK_AI === '1') {
+            const safeTopic = topic === undefined || topic === null ? '' : String(topic);
+            const { targetPageCount, pageStructure } = configStyle;
+            const structure = { ...(pageStructure || { cover: 1, directory: 1, transition: 0, content: 7, end: 1 }) };
+            const fixedSum = (structure.cover || 0) + (structure.directory || 0) + (structure.transition || 0) + (structure.end || 0);
+            structure.content = Math.max(1, (targetPageCount || 10) - fixedSum);
+
+            const seq: Array<'cover' | 'directory' | 'transition' | 'content' | 'end'> = [];
+            for (let i = 0; i < (structure.cover || 0); i++) seq.push('cover');
+            for (let i = 0; i < (structure.directory || 0); i++) seq.push('directory');
+            for (let i = 0; i < (structure.transition || 0); i++) seq.push('transition');
+            for (let i = 0; i < (structure.content || 0); i++) seq.push('content');
+            for (let i = 0; i < (structure.end || 0); i++) seq.push('end');
+
+            const sliced = seq.slice(0, targetPageCount || seq.length);
+            return sliced.map((pageType, index) => ({
+                id: Math.random().toString(36).slice(2, 11),
+                index: index + 1,
+                title: pageType === 'cover' ? `封面：${safeTopic || '主题'}` :
+                    pageType === 'directory' ? '目录' :
+                        pageType === 'transition' ? '章节概览' :
+                            pageType === 'end' ? '谢谢' :
+                                `要点 ${index + 1}`,
+                brief: pageType === 'content' ? `这是「${safeTopic || '主题'}」的关键要点示例，用于 E2E 测试。` : '',
+                pageType,
+                status: 'idle'
+            }));
+        }
         const config = getTaskConfig(settings, 'text');
 
         const { targetPageCount, pageStructure } = configStyle;
@@ -1109,6 +1147,11 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
         pageType: string,
         settings?: AppSettings
     ): Promise<string> {
+        if (process.env.MOCK_AI === '1') {
+            const t = title === undefined || title === null ? '' : String(title);
+            const b = brief === undefined || brief === null ? '' : String(brief);
+            return `- ${t || '要点'}\n- ${b || '示例内容（用于 E2E 测试）'}\n\n---DESIGN_SUGGESTION_START---\n**设计建议：** 采用左右分栏布局：左侧标题与要点列表，右侧使用图标/流程箭头表达逻辑。`;
+        }
         const config = getTaskConfig(settings, 'text');
         const prompt = `Topic Context: ${topicContext}
             Slide Title: ${title}
@@ -1180,6 +1223,9 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
         globalStyleMap?: GlobalStyleMap,
         allSlideTitles?: string[]
     ): Promise<string> {
+        if (process.env.MOCK_AI === '1') {
+            return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PtPhVwAAAABJRU5ErkJggg==';
+        }
         const config = getTaskConfig(settings, 'image');
         const targetRatio = configStyle.aspectRatio || "16:9";
 

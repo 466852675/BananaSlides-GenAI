@@ -26,9 +26,12 @@ const transformFavoriteOut = (f: any) => {
     };
 };
 
+const getOwnerId = (req: Request) => (req as any).user?.id as string;
+
 export const getFavorites = async (req: Request, res: Response) => {
     try {
-        const raw = await favoriteService.findAll();
+        const ownerId = getOwnerId(req);
+        const raw = await favoriteService.findAll(ownerId);
         const favorites = raw.map(transformFavoriteOut);
         res.json(favorites);
     } catch (error: any) {
@@ -38,6 +41,7 @@ export const getFavorites = async (req: Request, res: Response) => {
 
 export const createFavorite = async (req: Request, res: Response) => {
     try {
+        const ownerId = getOwnerId(req);
         const { templateId, name, config, styleMap, sampleImages } = req.body;
         const data = {
             templateId,
@@ -46,7 +50,7 @@ export const createFavorite = async (req: Request, res: Response) => {
             styleMap: safeJSONStringify(styleMap),
             sampleImages: safeJSONStringify(sampleImages)
         };
-        const result = await favoriteService.create(data);
+        const result = await favoriteService.create(ownerId, data as any);
         res.status(201).json(transformFavoriteOut(result));
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -55,8 +59,13 @@ export const createFavorite = async (req: Request, res: Response) => {
 
 export const deleteFavorite = async (req: Request, res: Response) => {
     try {
+        const ownerId = getOwnerId(req);
         const id = req.params.id as string;
-        await favoriteService.delete(id);
+        const result = await favoriteService.delete(id, ownerId);
+        if (!result) {
+            res.status(404).json({ error: 'Favorite not found' });
+            return;
+        }
         res.json({ success: true });
     } catch (error: any) {
         res.status(500).json({ error: error.message });

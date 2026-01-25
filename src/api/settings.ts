@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { client } from './client';
 import { AppSettings } from '../types';
+import { getAuthToken } from '../utils/auth';
 
 // Fetch FULL settings (for backend sync, contains complete API keys)
 // WARNING: Do not use this for UI display - use useAppSettingsMasked instead
@@ -12,6 +13,7 @@ export const useAppSettings = () => {
             // @ts-ignore
             return res.data;
         },
+        enabled: Boolean(getAuthToken()),
         staleTime: Infinity,
     });
 };
@@ -29,6 +31,7 @@ export const useAppSettingsMasked = () => {
             }
             return settings;
         },
+        enabled: Boolean(getAuthToken()),
         staleTime: 0, // 0 to ensure Refetch on Window Focus (Real-time sync feeling)
     });
 };

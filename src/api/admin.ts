@@ -14,7 +14,7 @@ export interface AdminUser {
     nickname: string | null;
     phone: string | null;
     avatar: string | null;
-    role: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+    role: 'USER' | 'PROFESSIONAL' | 'ENTERPRISE' | 'ADMIN' | 'SUPER_ADMIN';
     status: 'ACTIVE' | 'DISABLED' | 'PENDING';
     points: number;
     pointsUsed: number;
@@ -164,12 +164,14 @@ export async function getOrders(filters: {
     type?: string;
     page?: number;
     pageSize?: number;
+    keyword?: string; // Search by Order ID or User info
 } = {}): Promise<{ orders: Order[]; pagination: any }> {
     const params = new URLSearchParams();
     if (filters.status) params.append('status', filters.status);
     if (filters.type) params.append('type', filters.type);
     if (filters.page) params.append('page', String(filters.page));
     if (filters.pageSize) params.append('pageSize', String(filters.pageSize));
+    if (filters.keyword) params.append('search', filters.keyword);
 
     const result = await client.get(`/admin/orders?${params.toString()}`) as any;
     if (result.success) {

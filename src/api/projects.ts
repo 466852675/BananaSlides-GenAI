@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { client } from './client';
-import { ProjectSession, ProjectStatus, GeneratedSlide, StoredResource } from '../types';
+import { ProjectSession, ProjectStatus, GeneratedSlide, ScenarioType, StoredResource } from '../types';
 import { ensureUploaded, serializeStyleMap } from '../utils/resourceHelper';
+import { getAuthToken } from '../utils/auth';
 
 // Types matching backend DTOs
 export interface ProjectDTO {
     id: string;
     title: string;
     displayId?: string;
+    scenarioType?: ScenarioType | string;
     status: ProjectStatus;
     globalConfig?: string; // JSON string
     styleMap?: string;     // JSON string
@@ -74,6 +76,57 @@ const calculateThumbnail = (items: any[], styleMap: any): string | undefined => 
     return undefined;
 };
 
+const coerceScenarioType = (value: unknown): ScenarioType | undefined => {
+    const v = value === undefined || value === null ? '' : String(value);
+    if (v === 'ACADEMIC' || v === 'BUSINESS' || v === 'CREATIVE') return v;
+    return undefined;
+};
+
+const parseVariantsToArray = (value: unknown): string[] => {
+    const extractUrl = (item: any): string | undefined => {
+        if (!item) return undefined;
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object') {
+            const candidates = [item.url, item.src, item.path, item.previewUrl, item.href];
+            return candidates.find((x) => typeof x === 'string' && x.length > 0);
+        }
+        return undefined;
+    };
+
+    const normalizeArray = (arr: any[]): string[] => {
+        return arr.map(extractUrl).filter((x): x is string => typeof x === 'string' && x.length > 0);
+    };
+
+    const tryParse = (s: string): any | undefined => {
+        try {
+            return JSON.parse(s);
+        } catch {
+            return undefined;
+        }
+    };
+
+    if (Array.isArray(value)) return normalizeArray(value);
+    if (typeof value !== 'string') return [];
+
+    const first = tryParse(value);
+    if (first === undefined) {
+        if (value.startsWith('data:') || value.startsWith('/uploads/') || value.startsWith('http://') || value.startsWith('https://')) {
+            return [value];
+        }
+        return [];
+    }
+
+    if (Array.isArray(first)) return normalizeArray(first);
+    if (typeof first === 'string') {
+        const second = tryParse(first);
+        if (Array.isArray(second)) return normalizeArray(second);
+        if (typeof second === 'string') return second ? [second] : [];
+        return first ? [first] : [];
+    }
+
+    return [];
+};
+
 // Transform DTO to Frontend Type
 // Note: We need to be careful with JSON parsing
 const transformProject = (dto: ProjectDTO): ProjectSession => {
@@ -97,8 +150,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
     }
 
     const transformedItems = (dto.items || []).map(slide => {
-        let variants = [];
-        try { variants = JSON.parse(slide.variants); } catch { }
+        const variants = parseVariantsToArray((slide as any).variants);
 
         // originalFileRef might be object or string or null
         // Backend stores string (JSON). Frontend expects StoredResource (File | string)
@@ -133,7 +185,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
             variantCount: slide.variantCount || 2, // Use database value, not variants.length
             // Reset 'generating' status to 'idle' on load.
             // This prevents "Stuck in AI Design" if the user refreshed during generation.
-            status: slide.status === 'generating' ? 'idle' : slide.status as any,
+            status: slide.status === 'completed' ? 'success' : (slide.status === 'generating' ? 'idle' : slide.status as any),
             createdAt: new Date(slide.createdAt).getTime(),
         }
     });
@@ -174,6 +226,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
         id: dto.id,
         title: dto.title,
         displayId: dto.displayId,
+        scenarioType: coerceScenarioType((dto as any).scenarioType),
         status: effectiveStatus,
         createdAt: new Date(dto.createdAt).getTime(),
         lastModified: new Date(dto.updatedAt).getTime(),
@@ -200,7 +253,8 @@ export const useProjects = () => {
                 console.error('[useProjects] Error fetching projects:', error);
                 throw error;
             }
-        }
+        },
+        enabled: Boolean(getAuthToken())
     });
 };
 
@@ -212,7 +266,7 @@ export const useProject = (id: string) => {
             // @ts-ignore
             return transformProject(dto);
         },
-        enabled: !!id
+        enabled: Boolean(id) && Boolean(getAuthToken())
     });
 };
 
@@ -223,6 +277,7 @@ export const useCreateProject = () => {
             // Convert Frontend -> Backend DTO
             const payload = {
                 title: data.title || 'Untitled',
+                scenarioType: (data as any).scenarioType,
                 status: data.status,
                 globalConfig: JSON.stringify(data.globalConfig || {}),
                 styleMap: JSON.stringify(data.globalStyleMap || {}),
@@ -264,6 +319,7 @@ export const useUpdateProject = () => {
             if (data.title) payload.title = data.title;
             if (data.status) payload.status = data.status;
             if (data.isPinned !== undefined) payload.isPinned = data.isPinned;
+            if ((data as any).scenarioType) payload.scenarioType = (data as any).scenarioType;
             if (data.globalConfig) payload.globalConfig = JSON.stringify(data.globalConfig);
             if (data.globalStyleMap) {
                 // Ensure any File objects are uploaded before saving
@@ -325,20 +381,20 @@ export const useSyncProjectSlides = () => {
     return useMutation({
         mutationFn: async ({ projectId, slides }: { projectId: string; slides: GeneratedSlide[] }) => {
             // Ensure all originalFiles are uploaded
-            const processedSlides = await Promise.all(slides.map(async (s) => {
-                let originalFileUrl = s.originalFile;
-                let previewUrl = s.previewUrl;
+            const processedSlides = await Promise.all(slides.map(async (slide) => {
+                let originalFileUrl = slide.originalFile;
+                let previewUrl = slide.previewUrl;
 
-                if (s.originalFile instanceof File) {
-                    originalFileUrl = await ensureUploaded(s.originalFile);
+                if (slide.originalFile instanceof File) {
+                    originalFileUrl = await ensureUploaded(slide.originalFile);
                     previewUrl = originalFileUrl;
                 }
 
                 return {
-                    ...s,
+                    ...slide,
                     originalFile: originalFileUrl,
                     previewUrl: previewUrl,
-                    variants: JSON.stringify(s.variants)
+                    variants: slide.variants || []
                 };
             }));
 

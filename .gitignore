@@ -39,5 +39,9 @@ server/prisma/dev.db
 server/uploads/*
 !server/uploads/.gitkeep
 
+# E2E artifacts
+tests/e2e/.tmp_test_image.png
+tests/e2e/fail_*.png
+
 # Claude / Agent tools
 .agent/

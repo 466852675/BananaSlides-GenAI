@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { client } from './client';
 import { StyleTemplate, StyleConfig, GlobalStyleMap } from '../types';
+import { getAuthToken } from '../utils/auth';
 
 export interface StyleTemplateDTO {
     id: string;
@@ -42,6 +43,7 @@ export const useTemplates = () => {
             const res = await client.get('/templates');
             return (res as unknown as StyleTemplateDTO[]).map(transformTemplate);
         },
+        enabled: Boolean(getAuthToken()),
         staleTime: 1000 * 60 * 5 // 5 minutes
     });
 };

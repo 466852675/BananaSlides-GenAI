@@ -60,11 +60,13 @@ export interface StylePreset {
 }
 
 export type ProjectStatus = 'idle' | 'in-progress' | 'generating' | 'paused' | 'completed' | 'error';
+export type ScenarioType = 'ACADEMIC' | 'BUSINESS' | 'CREATIVE';
 
 export interface ProjectSession {
   id: string;
   title: string;
   displayId?: string; // New
+  scenarioType?: ScenarioType;
   lastModified: number;
   createdAt: number; // Added
   status: ProjectStatus; // Use the enum

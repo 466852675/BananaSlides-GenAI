@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { client } from './client';
 import { ProjectSession, AppSettings } from '../types';
+import { getAuthToken } from '../utils/auth';
 
 export interface ProjectSnapshot {
     id: string;
@@ -53,7 +54,7 @@ export const useProjectSnapshots = (projectId: string) => {
             const res = await client.get<ProjectSnapshot[]>(`/projects/${projectId}/snapshots`);
             return res as unknown as ProjectSnapshot[];
         },
-        enabled: !!projectId
+        enabled: Boolean(projectId) && Boolean(getAuthToken())
     });
 };
 
