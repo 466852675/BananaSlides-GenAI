@@ -3,3 +3,4 @@
 
 export { LoginModal } from './LoginModal';
 export { UserWidget } from './UserWidget';
+export { LoginPage } from './LoginPage';

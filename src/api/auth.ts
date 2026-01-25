@@ -149,6 +149,28 @@ export async function changePassword(oldPassword: string, newPassword: string): 
 }
 
 /**
+ * 发送手机验证码
+ */
+export async function sendPhoneCode(phone: string): Promise<void> {
+    const result = await client.post('/auth/send-code', { phone }) as any;
+    if (!result.success) {
+        throw new Error(result.error?.message || '发送验证码失败');
+    }
+}
+
+/**
+ * 手机号登录
+ */
+export async function loginWithPhone(phone: string, code: string): Promise<AuthResult> {
+    const result = await client.post('/auth/login-phone', { phone, code }) as any;
+    if (result.success && result.data) {
+        localStorage.setItem(TOKEN_KEY, result.data.token);
+        return result.data;
+    }
+    throw new Error(result.error?.message || '登录失败');
+}
+
+/**
  * 检查是否已登录
  */
 export function isAuthenticated(): boolean {

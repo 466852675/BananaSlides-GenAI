@@ -51,7 +51,7 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
     if (!isAuthenticated || !user) {
         return (
             <button
-                onClick={() => setShowLoginModal(true)}
+                onClick={() => window.location.href = '/login'}
                 className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-medium text-sm hover:from-violet-700 hover:to-fuchsia-700 transition-all shadow-md shadow-violet-500/20"
             >
                 登录

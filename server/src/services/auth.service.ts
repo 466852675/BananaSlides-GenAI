@@ -412,3 +412,95 @@ export async function updateProfile(userId: string, data: UpdateProfileDto): Pro
 
     return user;
 }
+
+/**
+ * 发送手机验证码 (模拟)
+ */
+export async function sendPhoneCode(phone: string): Promise<void> {
+    // 验证手机号格式
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+        throw new AuthError('INVALID_PHONE', '手机号格式错误');
+    }
+
+    const code = generateVerificationCode();
+    const expiry = new Date(Date.now() + CODE_EXPIRY_MS);
+
+    // 查找或预创建用户
+    let user = await prisma.user.findUnique({ where: { phone } });
+    if (!user) {
+        user = await prisma.user.create({
+            data: {
+                phone,
+                nickname: `用户${phone.slice(-4)}`,
+                points: 30,
+                role: UserRole.USER,
+                status: UserStatus.ACTIVE
+            }
+        });
+
+        // 发送注册奖励积分记录
+        await prisma.transaction.create({
+            data: {
+                userId: user.id,
+                type: 'bonus',
+                amount: 30,
+                balance: 30,
+                description: '手机号注册赠送',
+            }
+        });
+    }
+
+    // 借用 resetCode 字段存储登录验证码
+    await prisma.user.update({
+        where: { id: user.id },
+        data: {
+            resetCode: code,
+            resetCodeExp: expiry
+        }
+    });
+
+    console.log(`[SMS MOCK] 验证码已发送至 ${phone}: ${code}`);
+}
+
+/**
+ * 手机号验证码登录
+ */
+export async function loginWithPhone(phone: string, code: string): Promise<AuthResult> {
+    const user = await prisma.user.findUnique({ where: { phone } });
+
+    if (!user || user.status === UserStatus.DISABLED) {
+        throw new AuthError('ACCOUNT_DISABLED', '账户已被锁定或禁用');
+    }
+
+    if (!user.resetCode || user.resetCode !== code || !user.resetCodeExp || user.resetCodeExp < new Date()) {
+        throw new AuthError('INVALID_CODE', '验证码错误或已过期');
+    }
+
+    // 登录成功，清除验证码
+    await prisma.user.update({
+        where: { id: user.id },
+        data: {
+            resetCode: null,
+            resetCodeExp: null,
+            lastLoginAt: new Date(),
+            loginFailCount: 0
+        }
+    });
+
+    const token = signToken({ userId: user.id, role: user.role });
+
+    return {
+        user: {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            nickname: user.nickname,
+            role: user.role,
+            points: user.points,
+            vipLevel: user.vipLevel,
+        },
+        token,
+        expiresIn: getTokenExpiresIn(),
+    };
+}
+

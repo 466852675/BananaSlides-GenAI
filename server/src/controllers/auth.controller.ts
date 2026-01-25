@@ -269,3 +269,48 @@ export async function updateProfile(req: Request, res: Response): Promise<void> 
         });
     }
 }
+
+/**
+ * 发送手机验证码
+ * POST /api/auth/send-code
+ */
+export async function sendPhoneCode(req: Request, res: Response): Promise<void> {
+    try {
+        const { phone } = req.body;
+        if (!phone) {
+            res.status(400).json({ success: false, error: { code: 'MISSING_FIELDS', message: '手机号不能为空' } });
+            return;
+        }
+
+        await AuthService.sendPhoneCode(phone);
+        res.status(200).json({ success: true, message: '验证码已发送' });
+    } catch (error: any) {
+        res.status(error.code === 'INVALID_PHONE' ? 400 : 500).json({
+            success: false,
+            error: { code: error.code || 'INTERNAL_ERROR', message: error.message }
+        });
+    }
+}
+
+/**
+ * 手机验证码登录
+ * POST /api/auth/login-phone
+ */
+export async function loginWithPhone(req: Request, res: Response): Promise<void> {
+    try {
+        const { phone, code } = req.body;
+        if (!phone || !code) {
+            res.status(400).json({ success: false, error: { code: 'MISSING_FIELDS', message: '手机号和验证码不能为空' } });
+            return;
+        }
+
+        const result = await AuthService.loginWithPhone(phone, code);
+        res.status(200).json({ success: true, data: result });
+    } catch (error: any) {
+        res.status(error.code === 'INVALID_CODE' ? 401 : 400).json({
+            success: false,
+            error: { code: error.code || 'INTERNAL_ERROR', message: error.message }
+        });
+    }
+}
+

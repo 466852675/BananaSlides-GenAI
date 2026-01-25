@@ -10,6 +10,8 @@ const router = Router();
 // 公开接口（无需登录）
 router.post('/register', AuthController.register);
 router.post('/login', AuthController.login);
+router.post('/send-code', AuthController.sendPhoneCode);
+router.post('/login-phone', AuthController.loginWithPhone);
 router.post('/forgot-password', AuthController.forgotPassword);
 router.post('/reset-password', AuthController.resetPassword);
 

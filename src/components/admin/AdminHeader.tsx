@@ -67,7 +67,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle, onBac
                 {/* 全屏按钮 */}
                 <button
                     onClick={toggleFullscreen}
-                    className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
                     title={isFullscreen ? "退出全屏" : "全屏模式"}
                 >
                     {isFullscreen ? <Minimize size={18} /> : <Maximize2 size={18} />}

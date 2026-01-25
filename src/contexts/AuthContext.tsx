@@ -31,6 +31,8 @@ interface AuthContextType {
 
     // 方法
     login: (identity: string, password: string) => Promise<void>;
+    loginWithPhone: (phone: string, code: string) => Promise<void>;
+    sendPhoneCode: (phone: string) => Promise<void>;
     register: (email: string, password: string, nickname?: string) => Promise<void>;
     logout: () => void;
     refreshUser: () => Promise<void>;
@@ -77,6 +79,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
 
         try {
+            // 检查会话时间 (10分钟 = 600000ms)
+            const lastActive = localStorage.getItem('lastActiveTime');
+            if (lastActive && Date.now() - parseInt(lastActive) > 10 * 60 * 1000) {
+                // 会话过期
+                localStorage.removeItem(TOKEN_KEY);
+                localStorage.removeItem('lastActiveTime');
+                setUser(null);
+                window.location.href = '/login?expired=true';
+                return;
+            }
+
+            // 更新最后活跃时间
+            localStorage.setItem('lastActiveTime', Date.now().toString());
+
             const userData = await AuthAPI.getCurrentUser();
             setUser({
                 id: userData.id,
@@ -116,6 +132,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setShowLoginModal(false);
     }, []);
 
+    // 手机号登录
+    const loginWithPhone = useCallback(async (phone: string, code: string) => {
+        const result = await AuthAPI.loginWithPhone(phone, code);
+        setUser({
+            id: result.user.id,
+            email: result.user.email,
+            username: result.user.username,
+            nickname: result.user.nickname,
+            avatar: result.user.avatar,
+            role: result.user.role,
+            points: result.user.points,
+            vipLevel: result.user.vipLevel,
+            bio: result.user.bio || null,
+        });
+        setShowLoginModal(false);
+    }, []);
+
+    // 发送验证码
+    const sendPhoneCode = useCallback(async (phone: string) => {
+        await AuthAPI.sendPhoneCode(phone);
+    }, []);
+
     // 注册
     const register = useCallback(async (email: string, password: string, nickname?: string) => {
         const result = await AuthAPI.register({ email, password, nickname });
@@ -137,6 +175,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const logout = useCallback(() => {
         AuthAPI.logout();
         setUser(null);
+        // 强制跳转到独立登录页
+        window.location.href = '/login';
     }, []);
 
     // 初始化：检查 Token 并获取用户信息
@@ -148,8 +188,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     useEffect(() => {
         const handleLogout = () => {
             setUser(null);
-            setShowLoginModal(true);
-            setLoginModalTab('signin');
+            // setShowLoginModal(true); // Deprecated
+            // setLoginModalTab('signin');
+
+            // 如果不在登录页且不是落地页，则跳转登录页
+            if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
+                window.location.href = '/login?expired=true';
+            }
         };
 
         window.addEventListener('auth:logout', handleLogout);
@@ -163,6 +208,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isAdmin,
         isSuperAdmin,
         login,
+        loginWithPhone,
+        sendPhoneCode,
         register,
         logout,
         refreshUser,

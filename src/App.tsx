@@ -104,7 +104,7 @@ import { StyleTemplateEditor } from './components/StyleTemplateEditor';
 import { CreateProjectModal } from "./components/CreateProjectModal";
 import { SharedStyleCard } from "./components/SharedStyleCard";
 import { LandingPage } from "./components/LandingPageComp";
-import { UserWidget } from "./components/auth";
+import { UserWidget, LoginPage } from "./components/auth";
 import { ProfileCenter } from './components/user/ProfileCenter';
 import { PointsHistory } from './components/user/PointsHistory';
 import { AdminLayout } from "./components/admin";
@@ -119,6 +119,7 @@ import { client, uploadFile } from "./api/client";
 import { ProjectSnapshot, useHistory, useProjectSnapshots, useCreateSnapshot, useRestoreSnapshot, useForkSnapshot } from "./api/history";
 import { resolveResourceUrl } from "./utils/resource";
 import { StartProjectModal } from "./components/StartProjectModal";
+import { useAuth } from "./contexts/AuthContext";
 
 import { generateId } from "./utils";
 
@@ -739,14 +740,29 @@ const App: React.FC = () => {
 
 
   // --- State ---
+  const { user, isAuthenticated, isAdmin, isSuperAdmin } = useAuth();
   const [viewMode, setViewMode] = useState<
-    "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "admin"
+    "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "admin" | "login"
   >(() => {
     const urlParams = new URLSearchParams(window.location.search);
     // 检查是否访问管理后台
     if (window.location.pathname === '/admin') return 'admin';
+    if (window.location.pathname === '/login') return 'login';
     return urlParams.get('project') ? 'workbench' : 'landing';
   });
+
+  // 登录后自动跳转逻辑
+  useEffect(() => {
+    if (isAuthenticated && viewMode === 'login') {
+      if (isAdmin || isSuperAdmin) {
+        setViewMode('admin');
+        window.history.pushState({}, '', '/admin');
+      } else {
+        setViewMode('dashboard');
+        window.history.pushState({}, '', '/dashboard');
+      }
+    }
+  }, [isAuthenticated, isAdmin, isSuperAdmin, viewMode]);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const handleCloseToast = useCallback(() => setToast(null), []);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -3269,6 +3285,11 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAutoBatch, currentProjectId, items]);
 
+  // 独立登录页面
+  if (viewMode === 'login') {
+    return <LoginPage />;
+  }
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans overflow-y-scroll">
       {/* Global Confirmation Dialog */}
@@ -3968,7 +3989,18 @@ const App: React.FC = () => {
           {viewMode === "admin" ? (
             <AdminLayout onBack={() => setViewMode('dashboard')} />
           ) : viewMode === "landing" ? (
-            <LandingPage onEnter={() => setViewMode('dashboard')} />
+            <LandingPage
+              onEnter={() => setViewMode('dashboard')}
+              onNavigate={(path) => {
+                if (path === 'login') {
+                  window.history.pushState({}, '', '/login');
+                  setViewMode('login');
+                } else if (path === 'admin') {
+                  window.history.pushState({}, '', '/admin');
+                  setViewMode('admin');
+                }
+              }}
+            />
           ) : (
             viewMode !== 'templates' ? (
               <main className="w-full max-w-[1480px] mx-auto px-6 py-6 space-y-8 flex-1">

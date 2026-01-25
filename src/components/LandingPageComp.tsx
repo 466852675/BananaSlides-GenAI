@@ -19,7 +19,9 @@ import {
     Star,
     Quote,
     Clock,
-    History as HistoryIcon
+    History as HistoryIcon,
+    Minimize,
+    Maximize2,
 } from 'lucide-react';
 import { motion, useScroll, useSpring, AnimatePresence, Variants } from 'framer-motion';
 import '../styles/landing.css';
@@ -28,6 +30,7 @@ import { DeliveryShowcase } from './DeliveryShowcase';
 import { MagneticButton } from './MagneticButton';
 import { MacWindowHeader } from './MacWindowHeader';
 import { UserWidget } from './auth';
+import { useAuth } from '../contexts/AuthContext';
 
 const TESTIMONIALS = [
     { name: "Alex Chen", role: "科技博主", comment: "BananaSlides 是我见过的最懂'结构'的 PPT 工具。它不是在堆砌素材，而是在帮你梳理逻辑。Router-Adapter 架构让我在不同模型间切换自如。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" },
@@ -40,9 +43,11 @@ const TESTIMONIALS = [
 
 interface LandingPageProps {
     onEnter: () => void;
+    onNavigate?: (path: string) => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate }) => {
+    const { user } = useAuth(); // 获取当前用户
     const [isScrolled, setIsScrolled] = useState(false);
     const [navCursor, setNavCursor] = useState({ left: 0, width: 0, opacity: 0 });
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
@@ -80,6 +85,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
         restDelta: 0.001
     });
 
+    // --- Fullscreen State ---
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
     // --- Fullscreen & Scroll Logic ---
     const toggleFullscreen = () => {
         if (!document.fullscreenElement) {
@@ -105,14 +119,51 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
     }, []);
 
 
+    const handleStart = () => {
+        // 核心守卫逻辑
+        if (!user) {
+            // 未登录 -> 跳转独立登录页
+            if (onNavigate) {
+                onNavigate('login');
+            } else {
+                window.location.href = '/login';
+            }
+            return;
+        }
+
+        // 检查会话是否过期 (Session Expired Check)
+        // 注意：AuthContext 已经在 internal 做了部分检查，这里是双重保障
+        const lastActive = localStorage.getItem('lastActiveTime');
+        const isExpired = lastActive && (Date.now() - parseInt(lastActive) > 10 * 60 * 1000);
+
+        if (isExpired) {
+            if (onNavigate) {
+                onNavigate('login'); // Simplified expired handling within SPA
+            } else {
+                window.location.href = '/login?expired=true';
+            }
+            return;
+        }
+
+        // 已登录且有效 -> 角色分流
+        if (user.role === 'ADMIN') {
+            if (onNavigate) {
+                onNavigate('admin');
+            } else {
+                window.history.pushState({}, '', '/admin');
+                window.location.href = '/admin';
+            }
+        } else {
+            // 普通用户 -> 进入工作台
+            onEnter();
+        }
+    };
+
     const handleHeroSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!heroInput.trim()) return;
-        setIsPrimePreviewActive(true);
-        // 模拟 4.5 秒后的跳转给用户看预览
-        setTimeout(() => {
-            onEnter();
-        }, 4500);
+        // 用户要求移除演示动画，直接进入流程
+        // (handleStart 内部会处理 登录检查 / 过期检查 / 路由跳转)
+        handleStart();
     };
 
     const containerVariants = {
@@ -319,20 +370,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={toggleFullscreen}
-                                className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-all hidden md:block"
-                                title="全屏模式"
+                                className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all hidden md:block" // Unified style with Workbench
+                                title={isFullscreen ? "退出全屏" : "全屏模式"}
                             >
-                                <Layout size={20} />
+                                {isFullscreen ? <Minimize size={18} /> : <Maximize2 size={18} />}
                             </button>
                             <div className="hidden md:block">
                                 <UserWidget compact onEnterApp={onEnter} />
                             </div>
-                            <button
-                                onClick={onEnter}
-                                className="px-5 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-full hover:bg-blue-600 hover:scale-105 active:scale-95 transition-all shadow-lg shadow-blue-500/20 flex items-center gap-2"
-                            >
-                                免费开始 <ArrowRight size={16} />
-                            </button>
+
                         </div>
                     </div>
                 </div>
@@ -677,7 +723,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
                             description="适合个人初次体验 AI 创作"
                             features={["赠送 30 积分/月", "使用标准版 AI 模型", "支持 .pptx / PDF 导出", "基础社区技术支持"]}
                             cta="免费开始"
-                            onCta={onEnter}
+                            onCta={handleStart}
                         />
                         <PricingCard
                             title="专业版"
@@ -686,7 +732,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
                             features={["赠送 600 积分/月", "优先使用旗舰级 AI 模型", "更精准的逻辑生成与美化", "支持全量格式高清导出", "1对1 专家技术支持"]}
                             popular
                             cta="立即升级"
-                            onCta={onEnter}
+                            onCta={handleStart}
                         />
                         <PricingCard
                             title="团队版"
@@ -694,7 +740,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
                             description="为规模化演示生产量身定制"
                             features={["赠送 2000 积分/月 (共享)", "全员享用旗舰级 AI 模型", "团队协作空间与权限管理", "专属品牌风格模版定制", "API 访问与自动化支持"]}
                             cta="联系销售"
-                            onCta={onEnter}
+                            onCta={handleStart}
                         />
                     </div>
                 </div>
@@ -746,7 +792,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
                         <h2 className="text-4xl md:text-6xl font-black mb-8 leading-tight">准备好在下场会议中 <br /> 脱颖而出了吗？</h2>
                         <p className="text-xl text-white/80 mb-12 max-w-2xl mx-auto">加入全球 120,000+ 高端创作者，开启您的 AI 演讲新时代。</p>
                         <MagneticButton
-                            onClick={onEnter}
+                            onClick={handleStart}
                             className="px-12 py-6 bg-white text-blue-600 rounded-full text-xl font-black shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-3 mx-auto"
                         >
                             立刻免费体验
@@ -847,10 +893,12 @@ const PricingCard = ({ title, price, description, features, cta, onCta, popular 
             <span className="text-4xl font-black">{price === '定制' ? '' : '¥'}{price}</span>
             {price !== '定制' && <span className={`text-sm ${popular ? 'text-white/40' : 'text-slate-400'}`}>/月</span>}
         </div>
-        <button className={`w-full py-4 rounded-xl font-bold mb-10 transition-all ${popular
-            ? 'bg-blue-600 text-white hover:bg-white hover:text-black'
-            : 'bg-slate-50 text-slate-900 hover:bg-black hover:text-white'
-            }`}>
+        <button
+            onClick={onCta}
+            className={`w-full py-4 rounded-xl font-bold mb-10 transition-all ${popular
+                ? 'bg-blue-600 text-white hover:bg-white hover:text-black'
+                : 'bg-slate-50 text-slate-900 hover:bg-black hover:text-white'
+                }`}>
             {price === '定制' ? '联系我们' : (cta || '立即订阅')}
         </button>
         <ul className="space-y-4">
