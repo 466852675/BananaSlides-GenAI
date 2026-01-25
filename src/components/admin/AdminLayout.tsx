@@ -30,6 +30,7 @@ const pageTitles: Record<AdminPage, { title: string; subtitle?: string }> = {
 };
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
+    console.log('AdminLayout rendering, pageTitles:', pageTitles);
     const [currentPage, setCurrentPage] = useState<AdminPage>('dashboard');
     const { isAdmin, isLoading } = useAuth();
 

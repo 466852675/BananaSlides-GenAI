@@ -34,7 +34,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentPage, onPageC
     return (
         <aside className="w-64 bg-slate-900 text-white flex flex-col h-full">
             {/* Logo */}
-            <div className="p-4 border-b border-slate-700">
+            <div
+                className="p-4 border-b border-slate-700 cursor-pointer hover:bg-slate-800 transition-colors"
+                onClick={() => window.location.href = '/'}
+                title="返回首页"
+            >
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center">
                         <Sparkles size={20} />
@@ -53,8 +57,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentPage, onPageC
                         key={item.id}
                         onClick={() => onPageChange(item.id)}
                         className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${currentPage === item.id
-                                ? 'bg-violet-600 text-white'
-                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                            ? 'bg-violet-600 text-white'
+                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                             }`}
                     >
                         {item.icon}
