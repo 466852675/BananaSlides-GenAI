@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { getProjects, getTrashProjects, restoreProject, getProject, createProject, updateProject, deleteProject, syncProjectSlides } from '../controllers/project.controller';
+import { authenticate } from '../middlewares/auth.middleware';
 
 const router = Router();
+
+// All project routes require authentication
+router.use(authenticate);
 
 router.get('/', getProjects);
 router.get('/trash', getTrashProjects);

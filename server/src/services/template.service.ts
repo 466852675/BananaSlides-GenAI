@@ -7,15 +7,23 @@ export class TemplateService {
     // Get all (system + user)
     // Get all (system + user) - 支持管理员全局视图
     async findAll(userId: string, isAdmin: boolean = false) {
-        return prisma.styleTemplate.findMany({
-            where: isAdmin ? {} : {
-                OR: [
-                    { isOfficial: true },
-                    { userId }
-                ]
-            },
+        const whereClause = isAdmin ? {} : {
+            OR: [
+                { isOfficial: true },
+                { userId }
+            ]
+        };
+
+        console.log(`[TemplateService] findAll - isAdmin: ${isAdmin}, where:`, JSON.stringify(whereClause));
+
+        const results = await prisma.styleTemplate.findMany({
+            where: whereClause,
             orderBy: { createdAt: 'desc' }
         });
+
+        console.log(`[TemplateService] findAll - returned ${results.length} templates`);
+
+        return results;
     }
 
     // Get by ID

@@ -37,8 +37,11 @@ app.use('/uploads', express.static(uploadDir));
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', version: '1.0.1', message: 'Backend is active' });
 });
-app.use('/api/notifications', notificationRoutes);
 
+// Auth routes MUST come first (before any authenticated routes)
+app.use('/api/auth', authRoutes);
+
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/upload', uploadRoutes);
 // Moving snapshots before projects to avoid route shadowing
 app.use('/api', snapshotRoutes);
@@ -48,7 +51,6 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/settings', settingRoutes);
-app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/points', pointsRoutes);
 
