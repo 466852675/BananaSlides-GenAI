@@ -30,7 +30,8 @@ const transformTemplateOut = (t: any) => {
 export const getTemplates = async (req: Request, res: Response) => {
     try {
         const ownerId = getOwnerId(req);
-        const raw = await templateService.findAll(ownerId);
+        const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes((req as any).user?.role);
+        const raw = await templateService.findAll(ownerId, isAdmin);
         const templates = raw.map(transformTemplateOut);
         res.json(templates);
     } catch (error: any) {

@@ -4,10 +4,10 @@ const prisma = new PrismaClient();
 
 export class FavoriteService {
 
-    // Get all
-    async findAll(userId: string) {
+    // Get all - 支持管理员全局视图
+    async findAll(userId: string, isAdmin: boolean = false) {
         return prisma.favorite.findMany({
-            where: { userId },
+            where: isAdmin ? {} : { userId },
             include: { template: true },
             orderBy: { createdAt: 'desc' }
         });

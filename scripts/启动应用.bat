@@ -2,44 +2,72 @@
 chcp 65001 >nul
 
 cd /d %~dp0..
-echo Starting BananaSlides-GenAI...
-    
-echo [Auto-Backup] Creating database snapshot...
+cls
+echo ============================================================
+echo   BananaSlides-GenAI Startup Script v2.0
+echo ============================================================
+echo.
+
+echo [1/5] Auto-backup database...
 call "scripts\备份数据库.bat" --silent
+echo.
 
+echo [2/5] Cleaning up ports (1111, 1000)...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :1111 ^| findstr LISTENING 2^>nul') do (
+    echo    - Killing process on port 1111 (PID: %%a)
+    taskkill /F /PID %%a >nul 2>&1
+)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :1000 ^| findstr LISTENING 2^>nul') do (
+    echo    - Killing process on port 1000 (PID: %%a)
+    taskkill /F /PID %%a >nul 2>&1
+)
+timeout /t 1 /nobreak >nul
+echo    Done.
+echo.
 
-echo [0/2] Cleaning up existing Node.js processes...
-taskkill /F /IM node.exe /T >nul 2>&1
-echo Cleanup complete.
-
-:: Ensure Database Schema is Up-to-Date (Auto-Fix)
-echo [0.5/2] Applying Database Schema Updates...
+echo [3/5] Syncing database schema...
 cd server
-call npx prisma db push
+call npx prisma db push --skip-generate >nul 2>&1
 cd ..
-echo Schema update check complete.
+echo    Done.
+echo.
 
-:: Start Backend first
-echo [1/2] Starting Backend Server...
+echo [4/5] Starting Backend (Port 1111)...
 start "BananaSlides Backend (Port 1111)" cmd /k "cd server && npm run dev || pause"
 
-:: Wait for backend to initialize
-echo [2/2] Waiting for backend to start (3 seconds)...
+echo    Waiting for backend to be ready...
+set WAIT_COUNT=0
+:wait_backend
+timeout /t 1 /nobreak >nul
+netstat -ano | findstr :1111 | findstr LISTENING >nul 2>&1
+if not errorlevel 1 (
+    echo    Backend ready!
+    goto backend_ready
+)
+set /a WAIT_COUNT+=1
+if %WAIT_COUNT% LSS 15 (
+    echo    Waiting... (%WAIT_COUNT%s)
+    goto wait_backend
+)
+echo    Warning: Backend startup timeout
+
+:backend_ready
+echo.
+
+echo [5/5] Starting Frontend (Port 1000)...
+start "BananaSlides Frontend (Port 1000)" cmd /k "npm run dev || pause"
 timeout /t 3 /nobreak >nul
 
-:: Start Frontend
-echo Starting Frontend...
-start "BananaSlides Frontend (Port 1000)" cmd /k "npm run dev || pause"
-
 echo.
-echo ========================================
-echo   Services started!
+echo ============================================================
+echo   Services Started!
+echo ============================================================
 echo   Backend:  http://localhost:1111
 echo   Frontend: http://localhost:1000
-echo ========================================
+echo ============================================================
 echo.
-echo Note: First time? Run 'scripts\初始化数据库.bat' to setup database.
+echo Tips:
+echo   - First time? Run 'scripts\初始化数据库.bat'
+echo   - Check both service windows for errors
+echo   - Close service windows to stop
 echo.
-echo If you see connection errors, check if BOTH windows opened.
-echo Backend window title: "BananaSlides Backend (Port 1111)"
-echo Frontend window title: "BananaSlides Frontend (Port 1000)"

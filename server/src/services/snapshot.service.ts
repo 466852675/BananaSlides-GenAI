@@ -207,9 +207,9 @@ export class SnapshotService {
         return snapshot;
     }
 
-    async findAll(projectId: string, userId: string) {
+    async findAll(projectId: string, userId: string, isAdmin: boolean = false) {
         return prisma.projectSnapshot.findMany({
-            where: {
+            where: isAdmin ? { projectId } : {
                 projectId,
                 project: { userId }
             },

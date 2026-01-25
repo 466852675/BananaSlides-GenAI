@@ -19,12 +19,10 @@ export class ProjectService {
         return `PID-${timestamp}-${randomHex}`;
     }
 
-    // Get list
-    async findAll(ownerId: string) {
+    // Get list (支持管理员全局视图)
+    async findAll(userId: string, isAdmin: boolean = false) {
         const projects = await prisma.project.findMany({
-            where: {
-                userId: ownerId
-            },
+            where: isAdmin ? {} : { userId },  // 管理员查询所有数据
             orderBy: { updatedAt: 'desc' },
             include: {
                 items: {
@@ -74,7 +72,7 @@ export class ProjectService {
     }
 
     // Get detail
-    async findById(id: string, ownerId: string) {
+    async findById(id: string, userId: string, isAdmin: boolean = false) {
         const project = await prisma.project.findUnique({
             where: { id },
             include: {
@@ -84,7 +82,8 @@ export class ProjectService {
             }
         });
 
-        if (project && project.userId !== ownerId) return null;
+        // 管理员可以访问所有项目，普通用户只能访问自己的
+        if (!isAdmin && project && project.userId !== userId) return null;
 
         if (project) {
             await this.migrateProjectImages(project);
@@ -165,10 +164,11 @@ export class ProjectService {
     }
 
     // Update
-    async update(id: string, ownerId: string, data: Prisma.ProjectUpdateInput) {
+    async update(id: string, userId: string, data: Prisma.ProjectUpdateInput, isAdmin: boolean = false) {
         // Fetch current state to prevent overwriting completedAt
         const current = await prisma.project.findUnique({ where: { id } });
-        if (!current || current.userId !== ownerId) return null;
+        // 管理员可以更新所有项目，普通用户只能更新自己的
+        if (!isAdmin && (!current || current.userId !== userId)) return null;
 
         const dataKeys = Object.keys(data as object);
         const shouldUpdateUpdatedAt = dataKeys.some(key =>
@@ -198,9 +198,9 @@ export class ProjectService {
     }
 
     // Set Pinned Status
-    async setPinnedStatus(id: string, ownerId: string, isPinned: boolean) {
+    async setPinnedStatus(id: string, userId: string, isPinned: boolean, isAdmin: boolean = false) {
         const current = await prisma.project.findUnique({ where: { id } });
-        if (!current || current.userId !== ownerId) return null;
+        if (!isAdmin && (!current || current.userId !== userId)) return null;
         return prisma.project.update({
             where: { id },
             data: {
@@ -211,11 +211,11 @@ export class ProjectService {
     }
 
     // Sync Slides (Update or create slides, preserving IDs)
-    async syncSlides(projectId: string, ownerId: string, slides: any[]) {
+    async syncSlides(projectId: string, userId: string, slides: any[], isAdmin: boolean = false) {
         // Use transaction to upsert slides
         return prisma.$transaction(async (tx) => {
             const project = await tx.project.findUnique({ where: { id: projectId } });
-            if (!project || project.userId !== ownerId) return null;
+            if (!isAdmin && (!project || project.userId !== userId)) return null;
 
             // Get existing slides to determine which to delete
             const existingSlides = await tx.slide.findMany({
@@ -312,7 +312,7 @@ export class ProjectService {
         });
     }
 
-    async softDelete(id: string, ownerId: string) {
+    async softDelete(id: string, userId: string, isAdmin: boolean = false) {
         // Soft delete not supported in current schema, performing hard delete or no-op?
         // For now, implementing as check ownership then no-op or throw, since deletedAt doesn't exist.
         // Or actually, user might expect delete. Let's do nothing for now to avoid errors, 
@@ -322,16 +322,16 @@ export class ProjectService {
         // But to pass type check, I will just fetch and return.
 
         const project = await prisma.project.findUnique({ where: { id } });
-        if (!project || project.userId !== ownerId) return null;
+        if (!isAdmin && (!project || project.userId !== userId)) return null;
 
         // Cannot soft delete without deletedAt.
         // Assuming we rely on hard delete via some other method, or this feature is disabled.
         return project;
     }
 
-    async restore(id: string, ownerId: string) {
+    async restore(id: string, userId: string, isAdmin: boolean = false) {
         const project = await prisma.project.findUnique({ where: { id } });
-        if (!project || project.userId !== ownerId) return null;
+        if (!isAdmin && (!project || project.userId !== userId)) return null;
         return project;
     }
 

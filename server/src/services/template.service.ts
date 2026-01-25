@@ -5,10 +5,10 @@ const prisma = new PrismaClient();
 export class TemplateService {
 
     // Get all (system + user)
-    // Get all (system + user)
-    async findAll(userId: string) {
+    // Get all (system + user) - 支持管理员全局视图
+    async findAll(userId: string, isAdmin: boolean = false) {
         return prisma.styleTemplate.findMany({
-            where: {
+            where: isAdmin ? {} : {
                 OR: [
                     { isOfficial: true },
                     { userId }

@@ -31,7 +31,8 @@ const getOwnerId = (req: Request) => (req as any).user?.id as string;
 export const getFavorites = async (req: Request, res: Response) => {
     try {
         const ownerId = getOwnerId(req);
-        const raw = await favoriteService.findAll(ownerId);
+        const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes((req as any).user?.role);
+        const raw = await favoriteService.findAll(ownerId, isAdmin);
         const favorites = raw.map(transformFavoriteOut);
         res.json(favorites);
     } catch (error: any) {

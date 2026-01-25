@@ -22,6 +22,7 @@ const safeJSONStringify = (obj: any) => {
 };
 
 const getOwnerId = (req: Request) => (req as any).user?.id as string;
+const isAdminRole = (req: Request) => ['ADMIN', 'SUPER_ADMIN'].includes((req as any).user?.role);
 const allowedScenarioTypes = new Set(['ACADEMIC', 'BUSINESS', 'CREATIVE']);
 
 const transformProjectOut = (p: any) => {
@@ -43,7 +44,8 @@ const transformProjectOut = (p: any) => {
 export const getProjects = async (req: Request, res: Response) => {
     try {
         const ownerId = getOwnerId(req);
-        const rawProjects = await projectService.findAll(ownerId);
+        const isAdmin = isAdminRole(req);
+        const rawProjects = await projectService.findAll(ownerId, isAdmin);
         const projects = rawProjects.map(transformProjectOut);
         res.json(projects);
     } catch (error: any) {
@@ -54,7 +56,8 @@ export const getProjects = async (req: Request, res: Response) => {
 export const getProject = async (req: Request, res: Response) => {
     try {
         const ownerId = getOwnerId(req);
-        const rawProject = await projectService.findById(req.params.id as string, ownerId);
+        const isAdmin = isAdminRole(req);
+        const rawProject = await projectService.findById(req.params.id as string, ownerId, isAdmin);
         if (!rawProject) {
             res.status(404).json({ error: 'Project not found' });
             return;
@@ -151,8 +154,9 @@ export const updateProject = async (req: Request, res: Response) => {
         // If ONLY 'isPinned' is being updated, we want to PRESERVE the original 'updatedAt'
         // so that pinning/unpinning doesn't change the project's sort order (last active time).
         const updateKeys = Object.keys(updateData);
+        const isAdmin = isAdminRole(req);
         if (updateKeys.length === 1 && updateKeys[0] === 'isPinned') {
-            const result = await projectService.setPinnedStatus(id as string, ownerId, isPinned);
+            const result = await projectService.setPinnedStatus(id as string, ownerId, isPinned, isAdmin);
             if (result) {
                 res.json(transformProjectOut(result));
             } else {
@@ -161,7 +165,7 @@ export const updateProject = async (req: Request, res: Response) => {
             return;
         }
 
-        const result = await projectService.update(id as string, ownerId, updateData);
+        const result = await projectService.update(id as string, ownerId, updateData, isAdmin);
         if (!result) {
             res.status(404).json({ error: 'Project not found' });
             return;
@@ -175,6 +179,7 @@ export const updateProject = async (req: Request, res: Response) => {
 export const syncProjectSlides = async (req: Request, res: Response) => {
     try {
         const ownerId = getOwnerId(req);
+        const isAdmin = isAdminRole(req);
         const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
         const { slides } = req.body;
 
@@ -183,7 +188,7 @@ export const syncProjectSlides = async (req: Request, res: Response) => {
             return;
         }
 
-        const result = await projectService.syncSlides(id, ownerId, slides);
+        const result = await projectService.syncSlides(id, ownerId, slides, isAdmin);
         if (!result) {
             res.status(404).json({ error: 'Project not found' });
             return;
@@ -209,8 +214,9 @@ export const getTrashProjects = async (req: Request, res: Response) => {
 export const restoreProject = async (req: Request, res: Response) => {
     try {
         const ownerId = getOwnerId(req);
+        const isAdmin = isAdminRole(req);
         const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-        const result = await projectService.restore(id, ownerId);
+        const result = await projectService.restore(id, ownerId, isAdmin);
         if (!result) {
             res.status(404).json({ error: 'Project not found' });
             return;
@@ -224,8 +230,9 @@ export const restoreProject = async (req: Request, res: Response) => {
 export const deleteProject = async (req: Request, res: Response) => {
     try {
         const ownerId = getOwnerId(req);
+        const isAdmin = isAdminRole(req);
         const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-        const result = await projectService.softDelete(id, ownerId);
+        const result = await projectService.softDelete(id, ownerId, isAdmin);
         if (!result) {
             res.status(404).json({ error: 'Project not found' });
             return;
