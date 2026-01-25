@@ -18,7 +18,7 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose })
     // Info Form
     const [formData, setFormData] = useState({
         nickname: user?.nickname || '',
-        bio: user?.bio || '', // Assuming bio exists in user type, if not need to add or ignore
+        bio: user?.bio || '',
         avatar: user?.avatar || ''
     });
 

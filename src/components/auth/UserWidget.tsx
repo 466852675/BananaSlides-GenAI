@@ -36,10 +36,35 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    // ... (keep generic hooks)
+    // 点击外部关闭下拉菜单
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
-    // ... (keep login button and compact check)
+    // 未登录状态：显示登录按钮
+    if (!isAuthenticated || !user) {
+        return (
+            <button
+                onClick={() => setShowLoginModal(true)}
+                className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-medium text-sm hover:from-violet-700 hover:to-fuchsia-700 transition-all shadow-md shadow-violet-500/20"
+            >
+                登录
+            </button>
+        );
+    }
 
+    // compact 模式：登录后不显示任何内容（落地页已有"免费开始"按钮）
+    if (compact) {
+        return null;
+    }
+
+    // 已登录状态（完整模式）：显示用户信息和下拉菜单
     return (
         <div className="relative" ref={dropdownRef}>
             {/* 用户头像和信息 */}

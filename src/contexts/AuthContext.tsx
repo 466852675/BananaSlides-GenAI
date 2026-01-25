@@ -18,6 +18,7 @@ interface User {
     role: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
     points: number;
     vipLevel: number;
+    bio: string | null;
 }
 
 interface AuthContextType {
@@ -86,6 +87,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 role: userData.role,
                 points: userData.points,
                 vipLevel: userData.vipLevel,
+                bio: userData.bio || null,
             });
         } catch (error) {
             console.error('[Auth] 刷新用户信息失败:', error);
@@ -109,6 +111,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             role: result.user.role,
             points: result.user.points,
             vipLevel: result.user.vipLevel,
+            bio: result.user.bio || null,
         });
         setShowLoginModal(false);
     }, []);
@@ -125,6 +128,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             role: result.user.role,
             points: result.user.points,
             vipLevel: result.user.vipLevel,
+            bio: result.user.bio || null,
         });
         setShowLoginModal(false);
     }, []);
