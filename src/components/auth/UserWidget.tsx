@@ -104,7 +104,7 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
             >
                 <Coins size={14} className="text-amber-500 group-hover:scale-110 transition-transform" />
                 <span className="text-xs font-bold text-amber-700">{user.points}</span>
-                <span className="text-[10px] text-amber-600/70 font-medium">积分</span>
+                {!isScrolled && <span className="text-[10px] text-amber-600/70 font-medium">积分</span>}
             </button>
 
             {/* 3. 用户信息下拉菜单 (User Info & Dropdown) */}
@@ -123,11 +123,13 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
                     </div>
 
                     {/* 昵称 */}
-                    <div className="hidden sm:block text-left">
-                        <div className="text-sm font-bold text-slate-700 max-w-[100px] truncate leading-tight">
-                            {user.nickname || user.email?.split('@')[0] || '用户'}
+                    {!isScrolled && (
+                        <div className="hidden sm:block text-left">
+                            <div className="text-sm font-bold text-slate-700 max-w-[100px] truncate leading-tight">
+                                {user.nickname || user.email?.split('@')[0] || '用户'}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <ChevronDown size={14} className={`text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
                 </button>

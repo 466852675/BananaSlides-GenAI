@@ -14,11 +14,13 @@ const ensureUploaded = async (resource: StoredResource): Promise<string> => {
 
 // --- Exports ---
 
-export const smartRefine = async (text: string, type: 'requirement' | 'content' | 'requirement_polish'): Promise<string> => {
+export const smartRefine = async (text: string, type: 'requirement' | 'content' | 'requirement_polish', triggerTime?: string, projectId?: string): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', {
             text,
-            type
+            type,
+            triggerTime,
+            projectId
         });
         return (response as any).data || text;
     } catch (error) {
@@ -27,11 +29,13 @@ export const smartRefine = async (text: string, type: 'requirement' | 'content' 
     }
 };
 
-export const refinePrompt = async (rawText: string): Promise<string> => {
+export const refinePrompt = async (rawText: string, triggerTime?: string, projectId?: string): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', {
             text: rawText,
-            type: 'requirement_polish'
+            type: 'requirement_polish',
+            triggerTime,
+            projectId
         });
         return (response as any).data || rawText;
     } catch (error) {
@@ -40,7 +44,7 @@ export const refinePrompt = async (rawText: string): Promise<string> => {
     }
 };
 
-export const extractTextFromFile = async (file: File): Promise<{ text: string, isFallback: boolean, provider?: string }> => {
+export const extractTextFromFile = async (file: File, triggerTime?: string): Promise<{ text: string, isFallback: boolean, provider?: string }> => {
     try {
         // 1. Upload first
         const resourcePath = await uploadFile(file);
@@ -48,7 +52,8 @@ export const extractTextFromFile = async (file: File): Promise<{ text: string, i
         // 2. Call AI Extract
         const response = await client.post<{ success: boolean, data: string, meta?: { isFallback: boolean, provider: string } }>('/ai/extract-text', {
             resourcePath,
-            fileType: file.type
+            fileType: file.type,
+            triggerTime
         });
 
         return {
@@ -62,12 +67,14 @@ export const extractTextFromFile = async (file: File): Promise<{ text: string, i
     }
 };
 
-export const generateOutline = async (topic: string, configStyle?: StyleConfig): Promise<OutlineItem[]> => {
+export const generateOutline = async (topic: string, configStyle?: StyleConfig, triggerTime?: string, projectId?: string): Promise<OutlineItem[]> => {
     try {
         // axios interceptor already unwraps response.data, so we get { success, data } directly
         const response = await client.post<{ success: boolean, data: OutlineItem[] }>('/ai/generate-outline', {
             topic,
-            configStyle
+            configStyle,
+            triggerTime,
+            projectId
         });
         // response is already { success, data }, not { data: { success, data } }
         return (response as any).data;
@@ -77,12 +84,14 @@ export const generateOutline = async (topic: string, configStyle?: StyleConfig):
     }
 };
 
-export const generateSingleOutlineItem = async (topic: string, index: number, total: number): Promise<{ title: string, brief: string }> => {
+export const generateSingleOutlineItem = async (topic: string, index: number, total: number, triggerTime?: string, projectId?: string): Promise<{ title: string, brief: string }> => {
     try {
         const response = await client.post<{ success: boolean, data: { title: string, brief: string } }>('/ai/generate-single-outline-item', {
             topic,
             index,
-            total
+            total,
+            triggerTime,
+            projectId
         });
         return (response as any).data;
     } catch (error) {
@@ -97,7 +106,9 @@ export const generateSlideDetail = async (
     topicContext: string,
     index: number,
     total: number,
-    pageType: string
+    pageType: string,
+    triggerTime?: string,
+    projectId?: string
 ): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/generate-slide-detail', {
@@ -106,7 +117,9 @@ export const generateSlideDetail = async (
             topicContext,
             index,
             total,
-            pageType
+            pageType,
+            triggerTime,
+            projectId
         });
         return (response as any).data;
     } catch (error) {
@@ -139,7 +152,9 @@ export const generateSlideVariant = async (
     pageType?: string,
     fullContent?: string,
     globalStyleMap?: any,
-    allSlideTitles?: string[]
+    allSlideTitles?: string[],
+    triggerTime?: string, // 触发时间
+    projectId?: string
 ): Promise<string> => {
     try {
         const contentUrl = await ensureUploaded(contentSource);
@@ -159,7 +174,9 @@ export const generateSlideVariant = async (
             pageType,
             fullContent,
             globalStyleMap: uploadedStyleMap,
-            allSlideTitles
+            allSlideTitles,
+            triggerTime,
+            projectId
         });
         return (response as any).data;
     } catch (error) {
@@ -168,8 +185,8 @@ export const generateSlideVariant = async (
     }
 };
 
-export const analyzeTemplateConcept = async (input: string | File): Promise<StyleConfig> => {
-    const payload: any = {};
+export const analyzeTemplateConcept = async (input: string | File, triggerTime?: string): Promise<StyleConfig> => {
+    const payload: any = { triggerTime };
     if (typeof input === 'string') {
         payload.input = input;
     } else {
@@ -186,12 +203,13 @@ export const analyzeTemplateConcept = async (input: string | File): Promise<Styl
     }
 };
 
-export const generateStyleReference = async (configStyle: StyleConfig, pageType: string, settings?: AppSettings): Promise<string> => {
+export const generateStyleReference = async (configStyle: StyleConfig, pageType: string, settings?: AppSettings, triggerTime?: string): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/generate-style-reference', {
             configStyle,
             pageType,
-            settings // Pass client-side settings to backend
+            settings, // Pass client-side settings to backend
+            triggerTime
         });
         return (response as any).data;
     } catch (error) {

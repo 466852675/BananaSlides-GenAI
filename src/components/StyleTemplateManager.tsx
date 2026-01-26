@@ -1531,6 +1531,7 @@ const StyleEditor: React.FC<{
   const handleSmartRefine = async () => {
     if (!localTemplate.config.requirements) return;
 
+    const triggerTime = new Date().toISOString();
     setIsRefining(true);
 
     // Fetch fresh balance and cost for warning
@@ -1547,7 +1548,7 @@ const StyleEditor: React.FC<{
 
     try {
       // Pass appSettings to enable correct API configuration for AI
-      const refined = await smartRefine(localTemplate.config.requirements, 'requirement');
+      const refined = await smartRefine(localTemplate.config.requirements, 'requirement', triggerTime);
       updateConfig('requirements', refined);
       onShowToast('AI 润色已完成，内容已更新', 'success');
       setTimeout(refreshUser, 500);

@@ -166,6 +166,7 @@ model Transaction {
   // ========== 关联信息 ==========
   ruleCode    String?            // 关联的积分规则代码
   projectId   String?            // 关联的项目 ID
+  templateId  String?            // 关联的模板 ID
   orderId     String?            // 关联的订单 ID
   operatorId  String?            // 操作人 ID (管理员调整时)
   
@@ -178,6 +179,7 @@ model Transaction {
   
   // ========== 时间戳 ==========
   triggerTime DateTime?          // 前端点击/触发时间
+  completedAt DateTime?          // 实际完成时间 (AI 生成成功时间)
   createdAt   DateTime @default(now())
   
   // ========== 索引 ==========

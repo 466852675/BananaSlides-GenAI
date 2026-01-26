@@ -504,7 +504,7 @@ export const PointsRuleEditor: React.FC = () => {
                                         onChange={e => setFormData({ ...formData, module: e.target.value })}
                                     >
                                         <option value="创作室">创作室</option>
-                                        <option value="模版库">模版库</option>
+                                        <option value="模版间">模版间</option>
                                         <option value="高级工具">高级工具</option>
                                         <option value="系统配置">系统配置</option>
                                     </select>

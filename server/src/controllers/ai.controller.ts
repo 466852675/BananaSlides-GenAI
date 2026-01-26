@@ -10,7 +10,7 @@ const getServerSettings = async () => {
 };
 
 export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) => {
-    const { input, projectId } = req.body; // input can be string or { path, mimeType }
+    const { input, projectId, triggerTime } = req.body; // input can be string or { path, mimeType }
     try {
         // Vision 分析扣费：仅当输入为图片时扣费
         const isImageInput = input && typeof input === 'object' &&
@@ -23,9 +23,11 @@ export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) 
                 'AI 视觉分析模版',
                 1,
                 {
-                    module: '创作室',
+                    module: '模版间',
                     category: '视觉分析',
-                    subcategory: '模版分析'
+                    subcategory: '模版分析',
+                    triggerTime: triggerTime ? new Date(triggerTime) : undefined,
+                    templateId: projectId // Map projectId to templateId for template actions
                 }
             );
             if (!deductResult.success) {
@@ -36,10 +38,17 @@ export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) 
                 return;
             }
             (res as any).deductedPoints = deductResult.deductedAmount;
+            (res as any).transactionId = deductResult.transactionId;
         }
 
         const settings = await getServerSettings();
         const result = await AIService.analyzeTemplateConcept(input, settings);
+
+        // Mark transaction as completed if successful
+        if ((res as any).transactionId) {
+            await PointsService.completeTransaction((res as any).transactionId);
+        }
+
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         console.error('[handleAnalyzeTemplateConcept] Error:', error);
@@ -48,7 +57,7 @@ export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) 
 };
 
 export const handleGenerateStyleReference = async (req: Request, res: Response) => {
-    const { configStyle, pageType, settings: clientSettings, projectId } = req.body;
+    const { configStyle, pageType, settings: clientSettings, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
         // 使用 slide_image 规则 (5积分)
@@ -60,9 +69,11 @@ export const handleGenerateStyleReference = async (req: Request, res: Response) 
                 `生成风格参考图: ${configStyle?.styleName || 'Custom'} - ${pageType}`,
                 1,
                 {
-                    module: '创作室',
+                    module: '模版间',
                     category: '图片生成',
-                    subcategory: '风格参考图'
+                    subcategory: '风格参考图',
+                    triggerTime: triggerTime ? new Date(triggerTime) : undefined,
+                    templateId: projectId
                 }
             );
             if (!deductResult.success) {
@@ -73,6 +84,7 @@ export const handleGenerateStyleReference = async (req: Request, res: Response) 
                 return;
             }
             (res as any).deductedPoints = deductResult.deductedAmount;
+            (res as any).transactionId = deductResult.transactionId;
         }
 
         let settings = await getServerSettings();
@@ -85,6 +97,12 @@ export const handleGenerateStyleReference = async (req: Request, res: Response) 
             }
         }
         const result = await AIService.generateStyleReference(configStyle, pageType, settings);
+
+        // Mark transaction as completed
+        if ((res as any).transactionId) {
+            await PointsService.completeTransaction((res as any).transactionId);
+        }
+
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         console.error('[handleGenerateStyleReference] Error:', error);
@@ -93,7 +111,7 @@ export const handleGenerateStyleReference = async (req: Request, res: Response) 
 };
 
 export const handleSmartRefine = async (req: Request, res: Response) => {
-    const { text, type, projectId } = req.body;
+    const { text, type, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
         if (req.user) {
@@ -104,9 +122,11 @@ export const handleSmartRefine = async (req: Request, res: Response) => {
                 `AI 文本润色: ${type}`,
                 1,
                 {
-                    module: '创作室',
+                    module: '模版间',
                     category: '文本生成',
-                    subcategory: '智能润色'
+                    subcategory: '智能润色',
+                    triggerTime: triggerTime ? new Date(triggerTime) : undefined,
+                    templateId: projectId
                 }
             );
             if (!deductResult.success) {
@@ -117,10 +137,17 @@ export const handleSmartRefine = async (req: Request, res: Response) => {
                 return;
             }
             (res as any).deductedPoints = deductResult.deductedAmount;
+            (res as any).transactionId = deductResult.transactionId;
         }
 
         const settings = await getServerSettings();
         const result = await AIService.smartRefine(text, type, settings);
+
+        // Mark transaction as completed
+        if ((res as any).transactionId) {
+            await PointsService.completeTransaction((res as any).transactionId);
+        }
+
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
@@ -130,7 +157,7 @@ export const handleSmartRefine = async (req: Request, res: Response) => {
 import * as path from 'path';
 
 export const handleExtractText = async (req: Request, res: Response) => {
-    let { resourcePath, fileType, projectId } = req.body;
+    let { resourcePath, fileType, projectId, triggerTime } = req.body;
     try {
         if (!resourcePath) throw new Error("Resource path is required");
 
@@ -145,7 +172,8 @@ export const handleExtractText = async (req: Request, res: Response) => {
                 {
                     module: '创作室',
                     category: '文档解析',
-                    subcategory: '文本提取'
+                    subcategory: '文本提取',
+                    triggerTime: triggerTime ? new Date(triggerTime) : undefined
                 }
             );
             if (!deductResult.success) {
@@ -188,7 +216,7 @@ export const handleExtractText = async (req: Request, res: Response) => {
 };
 
 export const handleGenerateOutline = async (req: Request, res: Response) => {
-    const { topic, configStyle, projectId } = req.body;
+    const { topic, configStyle, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
         if (req.user) {
@@ -201,7 +229,8 @@ export const handleGenerateOutline = async (req: Request, res: Response) => {
                 {
                     module: '创作室',
                     category: '文本生成',
-                    subcategory: '大纲生成'
+                    subcategory: '大纲生成',
+                    triggerTime: triggerTime ? new Date(triggerTime) : undefined
                 }
             );
             if (!deductResult.success) {
@@ -224,7 +253,7 @@ export const handleGenerateOutline = async (req: Request, res: Response) => {
 };
 
 export const handleGenerateSingleOutlineItem = async (req: Request, res: Response) => {
-    const { topic, index, total, projectId } = req.body;
+    const { topic, index, total, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
         if (req.user) {
@@ -237,7 +266,8 @@ export const handleGenerateSingleOutlineItem = async (req: Request, res: Respons
                 {
                     module: '创作室',
                     category: '文本生成',
-                    subcategory: '大纲优化'
+                    subcategory: '大纲优化',
+                    triggerTime: triggerTime ? new Date(triggerTime) : undefined
                 }
             );
             if (!deductResult.success) {
@@ -259,7 +289,7 @@ export const handleGenerateSingleOutlineItem = async (req: Request, res: Respons
 };
 
 export const handleGenerateSlideDetail = async (req: Request, res: Response) => {
-    const { title, brief, topicContext, index, total, pageType, projectId } = req.body;
+    const { title, brief, topicContext, index, total, pageType, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
         if (req.user) {
@@ -272,7 +302,8 @@ export const handleGenerateSlideDetail = async (req: Request, res: Response) => 
                 {
                     module: '创作室',
                     category: '文本生成',
-                    subcategory: '正文生成'
+                    subcategory: '正文生成',
+                    triggerTime: triggerTime ? new Date(triggerTime) : undefined
                 }
             );
             if (!deductResult.success) {
@@ -283,16 +314,22 @@ export const handleGenerateSlideDetail = async (req: Request, res: Response) => 
                 return;
             }
             (res as any).deductedPoints = deductResult.deductedAmount;
+            (res as any).transactionId = deductResult.transactionId;
         }
 
         const settings = await getServerSettings();
         const result = await AIService.generateSlideDetail(title, brief, topicContext, index, total, pageType, settings);
+
+        // Mark transaction as completed if successful
+        if ((res as any).transactionId) {
+            await PointsService.completeTransaction((res as any).transactionId);
+        }
+
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
     }
 };
-
 export const handleGenerateSlideVariant = async (req: Request, res: Response) => {
     const {
         contentSource,
@@ -307,29 +344,38 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
         fullContent,
         globalStyleMap,
         allSlideTitles,
-        projectId
+        projectId,
+        triggerTime
     } = req.body;
 
-    console.log(`[handleGenerateSlideVariant] Request for: ${variantLabel} (Title: ${title || 'N/A'}), PageType: ${pageType || 'N/A'}`);
-
     try {
-        // 配图生成扣费（仅当 variantLabel 包含 image 时扣费）
-        const isImageGeneration = variantLabel?.toLowerCase().includes('image') ||
+        // 配图生成扣费（当 contentType 为 image 或 variantLabel 包含相关关键字时扣费）
+        const isImageGeneration = contentType === 'image' ||
+            variantLabel?.toLowerCase().includes('image') ||
             variantLabel?.toLowerCase().includes('背景') ||
-            variantLabel?.toLowerCase().includes('配图');
-        if (req.user && isImageGeneration) {
+            variantLabel?.toLowerCase().includes('配图') ||
+            variantLabel?.toLowerCase().includes('插图') ||
+            variantLabel?.toLowerCase().includes('option');
+
+        if (req.user) {
+            const actionCode = isImageGeneration ? 'slide_image' : 'slide_content';
+            const category = isImageGeneration ? '图片生成' : '文本生成';
+            const subcategory = isImageGeneration ? '正文配图' : '内容变体';
+
             const deductResult = await PointsService.deductPoints(
                 req.user.id,
-                'slide_image',
+                actionCode,
                 projectId,
-                `配图生成: ${title || variantLabel}`,
+                `${isImageGeneration ? '配图' : '内容'}生成: ${title || variantLabel}`,
                 1,
                 {
                     module: '创作室',
-                    category: '图片生成',
-                    subcategory: '正文配图'
+                    category: category,
+                    subcategory: subcategory,
+                    triggerTime: triggerTime ? new Date(triggerTime) : undefined
                 }
             );
+
             if (!deductResult.success) {
                 res.status(402).json({
                     success: false,
@@ -338,6 +384,7 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
                 return;
             }
             (res as any).deductedPoints = deductResult.deductedAmount;
+            (res as any).transactionId = deductResult.transactionId;
         }
 
         const settings = await getServerSettings();
@@ -356,6 +403,12 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
             globalStyleMap,
             allSlideTitles
         );
+
+        // Mark transaction as completed if successful
+        if ((res as any).transactionId) {
+            await PointsService.completeTransaction((res as any).transactionId);
+        }
+
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         console.error('[handleGenerateSlideVariant] Error:', error.message);

@@ -150,7 +150,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                         >
                             <option value="">全部板块</option>
                             <option value="创作室">创作室</option>
-                            <option value="模版库">模版库</option>
+                            <option value="模版间">模版间</option>
                             <option value="系统">系统操作</option>
                         </select>
 
@@ -236,6 +236,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                                 <th className="px-4 py-3 w-28">二级分类</th>
                                 <th className="px-4 py-3 w-28">三级板块</th>
                                 <th className="px-4 py-3">详细描述</th>
+                                <th className="px-4 py-3 w-32 whitespace-nowrap">关联 ID</th>
                                 <th className="px-4 py-3 w-36 whitespace-nowrap">点击触发时间</th>
                                 <th className="px-4 py-3 w-36 whitespace-nowrap">生成成功时间</th>
                                 <th className="px-4 py-3 w-24 text-right">变动积分</th>
@@ -245,7 +246,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                         <tbody className="divide-y divide-slate-100 bg-white">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={9} className="py-20 text-center">
+                                    <td colSpan={10} className="py-20 text-center">
                                         <div className="flex flex-col items-center gap-3">
                                             <Loader2 className="animate-spin text-blue-500" size={32} />
                                             <span className="text-slate-400 text-sm">加载记录中...</span>
@@ -254,7 +255,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                                 </tr>
                             ) : (!data?.items || data.items.length === 0) ? (
                                 <tr>
-                                    <td colSpan={9} className="py-20 text-center">
+                                    <td colSpan={10} className="py-20 text-center">
                                         <div className="flex flex-col items-center gap-3 opacity-50">
                                             <FileText size={48} className="text-slate-300" />
                                             <span className="text-slate-500 text-sm">暂无相关记录</span>
@@ -270,7 +271,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                                         subCategory: item.subcategory || '-',
                                         detail: item.description || '-',
                                         triggerTime: item.triggerTime || item.createdAt,
-                                        successTime: item.createdAt
+                                        successTime: item.completedAt || item.createdAt
                                     };
 
                                     // 如果字段为空，尝试解析旧的 JSON description (Fallback)
@@ -283,7 +284,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                                                 subCategory: json.subcategory || '-',
                                                 detail: json.details || json.text || '-',
                                                 triggerTime: json.triggerTime || item.createdAt,
-                                                successTime: json.successTime || item.createdAt
+                                                successTime: item.completedAt || json.successTime || item.createdAt
                                             };
                                         } catch (e) {
                                             // Ignore parse error
@@ -293,33 +294,55 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                                     const isPositive = item.amount > 0;
                                     const rowIndex = (page - 1) * 10 + index + 1;
 
+                                    // Determine ID to display with prefix
+                                    let idPrefix = '';
+                                    let rawId = '-';
+
+                                    if (info.module === '模版间') {
+                                        rawId = item.templateId || item.projectId || '-';
+                                        if (rawId !== '-') idPrefix = '模版';
+                                    } else {
+                                        rawId = item.projectId || '-';
+                                        if (rawId !== '-') idPrefix = '项目';
+                                    }
+
+                                    const shortId = rawId !== '-' && rawId.length > 8 ? rawId.substring(0, 8) + '...' : rawId;
+
                                     return (
                                         <tr key={item.id} className="hover:bg-slate-50/80 transition-colors group">
                                             <td className="px-4 py-2.5 text-xs text-slate-400 text-center font-mono">
                                                 {rowIndex}
                                             </td>
-                                            <td className="px-4 py-2.5 text-sm font-medium text-slate-600">
+                                            <td className="px-4 py-2.5 text-xs font-medium text-slate-600 whitespace-nowrap">
                                                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 group-hover:bg-white transition-colors">
-                                                    <MonitorPlay size={10} className="opacity-50" />
+                                                    <MonitorPlay size={9} className="opacity-50" />
                                                     {info.module}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-2.5 text-sm text-slate-600">
+                                            <td className="px-4 py-2.5 text-xs text-slate-600 whitespace-nowrap">
                                                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 group-hover:bg-white transition-colors">
-                                                    {info.category === '图片生成' ? <ImageIcon size={10} className="opacity-50" /> : <Sparkles size={10} className="opacity-50" />}
+                                                    {info.category === '图片生成' ? <ImageIcon size={9} className="opacity-50" /> : <Sparkles size={9} className="opacity-50" />}
                                                     {info.category}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-2.5 text-sm text-slate-500">{info.subCategory}</td>
-                                            <td className="px-4 py-2.5 text-sm text-slate-700 font-medium max-w-xs truncate" title={info.detail}>
+                                            <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">{info.subCategory}</td>
+                                            <td className="px-4 py-2.5 text-xs text-slate-700 font-medium max-w-xs truncate" title={info.detail}>
                                                 {info.detail}
+                                            </td>
+                                            <td className="px-4 py-2.5 text-xs text-slate-400 font-mono" title={rawId !== '-' ? rawId : undefined}>
+                                                {rawId !== '-' ? (
+                                                    <span>
+                                                        <span className="text-slate-300 mr-1">{idPrefix}</span>
+                                                        {shortId}
+                                                    </span>
+                                                ) : '-'}
                                             </td>
                                             <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap font-mono">{formatTime(info.triggerTime)}</td>
                                             <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap font-mono">{formatTime(info.successTime)}</td>
-                                            <td className={`px-4 py-2.5 text-sm font-bold text-right ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                            <td className={`px-4 py-2.5 text-xs font-bold text-right ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
                                                 {isPositive ? '+' : ''}{item.amount}
                                             </td>
-                                            <td className="px-4 py-2.5 text-sm font-bold text-slate-600 text-right font-mono">
+                                            <td className="px-4 py-2.5 text-xs font-bold text-slate-600 text-right font-mono">
                                                 {item.balance}
                                             </td>
                                         </tr>

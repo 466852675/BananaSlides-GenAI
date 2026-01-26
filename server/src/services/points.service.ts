@@ -21,6 +21,7 @@ export interface DeductResult {
     success: boolean;
     remainingPoints: number;
     deductedAmount: number;
+    transactionId?: string;
     message?: string;
 }
 
@@ -82,6 +83,7 @@ export async function deductPoints(
         category?: string;
         subcategory?: string;
         triggerTime?: Date;
+        templateId?: string; // Add templateId to options
     }
 ): Promise<DeductResult> {
     // 获取规则
@@ -137,38 +139,50 @@ export async function deductPoints(
     // 扣除积分并记录交易
     const newBalance = user.points - cost;
 
-    await prisma.$transaction([
-        prisma.user.update({
-            where: { id: userId },
-            data: {
-                points: newBalance,
-                pointsUsed: { increment: cost },
-            },
-        }),
-        prisma.transaction.create({
-            data: {
-                userId,
-                type: 'consume',
-                amount: -cost,
-                balance: newBalance,
-                ruleCode: actionCode,
-                projectId,
-                description: description || `${rule.name}${multiplier > 1 ? ` x${multiplier}` : ''}`,
-                module: options?.module,
-                category: options?.category,
-                subcategory: options?.subcategory,
-                triggerTime: options?.triggerTime
-            },
-        }),
-    ]);
+    const transaction = await prisma.transaction.create({
+        data: {
+            userId,
+            type: 'consume',
+            amount: -cost, // 负数表示消耗
+            balance: newBalance,
+            ruleCode: actionCode,
+            projectId,
+            description: description || rule.name,
+            module: options?.module || rule.module,
+            category: options?.category || rule.category,
+            subcategory: options?.subcategory,
+            triggerTime: options?.triggerTime,
+            // @ts-ignore: Prisma types not regenerated yet
+            templateId: options?.templateId, // Save templateId
+        },
+    });
 
-    console.log(`[Points] 用户 ${userId} 消耗 ${cost} 积分 (${actionCode})，剩余 ${newBalance}`);
+    await prisma.user.update({
+        where: { id: userId },
+        data: { points: newBalance },
+    });
 
     return {
         success: true,
         remainingPoints: newBalance,
         deductedAmount: cost,
+        transactionId: transaction.id,
     };
+}
+
+/**
+ * 标记交易为已完成（AI生成成功）
+ */
+export async function completeTransaction(transactionId: string) {
+    if (!transactionId) return;
+    try {
+        await prisma.transaction.update({
+            where: { id: transactionId },
+            data: { completedAt: new Date() } as any
+        });
+    } catch (e) {
+        console.error(`[Points] Failed to complete transaction ${transactionId}:`, e);
+    }
 }
 
 /**

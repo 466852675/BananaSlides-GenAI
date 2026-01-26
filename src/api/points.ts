@@ -46,6 +46,9 @@ export interface PointsTransaction {
     category?: string;
     subcategory?: string;
     triggerTime?: string;
+    projectId?: string;
+    templateId?: string;
+    completedAt?: string;
 }
 
 // 积分规则代码映射

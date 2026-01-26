@@ -513,7 +513,8 @@ async function callOpenAICompatible(
     while (retries > 0) {
         try {
             console.log(`[OpenAI Compatible] Calling: ${url}, Model: ${config.model} (Attempts left: ${retries})`);
-            const response = await axios.post(url, body, { headers, timeout: 120000 });
+            // Increased timeout to 240s (4 mins) for deep reasoning models
+            const response = await axios.post(url, body, { headers, timeout: 240000 });
             const content = response.data.choices[0]?.message?.content || "";
             console.log(`[OpenAI Compatible] Response received, length: ${content.length}`);
             console.log(`[OpenAI Compatible] Response preview:`, content.substring(0, 200));

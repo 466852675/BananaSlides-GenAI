@@ -21,6 +21,7 @@ interface OutlineGeneratorProps {
     config: StyleConfig;
     appSettings: AppSettings;
     onShowToast: (msg: string, type: ToastMessage['type']) => void;
+    projectId?: string;
 }
 
 const getOutlineDraftKey = (userId?: string) => `bananaslides_outline_draft_v1_${userId || 'guest'}`;
@@ -46,7 +47,7 @@ const getPageTypeLabel = (type: PageType) => {
 // Full Markdown Renderer Component with react-markdown
 
 
-export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onClose, onFinish, initialTopic = "", config, appSettings, onShowToast }) => {
+export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onClose, onFinish, initialTopic = "", config, appSettings, onShowToast, projectId }) => {
     const { user, refreshUser } = useAuth();
     const draftKey = useMemo(() => getOutlineDraftKey(user?.id), [user?.id]);
     const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -301,7 +302,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
 
         try {
             // Use 'content' type for topic/content refinement, NOT 'requirement' (which is for visual styles)
-            const refined = await smartRefine(contentToRefine, 'content');
+            const refined = await smartRefine(contentToRefine, 'content', undefined, projectId);
             if (refined && refined.trim()) {
                 if (activeTab === 'file') {
                     setFileParsedContent(refined);
@@ -374,7 +375,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         onShowToast(costInfoMsg, 'loading');
 
         try {
-            const items = await generateOutline(sourceContent, config);
+            const items = await generateOutline(sourceContent, config, undefined, projectId);
             if (items && items.length > 0) {
                 setOutlineItems(items);
                 setDeletedItemsPool([]); // 重新生成大纲时，清空旧任务的回收站
@@ -431,7 +432,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         }
 
         try {
-            const result = await generateSingleOutlineItem(topic, index, outlineItems.length);
+            const result = await generateSingleOutlineItem(topic, index, outlineItems.length, undefined, projectId);
             handleUpdateOutlineItem(id, { title: result.title, brief: result.brief });
             onShowToast("单页大纲重写成功", 'success');
             setTimeout(() => refreshUser(), 500);
@@ -608,7 +609,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                     topic,
                     index,
                     total,
-                    item.pageType
+                    item.pageType,
+                    undefined,
+                    projectId
                 );
                 handleUpdateOutlineItem(id, { fullContent: detail, status: 'success' });
             }

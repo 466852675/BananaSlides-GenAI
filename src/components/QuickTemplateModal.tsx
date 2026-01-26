@@ -69,6 +69,7 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
 
     const handleSmartRefine = async () => {
         if (!inputText.trim()) return;
+        const triggerTime = new Date().toISOString();
         setIsRefining(true);
         const providerName = getProviderName('text');
 
@@ -78,7 +79,7 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
                 getBalance()
             ]);
             onShowToast(`AI 正在润色描述词。本次预计扣除 ${cost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
-            const refined = await refinePrompt(inputText);
+            const refined = await refinePrompt(inputText, triggerTime);
             setInputText(refined);
             onShowToast(`调用 ${providerName} API 服务成功`, 'success');
         } catch (error: any) {
@@ -91,6 +92,7 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
 
     const handleSubmit = async () => {
         if (!inputText.trim() && !selectedFile) return;
+        const triggerTime = new Date().toISOString();
 
         setIsAnalyzing(true);
         const providerName = getProviderName('vision'); // Assuming mostly vision/text hybrid
@@ -120,7 +122,7 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
                 input = selectedFile;
             }
 
-            const config = await analyzeTemplateConcept(input);
+            const config = await analyzeTemplateConcept(input, triggerTime);
             onAnalyzeSuccess(config);
             onShowToast(`调用 ${providerName} API 服务成功`, 'success');
             onClose();

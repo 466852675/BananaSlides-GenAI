@@ -982,7 +982,10 @@ const App: React.FC = () => {
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.get('project') || null;
   });
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('template') || null;
+  });
 
   // Replaced Local State with React Query
   const { data: styleTemplates = [] } = useTemplates();
@@ -2128,7 +2131,9 @@ const App: React.FC = () => {
     try {
       const refined = await smartRefine(
         config.requirements,
-        "requirement"
+        "requirement",
+        undefined,
+        editingTemplateId || currentProjectId || undefined
       );
       handleConfigChange("requirements", refined);
       showToast("设计要求修饰成功", "success");
@@ -2156,7 +2161,7 @@ const App: React.FC = () => {
     }
 
     try {
-      const refined = await smartRefine(text, "content");
+      const refined = await smartRefine(text, "content", undefined, editingTemplateId || currentProjectId || undefined);
       showToast("内容修饰成功", "success");
       setTimeout(refreshUser, 500);
       return refined;
@@ -2413,8 +2418,7 @@ const App: React.FC = () => {
         async () => {
           try {
             // 2. 扣除积分
-            // 注意：PointsBadge 已经显示了积分，这里是实际扣除步骤
-            // 如果是非 VIP 用户积分不足，consumeAction 会抛出异常
+            const triggerTime = new Date().toISOString();
             await import('./api/points').then(m => m.consumeAction(
               'style_apply',
               currentProjectId || undefined,
@@ -2423,7 +2427,7 @@ const App: React.FC = () => {
                 module: '创作室',
                 category: '风格应用',
                 subcategory: '我的收藏',
-                triggerTime: new Date().toISOString()
+                triggerTime
               }
             ));
 
@@ -2606,7 +2610,7 @@ const App: React.FC = () => {
 
 
   // Generation Logic
-  const processItem = async (item: GeneratedSlide) => {
+  const processItem = async (item: GeneratedSlide, triggerTime?: string) => {
     try {
       const contentSource =
         item.contentType === "text"
@@ -2641,7 +2645,9 @@ const App: React.FC = () => {
             item.pageType, // ✅ 传递页面类型
             item.textContent, // ✅ 传递完整文本内容
             styleMap, // ✅ 传递全局风格映射
-            items.map(i => i.title).filter(t => !!t) // ✅ 传递本项目所有页面标题作为参考
+            items.map(i => i.title).filter(t => !!t), // ✅ 传递本项目所有页面标题作为参考
+            triggerTime,
+            currentProjectId
           )
         );
       }
@@ -2659,6 +2665,9 @@ const App: React.FC = () => {
             : res
         )
       );
+
+      // Refresh user points immediately
+      await refreshUser();
 
       // Return the generated variants so they can be used for syncing
       return {
@@ -2681,6 +2690,7 @@ const App: React.FC = () => {
 
 
   const handleGenerateBatch = async () => {
+    const triggerTime = new Date().toISOString();
     const itemsToProcess = items.filter(
       (item) => item.status === "idle" || item.status === "error"
     );
@@ -2727,7 +2737,7 @@ const App: React.FC = () => {
       while (activePromises.size >= CONCURRENCY_LIMIT)
         await Promise.race(activePromises);
 
-      const operation = processItem(item)
+      const operation = processItem(item, triggerTime)
         .then((result) => {
           if (result) {
             generatedResults.push(result);
@@ -2804,6 +2814,7 @@ const App: React.FC = () => {
   };
 
   const handleSingleGenerate = async (id: string) => {
+    const triggerTime = new Date().toISOString();
     const item = items.find((i) => i.id === id);
     if (item) {
       const providerName = getProviderName("image");
@@ -2819,7 +2830,7 @@ const App: React.FC = () => {
         showToast(`调用 ${providerName} API 生成单页中...`, "loading");
       }
       try {
-        const result = await processItem(item);
+        const result = await processItem(item, triggerTime);
 
         // Sync to database after successful generation
         if (currentProjectId && result) {
@@ -2875,6 +2886,7 @@ const App: React.FC = () => {
   };
 
   const handleRegenerate = async (id: string) => {
+    const triggerTime = new Date().toISOString();
     const item = items.find((i) => i.id === id);
     if (!item) return;
     setItems((prev) =>
@@ -2886,7 +2898,7 @@ const App: React.FC = () => {
     const providerName = getProviderName("image");
     showToast(`重新调用 ${providerName} API 生成中...`, "loading");
     try {
-      const result = await processItem(item);
+      const result = await processItem(item, triggerTime);
 
       // 同步到数据库
       if (currentProjectId && result) {
@@ -2932,8 +2944,9 @@ const App: React.FC = () => {
   };
 
   // Export Logic
-  // Export Logic
   const handleBatchExport = async (type: "zip" | "pdf" | "pptx") => {
+    const triggerTime = new Date().toISOString();
+    const isLocal = currentProjectId === "local-v1";
     setIsExportMenuOpen(false); // Close menu immediately
 
     const title = config.styleName || "bananaslides-genai";
@@ -2971,10 +2984,10 @@ const App: React.FC = () => {
                 currentProjectId || 'temp-workbench', // Use current ID or temp
                 currentProjectId ? `导出项目: ${title}` : `导出临时项目`,
                 {
-                  module: '创作室',
+                  module: '工作台',
                   category: '导出',
-                  subcategory: '批量导出',
-                  triggerTime: new Date().toISOString()
+                  subcategory: type.toUpperCase(),
+                  triggerTime
                 }
               );
               // After success deduction
@@ -3571,6 +3584,7 @@ const App: React.FC = () => {
         config={config}
         appSettings={appSettings}
         onShowToast={showToast}
+        projectId={currentProjectId}
       />
 
       {/* Lightbox */}
@@ -4101,13 +4115,17 @@ const App: React.FC = () => {
                                   onChange={(e) => setLocalTitle(e.target.value)}
                                   onBlur={handleTitleBlur}
                                   onKeyDown={handleTitleKeyDown}
-                                  className="text-sm font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 hover:bg-slate-50 focus:bg-white rounded-lg px-3 py-1.5 outline-none transition-all w-[400px] placeholder:text-slate-400"
+                                  className={`text-sm font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 hover:bg-slate-50 focus:bg-white rounded-lg px-3 py-1.5 outline-none transition-all placeholder:text-slate-400
+                                    ${isScrolled ? 'w-[180px] sm:w-[220px] md:w-[300px]' : 'w-full max-w-[400px]'}
+                                  `}
                                   placeholder="输入项目名称..."
                                 />
                                 <Edit3 size={12} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                               </div>
                             ) : (
-                              <h2 className="text-sm font-bold text-slate-800 px-3 py-1.5 select-text cursor-default border border-transparent whitespace-nowrap max-w-[400px] truncate" title={activeSession?.title || "未命名项目"}>
+                              <h2 className={`text-sm font-bold text-slate-800 px-3 py-1.5 select-text cursor-default border border-transparent whitespace-nowrap truncate
+                                ${isScrolled ? 'max-w-[200px]' : 'max-w-[400px]'}
+                              `} title={activeSession?.title || "未命名项目"}>
                                 {activeSession?.title || "未命名项目"}
                               </h2>
                             )}
@@ -4156,7 +4174,8 @@ const App: React.FC = () => {
                   )}
 
                   {/* RIGHT SECTION: Tools */}
-                  <div className="flex items-center gap-2 z-10 justify-end ml-4">
+                  <div className={`flex items-center z-10 justify-end transition-all
+                    ${isScrolled ? 'gap-1.5 ml-2' : 'gap-2 ml-4'}`}>
 
                     {viewMode === 'workbench' && (
                       <button
