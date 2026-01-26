@@ -269,7 +269,11 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
                         >
                             {generatingTypes.size > 0 ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
                             {generatingTypes.size > 0 ? '正在生成...' : '一键生成全套'}
-                            <PointsBadge actionCode="slide_image" compact />
+                            <PointsBadge
+                                actionCode="slide_image"
+                                multiplier={PAGE_TYPES.filter(pt => !template.styleMap?.[pt.type]).length}
+                                compact
+                            />
                         </button>
                     )}
                 </h4>

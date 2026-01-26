@@ -25,6 +25,7 @@ interface ResultCardProps {
     onViewImage?: (imageUrl: string) => void;
     onRefineContent?: (text: string) => Promise<string>;
     readOnly?: boolean;
+    onShowConfirm?: (title: string, message: string, onConfirm: () => void) => void;
 }
 
 const getStatusLabel = (status: string) => {
@@ -91,7 +92,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     onDuplicate,
     onViewImage,
     onRefineContent,
-    readOnly = false
+    readOnly = false,
+    onShowConfirm
 }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isRefining, setIsRefining] = useState(false);
@@ -121,6 +123,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     };
 
     const handleSingleExport = async (type: 'pdf' | 'pptx', variantUrl: string) => {
+        // 单页导出不扣积分，直接导出
         const tempItem = { ...item, variants: [variantUrl] };
         const filename = `slide-${index || 'x'}-${item.title || 'export'}`;
 
@@ -132,8 +135,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
             }
         } catch (error: any) {
             console.error("Single export failed", error);
-            // ResultCard usually doesn't have a direct toast, 
-            // but we log it. In a real app, we'd pass a toast prop or use a global hook.
+            alert("导出失败，请重试");
         }
     };
 
@@ -316,7 +318,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                         >
                                             {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                             {isRefining ? '修饰中...' : 'AI 修饰'}
-                                            {!isRefining && <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-1" />}
+                                            {!isRefining && <PointsBadge actionCode="smart_refine" compact showIcon={false} className="ml-1" />}
                                         </button>
                                     )}
                                 </>
@@ -403,7 +405,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                         className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 text-xs font-medium transition-all border border-rose-100 shadow-sm"
                                         title="仅生成此页"
                                     >
-                                        <Zap size={12} /> 生成 <PointsBadge actionCode="slide_image" compact showIcon={false} className="ml-0.5" />
+                                        <Zap size={12} /> 生成 <PointsBadge actionCode="slide_image" multiplier={item.variantCount} compact showIcon={false} className="ml-0.5" />
                                     </button>
                                 )}
 

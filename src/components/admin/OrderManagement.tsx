@@ -108,7 +108,7 @@ export const OrderManagement: React.FC = () => {
                     </div>
                     <div>
                         <h2 className="text-2xl font-black tracking-tight mb-2">订单管理</h2>
-                        <p className="text-blue-100 font-medium opacity-90">
+                        <p className="text-blue-100 font-medium opacity-90 whitespace-nowrap">
                             查看所有充值与订阅记录，处理退款申请。
                         </p>
                     </div>

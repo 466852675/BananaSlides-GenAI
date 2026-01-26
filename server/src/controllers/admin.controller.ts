@@ -85,7 +85,7 @@ export async function getUser(req: Request, res: Response): Promise<void> {
 export async function updateUser(req: Request, res: Response): Promise<void> {
     try {
         const id = req.params.id as string;
-        const { nickname, role, status, points } = req.body;
+        const { nickname, role, status, points, vipLevel } = req.body;
 
         // 检查是否尝试修改自己
         if (req.user?.id === id && status === UserStatus.DISABLED) {
@@ -98,7 +98,7 @@ export async function updateUser(req: Request, res: Response): Promise<void> {
 
         const updated = await AdminService.updateUser(
             id,
-            { nickname, role, status, points },
+            { nickname, role, status, points, vipLevel },
             req.user!.id
         );
 
@@ -137,6 +137,35 @@ export async function resetUserPassword(req: Request, res: Response): Promise<vo
         res.status(500).json({
             success: false,
             error: { code: 'INTERNAL_ERROR', message: '重置密码失败' }
+        });
+    }
+}
+
+/**
+ * 删除用户
+ * DELETE /api/admin/users/:id
+ */
+export async function deleteUser(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+
+        // 禁止删除自己
+        if (req.user?.id === id) {
+            res.status(400).json({
+                success: false,
+                error: { code: 'INVALID_OPERATION', message: '无法删除当前登录账户' }
+            });
+            return;
+        }
+
+        await AdminService.deleteUserById(id);
+
+        res.json({ success: true, message: '用户已永久删除' });
+    } catch (error: any) {
+        console.error('[Admin] 删除用户失败:', error);
+        res.status(400).json({
+            success: false,
+            error: { code: 'DELETE_FAILED', message: error.message || '删除用户失败' }
         });
     }
 }
@@ -276,7 +305,7 @@ export async function listPointsRules(req: Request, res: Response): Promise<void
  */
 export async function createPointsRule(req: Request, res: Response): Promise<void> {
     try {
-        const { code, name, costPoints, description } = req.body;
+        const { code, name, costPoints, description, module, category, calculationMethod, deductionLogic, effectiveAt } = req.body;
 
         if (!code || !name || costPoints === undefined) {
             res.status(400).json({
@@ -286,8 +315,18 @@ export async function createPointsRule(req: Request, res: Response): Promise<voi
             return;
         }
 
-        const rule = await PointsService.createPointsRule({ code, name, costPoints, description });
-
+        const rule = await PointsService.createPointsRule({
+            code,
+            name,
+            costPoints,
+            description,
+            module,
+            category,
+            calculationMethod,
+            deductionLogic,
+            effectiveAt: effectiveAt ? new Date(effectiveAt) : undefined,
+            createdById: req.user!.id
+        });
         res.status(201).json({ success: true, data: rule });
     } catch (error) {
         console.error('[Admin] 创建积分规则失败:', error);
@@ -305,10 +344,19 @@ export async function createPointsRule(req: Request, res: Response): Promise<voi
 export async function updatePointsRule(req: Request, res: Response): Promise<void> {
     try {
         const id = req.params.id as string;
-        const { name, costPoints, description, isActive } = req.body;
+        const { name, costPoints, description, isActive, module, category, calculationMethod, deductionLogic, effectiveAt } = req.body;
 
-        const rule = await PointsService.updatePointsRule(id, { name, costPoints, description, isActive });
-
+        const rule = await PointsService.updatePointsRule(id, {
+            name,
+            costPoints,
+            description,
+            isActive,
+            module,
+            category,
+            calculationMethod,
+            deductionLogic,
+            effectiveAt: effectiveAt ? new Date(effectiveAt) : undefined
+        });
         res.json({ success: true, data: rule });
     } catch (error) {
         console.error('[Admin] 更新积分规则失败:', error);

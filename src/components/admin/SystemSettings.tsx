@@ -44,7 +44,7 @@ export const SystemSettings: React.FC = () => {
                         </div>
                         <div>
                             <h1 className="text-3xl font-black text-white tracking-tight mb-2">系统设置</h1>
-                            <p className="text-slate-400 font-medium">全局控制台，管理站点元数据及运行环境。</p>
+                            <p className="text-slate-400 font-medium whitespace-nowrap">全局控制台，管理站点元数据及运行环境。</p>
                         </div>
                     </div>
                     <div className="flex gap-3">

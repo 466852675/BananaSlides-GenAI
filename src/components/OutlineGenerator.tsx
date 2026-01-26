@@ -3,12 +3,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { PointsBadge } from './PointsBadge';
 import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser, Eye, Edit3, Upload, Download } from 'lucide-react';
 import { refinePrompt, smartRefine, generateOutline, generateSlideDetail, generateSingleOutlineItem } from '../services/geminiService';
+import { useAuth } from '../contexts/AuthContext';
 import { extractTextFromUpload } from '../utils/fileParser';
 import { OutlineItem, GeneratedSlide, StyleConfig, PageType, AppSettings } from '../types';
 
 import { ConfirmDialog } from './ConfirmDialog';
 import { AIGlowContainer } from './AIGlowContainer';
 import { ToastMessage } from './Toast';
+import { getPointsRule, getBalance } from '../api/points';
 import ReactMarkdown from 'react-markdown';
 
 interface OutlineGeneratorProps {
@@ -21,7 +23,7 @@ interface OutlineGeneratorProps {
     onShowToast: (msg: string, type: ToastMessage['type']) => void;
 }
 
-const OUTLINE_DRAFT_KEY = 'bananaslides_outline_draft_v1';
+const getOutlineDraftKey = (userId?: string) => `bananaslides_outline_draft_v1_${userId || 'guest'}`;
 
 interface OutlineDraft {
     topic: string;
@@ -45,6 +47,8 @@ const getPageTypeLabel = (type: PageType) => {
 
 
 export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onClose, onFinish, initialTopic = "", config, appSettings, onShowToast }) => {
+    const { user, refreshUser } = useAuth();
+    const draftKey = useMemo(() => getOutlineDraftKey(user?.id), [user?.id]);
     const [step, setStep] = useState<1 | 2 | 3>(1);
     // Tab 1 input state
     const [topic, setTopic] = useState(initialTopic);
@@ -69,6 +73,24 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
 
     // Track regeneration loading states per item ID
     const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
+
+    // Points stats for warnings
+    const [currentBalance, setCurrentBalance] = useState<number | null>(null);
+    const [currentCost, setCurrentCost] = useState<number | null>(null);
+
+    // --- Interruption Prevention ---
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (isGeneratingOutline || isGeneratingDetails) {
+                const msg = "AI 正在生成中，关闭页面可能导致积分损失。确定要离开吗？";
+                e.preventDefault();
+                e.returnValue = msg;
+                return msg;
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isGeneratingOutline, isGeneratingDetails]);
 
     useEffect(() => {
         if (initialTopic) {
@@ -107,16 +129,16 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 lastUpdated: Date.now(),
                 attachedFile: attachedFile ? { ...attachedFile, content: fileParsedContent } : null,
             };
-            localStorage.setItem(OUTLINE_DRAFT_KEY, JSON.stringify(draft));
+            localStorage.setItem(draftKey, JSON.stringify(draft));
         }, 1000);
 
         return () => clearTimeout(timer);
-    }, [topic, step, outlineItems, attachedFile, fileParsedContent, isOpen]);
+    }, [topic, step, outlineItems, attachedFile, fileParsedContent, isOpen, draftKey]);
 
     // --- Restore Logic ---
     useEffect(() => {
         if (isOpen) {
-            const saved = localStorage.getItem(OUTLINE_DRAFT_KEY);
+            const saved = localStorage.getItem(draftKey);
             if (saved) {
                 try {
                     const draft = JSON.parse(saved) as OutlineDraft;
@@ -133,9 +155,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                             confirmText: '恢复编辑',
                             cancelText: '清空草稿',
                             onConfirm: () => {
-                                setTopic(draft.topic);
-                                setStep(draft.step);
-                                setOutlineItems(draft.outlineItems);
+                                setTopic(draft.topic || "");
+                                setStep(draft.step || 1);
+                                setOutlineItems(draft.outlineItems || []);
                                 if (draft.attachedFile) {
                                     setAttachedFile(draft.attachedFile);
                                     if (draft.attachedFile.content) setFileParsedContent(draft.attachedFile.content);
@@ -147,18 +169,18 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                 onShowToast('已恢复上次的编辑内容', 'success');
                             },
                             onCancel: () => {
-                                localStorage.removeItem(OUTLINE_DRAFT_KEY);
+                                localStorage.removeItem(draftKey);
                                 setConfirmState(prev => ({ ...prev, isOpen: false }));
                                 onShowToast('草稿已清空', 'info');
                             }
                         });
                     }
                 } catch (e) {
-                    localStorage.removeItem(OUTLINE_DRAFT_KEY);
+                    localStorage.removeItem(draftKey);
                 }
             }
         }
-    }, [isOpen]); // Trigger when opened
+    }, [isOpen, draftKey]);
 
     if (!isOpen) return null;
 
@@ -263,7 +285,19 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
 
         setIsRefining(true);
         const providerName = getProviderName('text');
-        onShowToast(`调用 ${providerName} API 服务修饰内容中...`, 'loading');
+
+        try {
+            const [rule, balance] = await Promise.all([
+                getPointsRule('style_apply', true), // Smart Refine uses style_apply rule here
+                getBalance()
+            ]);
+            const cost = rule?.costPoints ?? 1;
+            const logicTip = rule?.deductionLogic ? `(${rule.deductionLogic})` : '';
+            onShowToast(`AI 正在润色内容。本次预计扣除 ${cost} 积分 ${logicTip}，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+        } catch (e) {
+            console.warn('Failed to fetch real-time points info', e);
+            onShowToast(`调用 ${providerName} API 服务修饰内容中...`, 'loading');
+        }
 
         try {
             // Use 'content' type for topic/content refinement, NOT 'requirement' (which is for visual styles)
@@ -275,6 +309,8 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                     setTopic(refined);
                 }
                 onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+                // 成功后刷新用户信息（积分余额）
+                setTimeout(() => refreshUser(), 500);
             } else {
                 onShowToast(`调用 ${providerName} API 服务返回内容为空`, 'error');
             }
@@ -310,13 +346,32 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         const sourceContent = activeTab === 'file' ? fileParsedContent : topic;
 
         if (!sourceContent.trim()) {
-            onShowToast("请输入主题或上传文件", "error");
+            onShowToast('请输入主题或解析文件', 'error');
             return;
         }
 
         setIsGeneratingOutline(true);
         const providerName = getProviderName('text');
-        onShowToast(`调用 ${providerName} API 服务生成大纲中，请耐心等待⌛️`, 'loading');
+
+        // Action name for unified wording
+        const actionName = outlineItems.length > 0 ? '重新生成大纲' : '生成大纲';
+        let costInfoMsg = `AI 正在${actionName}。正在调用 ${providerName} API 服务...`;
+
+        try {
+            const [rule, balance] = await Promise.all([
+                getPointsRule('outline_generation', true),
+                getBalance()
+            ]);
+            const cost = rule?.costPoints ?? 5;
+            setCurrentCost(cost);
+            setCurrentBalance(balance.points);
+            const logicTip = rule?.deductionLogic ? `(${rule.deductionLogic})` : '';
+            costInfoMsg = `AI 正在${actionName}。本次预计扣除 ${cost} 积分 ${logicTip}，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`;
+        } catch (e) {
+            console.warn('Failed to fetch real-time points info', e);
+        }
+
+        onShowToast(costInfoMsg, 'loading');
 
         try {
             const items = await generateOutline(sourceContent, config);
@@ -324,7 +379,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 setOutlineItems(items);
                 setDeletedItemsPool([]); // 重新生成大纲时，清空旧任务的回收站
                 setStep(2);
-                onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+                onShowToast(`大纲生成成功`, 'success');
+                // 成功后刷新用户信息（积分余额）
+                setTimeout(() => refreshUser(), 500);
             } else {
                 onShowToast(`调用 ${providerName} API 服务返回空数据`, 'error');
             }
@@ -361,8 +418,23 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
     const handleRegenerateSingleOutlineItem = async (id: string, index: number) => {
         setLoadingItems(prev => ({ ...prev, [id]: true }));
         try {
+            const [rule, balance] = await Promise.all([
+                getPointsRule('outline_page_regen', true),
+                getBalance()
+            ]);
+            const cost = rule?.costPoints ?? 1;
+            const logicTip = rule?.deductionLogic ? `(${rule.deductionLogic})` : '';
+            onShowToast(`AI 正在重写此页。本次预计扣除 ${cost} 积分 ${logicTip}，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+        } catch (e) {
+            console.warn('Failed to fetch real-time points info', e);
+            onShowToast("正在通过 AI 重写此页...", 'loading');
+        }
+
+        try {
             const result = await generateSingleOutlineItem(topic, index, outlineItems.length);
             handleUpdateOutlineItem(id, { title: result.title, brief: result.brief });
+            onShowToast("单页大纲重写成功", 'success');
+            setTimeout(() => refreshUser(), 500);
         } catch (e) {
             onShowToast("单页大纲重写失败", 'error');
         } finally {
@@ -511,6 +583,21 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         try {
             const structuralTypes: PageType[] = ['cover', 'directory', 'transition', 'end'];
 
+            if (!structuralTypes.includes(item.pageType)) {
+                try {
+                    const [rule, balance] = await Promise.all([
+                        getPointsRule('slide_content', true),
+                        getBalance()
+                    ]);
+                    const cost = rule?.costPoints ?? 1;
+                    const logicTip = rule?.deductionLogic ? `(${rule.deductionLogic})` : '';
+                    onShowToast(`AI 正在生成此页正文。本次预计扣除 ${cost} 积分 ${logicTip}，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+                } catch (e) {
+                    console.warn('Failed to fetch real-time points info', e);
+                    onShowToast(`AI 正在生成此页正文...`, 'loading');
+                }
+            }
+
             if (structuralTypes.includes(item.pageType)) {
                 await new Promise(resolve => setTimeout(resolve, 300));
                 handleUpdateOutlineItem(id, { fullContent: item.brief, status: 'success' });
@@ -525,8 +612,10 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 );
                 handleUpdateOutlineItem(id, { fullContent: detail, status: 'success' });
             }
+            onShowToast("此页内容生成成功", 'success');
         } catch (e) {
             handleUpdateOutlineItem(id, { status: 'error' });
+            onShowToast("生成内容失败", 'error');
             throw e;
         }
     };
@@ -591,20 +680,56 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         }
     };
 
-    const handleBatchGenerateDetails = () => {
+    const handleBatchGenerateDetails = async () => {
         const hasPending = outlineItems.some(i => i.status !== 'success' || !i.fullContent);
 
         if (hasPending) {
             // Normal mode: only generate missing ones
+            setIsGeneratingDetails(true);
+            // Fetch fresh balance and cost for warning (using slide_content rule)
+            try {
+                const itemsToGenerate = outlineItems.filter(i => !i.fullContent).length;
+                const [rule, balance] = await Promise.all([
+                    getPointsRule('slide_content', true),
+                    getBalance()
+                ]);
+                const unitCost = rule?.costPoints ?? 1;
+                const totalCost = unitCost * itemsToGenerate;
+                setCurrentCost(totalCost);
+                setCurrentBalance(balance.points);
+                const logicTip = rule?.deductionLogic ? `(${rule.deductionLogic})` : '';
+                onShowToast(`AI 正在批量生成详细内容。本次预计扣除 ${totalCost} 积分 ${logicTip}，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+            } catch (e) {
+                console.warn('Failed to fetch real-time points info', e);
+                onShowToast('AI 正在批量生成详细内容... 正在调用服务，请稍候。', 'loading');
+            }
             executeBatchGeneration(false);
         } else {
             // All done mode: ask for confirmation to regenerate all
             setConfirmState({
                 isOpen: true,
-                title: "重新生成所有内容",
+                title: "重新生成所有详细内容",
                 message: "检测到所有页面均已拥有详细内容。是否确定要覆盖现有内容，根据当前大纲全部重新生成？",
-                onConfirm: () => {
+                onConfirm: async () => {
                     setConfirmState(prev => ({ ...prev, isOpen: false }));
+                    setIsGeneratingDetails(true);
+                    // Fetch fresh balance and cost for warning (using slide_content rule)
+                    try {
+                        const itemsToGenerate = outlineItems.length; // All items
+                        const [rule, balance] = await Promise.all([
+                            getPointsRule('slide_content', true),
+                            getBalance()
+                        ]);
+                        const unitCost = rule?.costPoints ?? 1;
+                        const totalCost = unitCost * itemsToGenerate;
+                        setCurrentCost(totalCost);
+                        setCurrentBalance(balance.points);
+                        const logicTip = rule?.deductionLogic ? `(${rule.deductionLogic})` : '';
+                        onShowToast(`AI 正在重新生成所有详细内容。本次预计扣除 ${totalCost} 积分 ${logicTip}，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+                    } catch (e) {
+                        console.warn('Failed to fetch real-time points info', e);
+                        onShowToast('AI 正在重新生成所有详细内容... 正在调用服务，请稍候。', 'loading');
+                    }
                     executeBatchGeneration(true);
                 }
             });
@@ -634,7 +759,8 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 }));
 
                 // Clear draft on success
-                localStorage.removeItem(OUTLINE_DRAFT_KEY);
+                localStorage.removeItem(draftKey);
+                setCurrentCost(null);
 
                 onFinish(slides);
                 onClose();
@@ -924,23 +1050,24 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
 
                                 {/* Shared Footer: Generate Button */}
                                 <div className="mt-6 shrink-0">
-                                    {isGeneratingOutline ? (
-                                        <div className="text-center py-4 bg-slate-50 rounded-xl border border-slate-100">
-                                            <div className="flex items-center justify-center gap-3 text-indigo-600">
-                                                <Loader2 size={24} className="animate-spin" />
-                                                <span className="font-semibold text-sm">正在生成...</span>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <button
-                                            onClick={handleGenerateOutline}
-                                            // Determine disabled state based on active tab content
-                                            disabled={!(activeTab === 'file' ? fileParsedContent.trim() : topic.trim())}
-                                            className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl font-bold text-base shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:shadow-none"
-                                        >
-                                            <Wand2 size={18} /> 一键生成 PPT 大纲 <PointsBadge actionCode="outline_generation" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
-                                        </button>
-                                    )}
+                                    {/* Generate Button - Always Visible, Disabled during Generation */}
+                                    <button
+                                        onClick={handleGenerateOutline}
+                                        // Determine disabled state based on active tab content
+                                        disabled={isGeneratingOutline || !(activeTab === 'file' ? fileParsedContent.trim() : topic.trim())}
+                                        className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl font-bold text-base shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:shadow-none"
+                                    >
+                                        {isGeneratingOutline ? (
+                                            <>
+                                                <Loader2 size={18} className="animate-spin" />
+                                                正在生成中...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Wand2 size={18} /> 一键生成 PPT 大纲 <PointsBadge actionCode="outline_generation" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
 
@@ -949,9 +1076,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                         </div>
                     )}
 
-                    {/* Step 2 ... */}
+                    {/* Step 2: Outline Structure */}
                     {step === 2 && (
-                        <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
                             {/* ... Header logic similar, just updating grid content ... */}
                             <div className="flex justify-between items-center mb-8 sticky top-0 bg-[#fafafa]/95 backdrop-blur-sm z-20 py-2">
                                 <div>
@@ -959,15 +1086,22 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                     <p className="text-sm text-slate-500">已生成 {outlineItems.length} 页 (目标 {config.targetPageCount} 页)</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={handleClearAllOutlineItems} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-red-50 transition-all"><Eraser size={14} /> 清空内容</button>
-                                    <button onClick={handleGenerateOutline} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 shadow-sm transition-all"><RefreshCw size={14} /> 重新生成大纲 <PointsBadge actionCode="outline_generation" compact /></button>
-                                    <button onClick={proceedToDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200 font-medium">
+                                    <button onClick={handleClearAllOutlineItems} disabled={isGeneratingOutline} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-red-50 transition-all disabled:opacity-50"><Eraser size={14} /> 清空内容</button>
+                                    <button
+                                        onClick={handleGenerateOutline}
+                                        disabled={isGeneratingOutline}
+                                        className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:border-indigo-200 shadow-sm transition-all disabled:opacity-50"
+                                    >
+                                        {isGeneratingOutline ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                        重新生成大纲 <PointsBadge actionCode="outline_generation" compact />
+                                    </button>
+                                    <button onClick={proceedToDetails} disabled={isGeneratingOutline} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200 font-medium disabled:opacity-50">
                                         下一步: 生成详细内容 <ArrowRight size={18} />
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-24">
+                            <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 pb-24 transition-opacity duration-300 ${isGeneratingOutline ? 'opacity-30 pointer-events-none filter blur-[1px]' : 'opacity-100'}`}>
                                 {outlineItems.map((item, idx) => (
                                     <div key={item.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all group flex flex-col gap-3 relative">
                                         {/* Card Header with Type Badge */}
@@ -991,7 +1125,15 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                                 {/* Clear Single */}
                                                 <button onClick={() => handleClearSingleOutlineItem(item.id)} className="p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors" title="清空内容"><Eraser size={16} /></button>
                                                 {/* Regenerate Single */}
-                                                <button onClick={() => handleRegenerateSingleOutlineItem(item.id, item.index)} disabled={loadingItems[item.id]} className={`p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors ${loadingItems[item.id] ? 'animate-spin' : ''}`} title="重写此页"><RefreshCw size={16} /></button>
+                                                <button
+                                                    onClick={() => handleRegenerateSingleOutlineItem(item.id, item.index)}
+                                                    disabled={loadingItems[item.id] || isGeneratingOutline}
+                                                    className={`p-2 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg transition-colors flex items-center gap-1 ${(loadingItems[item.id]) ? 'animate-spin' : ''}`}
+                                                    title="重写此页"
+                                                >
+                                                    <RefreshCw size={16} />
+                                                    <PointsBadge actionCode="outline_page_regen" compact showIcon={false} className="opacity-60 scale-75 origin-left" />
+                                                </button>
                                                 {/* Delete */}
                                                 <div className="h-4 w-px bg-slate-200 mx-1"></div>
                                                 <button onClick={() => handleDeleteOutlineItem(item.id)} className="p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors" title="删除"><Trash2 size={16} /></button>
@@ -1015,8 +1157,17 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                 <div><h3 className="text-xl font-bold text-slate-800">详细内容生成</h3><p className="text-sm text-slate-500">系统将为内容页生成详细演讲稿，结构页保持精简</p></div>
                                 <div className="flex gap-2">
                                     <button onClick={handleClearAllDetails} className="text-sm flex items-center gap-1.5 text-slate-500 hover:text-red-500 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-red-50 transition-all"><Eraser size={14} /> 清空内容</button>
-                                    <button onClick={handleBatchGenerateDetails} disabled={isGeneratingDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md shadow-indigo-200 font-medium">
+                                    <button onClick={handleBatchGenerateDetails} disabled={isGeneratingDetails} className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-md shadow-indigo-200 font-medium relative group">
                                         {isGeneratingDetails ? <Loader2 size={18} className="animate-spin" /> : <Play size={18} fill="currentColor" />} {isGeneratingDetails ? "生成中..." : "批量生成详细描述"}
+                                        {!isGeneratingDetails && (
+                                            <PointsBadge
+                                                actionCode="slide_content"
+                                                multiplier={outlineItems.some(i => !i.fullContent) ? outlineItems.filter(i => !i.fullContent).length : outlineItems.length}
+                                                compact
+                                                showIcon={false}
+                                                className="text-white/80 bg-white/20 px-1.5 rounded-full"
+                                            />
+                                        )}
                                     </button>
                                     <button onClick={handleFinish} className="flex items-center gap-2 bg-rose-500 text-white px-5 py-2.5 rounded-lg hover:bg-rose-600 transition-all shadow-md shadow-rose-200 font-medium">
                                         <Check size={18} /> 完成并导入工作台
@@ -1059,7 +1210,13 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                             {/* Status overlay */}
                                             {(!item.fullContent && item.status === 'idle') && (
                                                 <div className="absolute inset-0 flex items-center justify-center bg-white/60 z-10">
-                                                    <button onClick={() => generateDetailForId(item.id)} className="px-4 py-2 bg-white border border-slate-200 shadow-sm rounded-lg text-sm text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all">生成此页内容</button>
+                                                    <button
+                                                        onClick={() => generateDetailForId(item.id)}
+                                                        className="px-4 py-2 bg-white border border-slate-200 shadow-sm rounded-lg text-sm text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center gap-1.5"
+                                                    >
+                                                        生成此页内容
+                                                        <PointsBadge actionCode="slide_content" compact showIcon={false} className="opacity-70 group-hover:opacity-100" />
+                                                    </button>
                                                 </div>
                                             )}
 

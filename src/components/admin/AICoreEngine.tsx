@@ -37,7 +37,7 @@ export const AICoreEngine: React.FC = () => {
                         </div>
                         <div>
                             <h1 className="text-2xl font-black text-white tracking-tight mb-1">AI 核心引擎</h1>
-                            <p className="text-violet-100 font-medium opacity-90 max-w-xl">
+                            <p className="text-violet-100 font-medium opacity-90 whitespace-nowrap">
                                 全局模型路由控制台，管理 LLM 提供商、参数调优及多模态生成策略。
                             </p>
                         </div>

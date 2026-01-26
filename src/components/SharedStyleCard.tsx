@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { StyleTemplate, StylePreset, StyleConfig } from "../types";
 import { formatTemplateId } from '../utils/idFormatter';
+import { PointsBadge } from './PointsBadge';
 
 export type SharedStyleItem = StyleTemplate | StylePreset;
 
@@ -268,7 +269,9 @@ export const SharedStyleCard: React.FC<SharedStyleCardProps> = ({
                     <Check size={14} className="mr-1" /> 已应用
                   </>
                 ) : (
-                  "应用"
+                  <>
+                    应用 <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-0.5 scale-90" />
+                  </>
                 )}
               </button>
             )}

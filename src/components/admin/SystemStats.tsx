@@ -96,7 +96,7 @@ export const SystemStats: React.FC = () => {
                     </div>
                     <div>
                         <h1 className="text-2xl font-black text-white tracking-tight mb-2">控制台</h1>
-                        <p className="text-purple-100 font-medium opacity-90">
+                        <p className="text-purple-100 font-medium opacity-90 whitespace-nowrap">
                             系统概览，实时监控用户增长与订单数据。
                         </p>
                     </div>

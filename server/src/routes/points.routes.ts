@@ -22,4 +22,7 @@ router.get('/transactions', PointsController.getTransactions);
 // 检查操作所需积分
 router.get('/check/:actionCode', PointsController.checkAction);
 
+// 扣除积分
+router.post('/deduct', PointsController.deductPoints);
+
 export default router;

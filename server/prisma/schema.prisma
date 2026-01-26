@@ -86,6 +86,7 @@ model User {
   orders         Order[]
   favorites      Favorite[]
   styleTemplates StyleTemplate[]
+  createdPointsRules PointsRule[] @relation("RuleCreator")
   
   // ========== 索引 ==========
   @@index([role])
@@ -126,14 +127,23 @@ model PointsRule {
   code        String   @unique   // 规则代码 (如 "outline_generation")
   name        String             // 规则名称 (如 "AI大纲生成")
   description String?            // 规则描述
+  module      String?            // 一级板块 (如: 创作室、模版库)
+  category    String?            // 二级分类 (如: 文本生成、图片生成)
   
   // ========== 扣费配置 ==========
-  costPoints  Int                // 消耗积分数
-  costType    String   @default("fixed") // fixed=固定, percent=百分比
+  costPoints        Int                // 消耗积分数
+  costType          String   @default("fixed") // fixed=固定, percent=百分比
+  calculationMethod String?            // 计算方式 (如: 按次、按页)
+  deductionLogic    String?            // 扣费逻辑完整描述
   
-  // ========== 状态控制 ==========
+  // ========== 状态与时效 ==========
   isActive    Boolean  @default(true)
   sortOrder   Int      @default(0)  // 排序权重
+  effectiveAt DateTime @default(now()) // 生效时间
+  
+  // ========== 审计信息 ==========
+  createdById String?
+  createdBy   User?    @relation("RuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
   
   // ========== 时间戳 ==========
   createdAt   DateTime @default(now())
@@ -160,9 +170,14 @@ model Transaction {
   operatorId  String?            // 操作人 ID (管理员调整时)
   
   // ========== 描述 ==========
-  description String?            // 交易描述
+  // ========== 描述 ==========
+  module      String?            // 一级板块 (创作室/模版间)
+  category    String?            // 二级分类 (文本/图片/视觉)
+  subcategory String?            // 三级板块 (具体功能区)
+  description String?            // 详细描述
   
   // ========== 时间戳 ==========
+  triggerTime DateTime?          // 前端点击/触发时间
   createdAt   DateTime @default(now())
   
   // ========== 索引 ==========

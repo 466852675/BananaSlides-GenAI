@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, ClipboardEvent } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo, ClipboardEvent } from "react";
 import { PointsBadge } from './components/PointsBadge';
 import { createPortal } from 'react-dom';
 import {
@@ -119,6 +119,7 @@ import { client, uploadFile } from "./api/client";
 import { ProjectSnapshot, useHistory, useProjectSnapshots, useCreateSnapshot, useRestoreSnapshot, useForkSnapshot } from "./api/history";
 import { resolveResourceUrl } from "./utils/resource";
 import { StartProjectModal } from "./components/StartProjectModal";
+import { getActionCost, getBalance } from "./api/points";
 import { useAuth } from "./contexts/AuthContext";
 
 import { generateId } from "./utils";
@@ -468,26 +469,77 @@ const HistoryProjectCard: React.FC<{
   onDelete: (id: string) => void;
   onViewImage: (url: string) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
-}> = ({ session, isSelectionMode, isSelected, onToggleSelection, onOpen, onDelete, onViewImage, showToast }) => {
+  onShowConfirm?: (title: string, message: string, onConfirm: () => void) => void;
+}> = ({ session, isSelectionMode, isSelected, onToggleSelection, onOpen, onDelete, onViewImage, showToast, onShowConfirm }) => {
   const [thumbPage, setThumbPage] = useState(0);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
   const handleExport = async (type: 'zip' | 'pdf' | 'pptx') => {
     setIsExportMenuOpen(false);
-    try {
-      showToast(`${type.toUpperCase()} 导出中...`, 'info');
-      if (type === 'zip') {
-        await exportToZip(session.items, session.title);
-      } else if (type === 'pdf') {
-        await exportToPdf(session.items, session.title);
-      } else {
-        await exportToPptx(session.items, session.title);
+
+    const performExport = async () => {
+      try {
+        showToast(`${type.toUpperCase()} 导出中...`, 'info');
+        if (type === 'zip') {
+          await exportToZip(session.items, session.title);
+        } else if (type === 'pdf') {
+          await exportToPdf(session.items, session.title);
+        } else {
+          await exportToPptx(session.items, session.title);
+        }
+        showToast("导出成功", 'success');
+      } catch (error: any) {
+        console.error("Export failed", error);
+        showToast(error.message || "导出失败", 'error');
       }
-      showToast("导出成功", 'success');
-    } catch (error: any) {
-      console.error("Export failed", error);
-      showToast(error.message || "导出失败", 'error');
+    };
+
+    // 1. Billing Check for PPTX
+    if (type === 'pptx') {
+      try {
+        const { consumeAction, getActionCost } = await import('./api/points');
+        const cost = await getActionCost('export_pptx');
+
+        if (cost > 0) {
+          const confirmAction = async () => {
+            try {
+              await consumeAction(
+                'export_pptx',
+                session.id,
+                `导出项目: ${session.title}`,
+                {
+                  module: '我的项目',
+                  category: '导出',
+                  subcategory: '项目导出',
+                  triggerTime: new Date().toISOString()
+                }
+              );
+              // After success deduction
+              await performExport();
+            } catch (billingError: any) {
+              console.error("Billing failed", billingError);
+              showToast(billingError.message || "积分扣除失败，无法导出", "error");
+            }
+          };
+
+          if (onShowConfirm) {
+            onShowConfirm(`确认导出`, `导出 PPTX 需消耗 ${cost} 积分，是否继续？`, confirmAction);
+            return;
+          } else {
+            if (!confirm(`导出 PPTX 需消耗 ${cost} 积分，是否继续？`)) return;
+            await confirmAction();
+            return;
+          }
+        }
+      } catch (error: any) {
+        console.error("Export billing error", error);
+        showToast(error.message || "获取积分信息失败", "error");
+        return;
+      }
     }
+
+    // Direct export if not pptx or free
+    await performExport();
   };
 
   return (
@@ -740,7 +792,7 @@ const App: React.FC = () => {
 
 
   // --- State ---
-  const { user, isAuthenticated, isAdmin, isSuperAdmin } = useAuth();
+  const { user, isAuthenticated, isAdmin, isSuperAdmin, refreshUser } = useAuth();
   const [viewMode, setViewMode] = useState<
     "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "admin" | "login"
   >(() => {
@@ -1012,22 +1064,22 @@ const App: React.FC = () => {
   }, []);
 
   // Track the currently active template ID
+  const activeTemplateKey = useMemo(() => `bananaslides_active_template_id_v1_${user?.id || 'guest'}`, [user?.id]);
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(() => {
-    return localStorage.getItem("bananaslides_active_template_id_v1") || null;
+    return localStorage.getItem(activeTemplateKey) || null;
   });
 
-  // Persist active template ID (Keep in LocalStorage as UI state)
   useEffect(() => {
     try {
       if (activeTemplateId) {
-        localStorage.setItem("bananaslides_active_template_id_v1", activeTemplateId);
+        localStorage.setItem(activeTemplateKey, activeTemplateId);
       } else {
-        localStorage.removeItem("bananaslides_active_template_id_v1");
+        localStorage.removeItem(activeTemplateKey);
       }
     } catch (e) {
       console.warn('LocalStorage quota exceeded for activeTemplateId', e);
     }
-  }, [activeTemplateId]);
+  }, [activeTemplateId, activeTemplateKey]);
 
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem(ONBOARDING_STORAGE_KEY);
@@ -1253,7 +1305,25 @@ const App: React.FC = () => {
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [isRefiningRequirements, setIsRefiningRequirements] = useState(false);
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
-  const [isImageTaskModalOpen, setIsImageTaskModalOpen] = useState(false);
+
+  // --- Real-time Points & Interruption ---
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Check if any item is generating or global generators are active
+      const hasActiveAI = items.some(item => item.status === 'generating') ||
+        isProcessing ||
+        isRefiningRequirements;
+
+      if (hasActiveAI) {
+        const msg = "AI 功能正在运行中，离开页面可能导致扣除的积分无法找回。确定离开？";
+        e.preventDefault();
+        e.returnValue = msg;
+        return msg;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [items, isProcessing, isRefiningRequirements]); const [isImageTaskModalOpen, setIsImageTaskModalOpen] = useState(false);
 
   const [isOutlineGeneratorOpen, setIsOutlineGeneratorOpen] = useState(false);
   const [outlineInitialTopic, setOutlineInitialTopic] = useState(""); // Cache for outline
@@ -1421,8 +1491,15 @@ const App: React.FC = () => {
       const newProject = await createProjectMutation.mutateAsync({
         title: newTitle,
         status: 'idle',
-        globalConfig: globalConfig || { ...config },
-        globalStyleMap: snapshotStyleMap || {},
+        globalConfig: globalConfig || { ...DEFAULT_STYLE_CONFIG },
+        globalStyleMap: snapshotStyleMap || {
+          cover: null,
+          directory: null,
+          transition: null,
+          content: null,
+          end: null,
+          custom: null,
+        },
         isPinned: false
       });
 
@@ -1495,8 +1572,8 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [styleMap, currentProjectId, updateProjectMutation, isPreviewMode]);
 
-  // --- Auto-Save Interval (3 Minutes) ---
-  // --- Auto-Save Interval (Duplicate removed) ---
+  // --- Auto-save Interval (3 Minutes) ---
+  // --- Auto-save Interval (Duplicate removed) ---
   // The primary auto-save is handled by the useEffect near line 1700 using mutations.
 
   // Auto-save items changes (for delete/add operations)
@@ -1880,10 +1957,10 @@ const App: React.FC = () => {
         setOutlineInitialTopic(""); // Clear cache
         setOutlineResetKey((prev) => prev + 1); // Increment key to force re-mount
         // Do NOT clear project ID or return to dashboard if we are inside a project
-        // setCurrentProjectId(null); 
-        // setViewMode('dashboard'); 
+        // setCurrentProjectId(null);
+        // setViewMode('dashboard');
 
-        // If we are NOT in a project context (e.g. quick start), then maybe we stay? 
+        // If we are NOT in a project context (e.g. quick start), then maybe we stay?
         // Actually, user expects to stay in the workbench to start over.
         // So we just remove these two lines.
 
@@ -2036,6 +2113,18 @@ const App: React.FC = () => {
   const handleRefineRequirements = async () => {
     if (!config.requirements.trim()) return;
     setIsRefiningRequirements(true);
+
+    // Fetch fresh balance and cost for warning
+    try {
+      const [cost, balance] = await Promise.all([
+        getActionCost('smart_refine', true),
+        getBalance()
+      ]);
+      showToast(`AI 正在润色设计要求。本次预计扣除 ${cost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+    } catch (e) {
+      showToast("正在调用 AI 服务优化设计要求...", "loading");
+    }
+
     try {
       const refined = await smartRefine(
         config.requirements,
@@ -2043,6 +2132,7 @@ const App: React.FC = () => {
       );
       handleConfigChange("requirements", refined);
       showToast("设计要求修饰成功", "success");
+      setTimeout(refreshUser, 500);
     } catch (error) {
       console.error(error);
       showToast("AI 修饰服务调用失败", "error");
@@ -2053,9 +2143,22 @@ const App: React.FC = () => {
 
   const handleRefineSlideContent = async (text: string): Promise<string> => {
     if (!text.trim()) return text;
+
+    // Fetch fresh balance and cost for warning
+    try {
+      const [cost, balance] = await Promise.all([
+        getActionCost('smart_refine', true),
+        getBalance()
+      ]);
+      showToast(`AI 正在润色内容。本次预计扣除 ${cost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+    } catch (e) {
+      showToast("正在通过 AI 润色内容...", "loading");
+    }
+
     try {
       const refined = await smartRefine(text, "content");
       showToast("内容修饰成功", "success");
+      setTimeout(refreshUser, 500);
       return refined;
     } catch (error) {
       console.error(error);
@@ -2302,33 +2405,72 @@ const App: React.FC = () => {
   };
 
   const handleApplyPresetRequest = (preset: StylePreset) => {
-    showConfirm("应用预设", "确定覆盖当前设置吗？", () => {
-      setConfig({ ...preset.config });
-      configRef.current = { ...preset.config };
+    // 1. 获取积分成本
+    getActionCost('style_apply').then(cost => {
+      showConfirm(
+        "应用风格",
+        `确定要应用此风格预设吗？这将覆盖当前的全局配置和视觉参考。本次操作需消耗 ${cost} 积分。`,
+        async () => {
+          try {
+            // 2. 扣除积分
+            // 注意：PointsBadge 已经显示了积分，这里是实际扣除步骤
+            // 如果是非 VIP 用户积分不足，consumeAction 会抛出异常
+            await import('./api/points').then(m => m.consumeAction(
+              'style_apply',
+              currentProjectId || undefined,
+              undefined,
+              {
+                module: '创作室',
+                category: '风格应用',
+                subcategory: '我的收藏',
+                triggerTime: new Date().toISOString()
+              }
+            ));
 
-      // Restore style map if available, otherwise clear or use deprecated file
-      let nextStyleMap: GlobalStyleMap;
-      if (preset.styleMap) {
-        nextStyleMap = { ...preset.styleMap };
-      } else {
-        // Legacy support
-        nextStyleMap = {
-          cover: preset.styleFile || null,
-          directory: preset.styleFile || null,
-          transition: preset.styleFile || null,
-          content: preset.styleFile || null,
-          end: preset.styleFile || null,
-          custom: null,
-        };
-      }
-      setStyleMap(nextStyleMap);
-      styleMapRef.current = nextStyleMap;
+            // 3. 执行应用逻辑
+            setConfig({ ...preset.config });
+            configRef.current = { ...preset.config };
 
-      setIsPresetSaved(true);
-      setIsFavoritesModalOpen(false);
-      setSelectedPresetForDetail(null);
-      setHasUserInteraction(true); // 标记交互以触发保存
-      closeConfirm();
+            // Restore style map if available, otherwise clear or use deprecated file
+            let nextStyleMap: GlobalStyleMap;
+            if (preset.styleMap) {
+              nextStyleMap = { ...preset.styleMap };
+            } else {
+              // Legacy support
+              nextStyleMap = {
+                cover: preset.styleFile || null,
+                directory: preset.styleFile || null,
+                transition: preset.styleFile || null,
+                content: preset.styleFile || null,
+                end: preset.styleFile || null,
+                custom: null,
+              };
+            }
+            setStyleMap(nextStyleMap);
+            styleMapRef.current = nextStyleMap;
+
+            setIsPresetSaved(true);
+            setIsFavoritesModalOpen(false);
+            setSelectedPresetForDetail(null);
+            setHasUserInteraction(true); // 标记交互以触发保存
+            closeConfirm();
+
+            // 4. 成功反馈
+            showToast("风格已应用到全局设置", "success");
+            setTimeout(refreshUser, 500); // 刷新积分余额显示
+
+          } catch (e: any) {
+            console.error("Style apply failed:", e);
+            if (e.message?.includes('积分不足') || e.code === 'INSUFFICIENT_POINTS') {
+              showToast("积分不足，无法应用此风格", "error");
+            } else {
+              showToast("应用风格失败，请稍后重试", "error");
+            }
+            closeConfirm();
+          }
+        },
+        "info" // 使用 info 类型，因为只是确认操作
+      );
     });
   };
 
@@ -2546,10 +2688,25 @@ const App: React.FC = () => {
 
     setIsProcessing(true);
     const providerName = getProviderName("image");
-    showToast(
-      `正在调用 ${providerName} API 批量生成图片，请耐心等待⌛️`,
-      "loading"
-    );
+
+    // 获取积分信息用于提示
+    try {
+      const totalCount = itemsToProcess.reduce((acc, i) => acc + (i.variantCount || 1), 0);
+      const [unitCost, balance] = await Promise.all([
+        getActionCost("slide_image", true),
+        getBalance()
+      ]);
+      const totalCost = unitCost * totalCount;
+      showToast(
+        `AI 正在批量生成 ${itemsToProcess.length} 页（共 ${totalCount} 张图片）。预计消耗 ${totalCost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`,
+        "loading"
+      );
+    } catch (e) {
+      showToast(
+        `正在调用 ${providerName} API 批量生成图片，请耐心等待⌛️`,
+        "loading"
+      );
+    }
 
     setItems((prev) =>
       prev.map((item) =>
@@ -2650,7 +2807,17 @@ const App: React.FC = () => {
     const item = items.find((i) => i.id === id);
     if (item) {
       const providerName = getProviderName("image");
-      showToast(`调用 ${providerName} API 生成单页中...`, "loading");
+      try {
+        const count = item.variantCount || 1;
+        const [unitCost, balance] = await Promise.all([
+          getActionCost("slide_image", true),
+          getBalance()
+        ]);
+        const totalCost = unitCost * count;
+        showToast(`AI 正在生成 ${count} 张图片。预计消耗 ${totalCost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, "loading");
+      } catch (e) {
+        showToast(`调用 ${providerName} API 生成单页中...`, "loading");
+      }
       try {
         const result = await processItem(item);
 
@@ -2765,27 +2932,71 @@ const App: React.FC = () => {
   };
 
   // Export Logic
+  // Export Logic
   const handleBatchExport = async (type: "zip" | "pdf" | "pptx") => {
+    setIsExportMenuOpen(false); // Close menu immediately
+
     const title = config.styleName || "bananaslides-genai";
     const timestamp = new Date().toISOString().slice(0, 10);
     const filename = `${title}_${timestamp}`;
 
-    showToast("正在准备并下载导出文件...", "loading");
-
-    try {
-      if (type === "zip") {
-        await exportToZip(items, filename);
-      } else if (type === "pdf") {
-        await exportToPdf(items, filename);
-      } else if (type === "pptx") {
-        await exportToPptx(items, filename);
+    const performExport = async () => {
+      showToast("正在准备并下载导出文件...", "loading");
+      try {
+        if (type === "zip") {
+          await exportToZip(items, filename);
+        } else if (type === "pdf") {
+          await exportToPdf(items, filename);
+        } else if (type === "pptx") {
+          await exportToPptx(items, filename);
+        }
+        showToast("导出成功", "success");
+      } catch (e: any) {
+        console.error(e);
+        showToast(e.message || "导出失败，请重试", "error");
       }
-      setIsExportMenuOpen(false);
-      showToast("导出成功", "success");
-    } catch (e: any) {
-      console.error(e);
-      showToast(e.message || "导出失败，请重试", "error");
+    };
+
+    // 1. Billing Check for PPTX
+    if (type === 'pptx') {
+      try {
+        const { consumeAction, getActionCost } = await import('./api/points');
+        const cost = await getActionCost('export_pptx');
+
+        if (cost > 0) {
+          const confirmAction = async () => {
+            try {
+              await consumeAction(
+                'export_pptx',
+                currentProjectId || 'temp-workbench', // Use current ID or temp
+                currentProjectId ? `导出项目: ${title}` : `导出临时项目`,
+                {
+                  module: '创作室',
+                  category: '导出',
+                  subcategory: '批量导出',
+                  triggerTime: new Date().toISOString()
+                }
+              );
+              // After success deduction
+              await performExport();
+            } catch (billingError: any) {
+              console.error("Billing failed", billingError);
+              showToast(billingError.message || "积分扣除失败，无法导出", "error");
+            }
+          };
+
+          showConfirm(`确认导出`, `导出 PPTX 需消耗 ${cost} 积分，是否继续？`, confirmAction);
+          return;
+        }
+      } catch (error: any) {
+        console.error("Export billing error", error);
+        showToast(error.message || "获取积分信息失败", "error");
+        return;
+      }
     }
+
+    // Direct export if not pptx or free
+    await performExport();
   };
 
   // Drag Drop
@@ -3827,11 +4038,11 @@ const App: React.FC = () => {
                   }`}
               >
                 <div className={`mx-auto flex items-center justify-between relative h-full transition-all duration-500
-                  ${isScrolled ? "px-4 w-full" : "max-w-[1480px] px-6"}`}
+                  ${isScrolled ? "px-4 w-full" : "w-full px-2"}`}
                 >
 
                   {/* LEFT SECTION: Logo + Context Navigation */}
-                  <div className={`flex items-center gap-6 z-10 shrink-0 ${(viewMode === 'workbench' || viewMode === 'history-detail') ? '' : 'w-[300px]'}`}>
+                  <div className={`flex items-center ${isScrolled ? 'gap-3' : 'gap-6'} z-10 shrink-0 ${(viewMode === 'workbench' || viewMode === 'history-detail') ? '' : 'w-auto xl:w-[300px]'}`}>
                     <div
                       className="flex items-center gap-2.5 cursor-pointer group"
                       onClick={() => setViewMode('landing')}
@@ -3848,8 +4059,8 @@ const App: React.FC = () => {
                         </div>
                       </div>
                       <div>
-                        <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">BananaSlides</h1>
-                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">GenAI PPT</span>
+                        <h1 className={`${isScrolled ? 'text-base' : 'text-lg'} font-black text-slate-800 tracking-tight leading-none`}>BananaSlides</h1>
+                        {!isScrolled && <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">GenAI PPT</span>}
                       </div>
                     </div>
 
@@ -3908,34 +4119,34 @@ const App: React.FC = () => {
 
                   {/* CENTER SECTION: Global Navigation (3 Tabs) */}
                   {(viewMode === 'dashboard' || viewMode === 'history' || viewMode === 'templates') ? (
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
                       <nav className="flex items-center bg-slate-100/50 p-1 rounded-xl border border-slate-200/50">
                         <button
                           onClick={() => setViewMode("dashboard")}
-                          className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "dashboard"
+                          className={`flex items-center gap-2 ${isScrolled ? 'px-3' : 'px-6'} py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "dashboard"
                             ? "bg-white text-slate-800 shadow-sm"
                             : "text-slate-500 hover:text-slate-800"
                             }`}
                         >
-                          <Home size={14} /> 创作室
+                          <Home size={14} /> {!isScrolled && "创作室"}
                         </button>
                         <button
                           onClick={() => setViewMode("history")}
-                          className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "history"
+                          className={`flex items-center gap-2 ${isScrolled ? 'px-3' : 'px-6'} py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "history"
                             ? "bg-white text-slate-800 shadow-sm"
                             : "text-slate-500 hover:text-slate-800"
                             }`}
                         >
-                          <History size={14} /> 历史库
+                          <History size={14} /> {!isScrolled && "历史库"}
                         </button>
                         <button
                           onClick={() => setViewMode("templates")}
-                          className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "templates"
+                          className={`flex items-center gap-2 ${isScrolled ? 'px-3' : 'px-6'} py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "templates"
                             ? "bg-white text-slate-800 shadow-sm"
                             : "text-slate-500 hover:text-slate-800"
                             }`}
                         >
-                          <BookTemplate size={14} /> 模版间
+                          <BookTemplate size={14} /> {!isScrolled && "模版间"}
                         </button>
                       </nav>
                     </div>
@@ -3945,7 +4156,7 @@ const App: React.FC = () => {
                   )}
 
                   {/* RIGHT SECTION: Tools */}
-                  <div className="flex items-center gap-3 z-10 w-[300px] justify-end">
+                  <div className="flex items-center gap-2 z-10 justify-end ml-4">
 
                     {viewMode === 'workbench' && (
                       <button
@@ -3957,28 +4168,14 @@ const App: React.FC = () => {
                       </button>
                     )}
 
-                    <button
-                      onClick={toggleFullscreen}
-                      className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
-                      title={isFullscreen ? "退出全屏" : "全屏模式"}
-                    >
-                      {isFullscreen ? <Minimize size={18} /> : <Maximize2 size={18} />}
-                    </button>
-
-                    {/* <button
-                      onClick={() => setIsGlobalSettingsOpen(true)}
-                      className="p-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
-                      title="全局设置"
-                    >
-                      <Settings size={18} />
-                    </button> */}
-
                     {/* 用户组件 */}
-                    {/* User Widget */}
                     <UserWidget
                       onAdminClick={() => setViewMode('admin')}
                       onProfileClick={() => setShowProfile(true)}
                       onPointsClick={() => setShowPointsHistory(true)}
+                      isScrolled={isScrolled}
+                      isFullscreen={isFullscreen}
+                      toggleFullscreen={toggleFullscreen}
                     />
                   </div>
                 </div>
@@ -4347,7 +4544,7 @@ const App: React.FC = () => {
                               </>
                             ) : (
                               <>
-                                <Wand2 size={14} /> 批量生成图片 <PointsBadge actionCode="slide_image" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
+                                <Wand2 size={14} /> 批量生成图片 <PointsBadge actionCode="slide_image" multiplier={items.filter(i => i.status === 'idle' || i.status === 'error').reduce((acc, i) => acc + (i.variantCount || 1), 0)} compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
                               </>
                             )}
                           </button>
@@ -4442,6 +4639,7 @@ const App: React.FC = () => {
                                 onViewImage={(url) => setLightboxImage(url)}
                                 onRefineContent={handleRefineSlideContent}
                                 readOnly={!!previewSnapshot}
+                                onShowConfirm={showConfirm}
                               />
                             ))}
 
@@ -4707,6 +4905,7 @@ const App: React.FC = () => {
                             onDelete={handleDeleteProject}
                             onViewImage={setLightboxImage}
                             showToast={showToast}
+                            onShowConfirm={showConfirm}
                           />
                         ))}
                       </div>
@@ -4830,6 +5029,7 @@ const App: React.FC = () => {
                           index={index + 1}
                           onViewImage={(url) => setLightboxImage(url)}
                           readOnly={true}
+                          onShowConfirm={showConfirm}
                         />
                       ))}
                     </div>

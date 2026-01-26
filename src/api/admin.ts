@@ -28,6 +28,7 @@ export interface UserListFilters {
     keyword?: string;
     role?: string;
     status?: string;
+    vipLevel?: number;
     page?: number;
     pageSize?: number;
 }
@@ -61,8 +62,17 @@ export interface PointsRule {
     name: string;
     costPoints: number;
     description: string | null;
+    module: string | null;
+    category: string | null;
+    calculationMethod: string | null;
+    deductionLogic: string | null;
     isActive: boolean;
+    effectiveAt: string;
     createdAt: string;
+    createdBy?: {
+        nickname: string;
+        avatar?: string;
+    };
 }
 
 export interface SystemStats {
@@ -96,6 +106,7 @@ export async function getUsers(filters: UserListFilters = {}): Promise<UserListR
     if (filters.keyword) params.append('search', filters.keyword);  // 后端用 search
     if (filters.role) params.append('role', filters.role);
     if (filters.status) params.append('status', filters.status);
+    if (filters.vipLevel !== undefined && (filters.vipLevel as any) !== '') params.append('vip', String(filters.vipLevel));
     if (filters.page) params.append('page', String(filters.page));
     if (filters.pageSize) params.append('limit', String(filters.pageSize));  // 后端用 limit
 
@@ -134,6 +145,7 @@ export async function updateUser(id: string, data: {
     role?: string;
     status?: string;
     points?: number;
+    vipLevel?: number;
 }): Promise<AdminUser> {
     const result = await client.put(`/admin/users/${id}`, data) as any;
     if (result.success) {
@@ -149,6 +161,16 @@ export async function resetUserPassword(id: string, newPassword: string): Promis
     const result = await client.post(`/admin/users/${id}/reset-password`, { newPassword }) as any;
     if (!result.success) {
         throw new Error(result.error?.message || '重置密码失败');
+    }
+}
+
+/**
+ * 删除用户
+ */
+export async function deleteUser(id: string): Promise<void> {
+    const result = await client.delete(`/admin/users/${id}`) as any;
+    if (!result.success) {
+        throw new Error(result.error?.message || '删除用户失败');
     }
 }
 
@@ -216,6 +238,11 @@ export async function createPointsRule(data: {
     name: string;
     costPoints: number;
     description?: string;
+    module?: string;
+    category?: string;
+    calculationMethod?: string;
+    deductionLogic?: string;
+    effectiveAt?: string;
 }): Promise<PointsRule> {
     const result = await client.post('/admin/points-rules', data) as any;
     if (result.success) {
@@ -232,6 +259,11 @@ export async function updatePointsRule(id: string, data: {
     costPoints?: number;
     description?: string;
     isActive?: boolean;
+    module?: string;
+    category?: string;
+    calculationMethod?: string;
+    deductionLogic?: string;
+    effectiveAt?: string;
 }): Promise<PointsRule> {
     const result = await client.put(`/admin/points-rules/${id}`, data) as any;
     if (result.success) {

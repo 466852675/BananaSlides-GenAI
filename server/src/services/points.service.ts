@@ -8,12 +8,14 @@ const prisma = new PrismaClient();
 // 积分操作类型
 export type PointsActionCode =
     | 'outline_generation'
+    | 'outline_page_regen'
     | 'slide_content'
     | 'slide_image'
     | 'doc_parse'
     | 'style_apply'
     | 'export_pptx'
-    | 'vision_analyze';
+    | 'vision_analyze'
+    | 'smart_refine';
 
 export interface DeductResult {
     success: boolean;
@@ -73,7 +75,14 @@ export async function deductPoints(
     userId: string,
     actionCode: PointsActionCode,
     projectId?: string,
-    description?: string
+    description?: string,
+    multiplier: number = 1,
+    options?: {
+        module?: string;
+        category?: string;
+        subcategory?: string;
+        triggerTime?: Date;
+    }
 ): Promise<DeductResult> {
     // 获取规则
     const rule = await prisma.pointsRule.findUnique({
@@ -90,7 +99,7 @@ export async function deductPoints(
         };
     }
 
-    const cost = rule.costPoints;
+    const cost = rule.costPoints * multiplier;
 
     if (cost === 0) {
         return {
@@ -142,9 +151,13 @@ export async function deductPoints(
                 type: 'consume',
                 amount: -cost,
                 balance: newBalance,
-                ruleCode: actionCode,  // 字段名与 Prisma schema 一致
+                ruleCode: actionCode,
                 projectId,
-                description: description || rule.name,
+                description: description || `${rule.name}${multiplier > 1 ? ` x${multiplier}` : ''}`,
+                module: options?.module,
+                category: options?.category,
+                subcategory: options?.subcategory,
+                triggerTime: options?.triggerTime
             },
         }),
     ]);
@@ -209,18 +222,44 @@ export async function addPoints(
 export async function getTransactionHistory(
     userId: string,
     page: number = 1,
-    limit: number = 20
+    limit: number = 20,
+    search?: string,
+    type?: string,
+    module?: string,
+    category?: string,
+    startDate?: string,
+    endDate?: string,
+    dateField: 'createdAt' | 'triggerTime' = 'createdAt',
+    sortOrder: 'asc' | 'desc' = 'desc'
 ) {
+    const whereClause: any = { userId };
+
+    if (search) {
+        whereClause.description = { contains: search };
+    }
+
+    if (type) whereClause.type = type;
+    if (module) whereClause.module = module;
+    if (category) whereClause.category = category;
+
+    if (startDate || endDate) {
+        // Use dynamic date field for filtering
+        whereClause[dateField] = {};
+        if (startDate) whereClause[dateField].gte = new Date(startDate);
+        if (endDate) whereClause[dateField].lte = new Date(endDate);
+    }
+
     const [items, total] = await Promise.all([
         prisma.transaction.findMany({
-            where: { userId },
-            orderBy: { createdAt: 'desc' },
+            where: whereClause,
+            orderBy: { [dateField]: sortOrder },
             skip: (page - 1) * limit,
             take: limit,
         }),
-        prisma.transaction.count({ where: { userId } }),
+        prisma.transaction.count({ where: whereClause }),
     ]);
 
+    // 后处理：如果 description 是 JSON，可以尝试解析（但通常前端解析更好，这里只负责搜索）
     return {
         items,
         pagination: {
@@ -253,10 +292,15 @@ export async function createPointsRule(data: {
     name: string;
     costPoints: number;
     description?: string;
+    module?: string;
+    category?: string;
+    calculationMethod?: string;
+    deductionLogic?: string;
+    effectiveAt?: Date;
+    createdById?: string;
 }) {
     return prisma.pointsRule.create({ data });
 }
-
 /**
  * 更新积分规则
  */
@@ -265,17 +309,20 @@ export async function updatePointsRule(id: string, data: {
     costPoints?: number;
     description?: string;
     isActive?: boolean;
+    module?: string;
+    category?: string;
+    calculationMethod?: string;
+    deductionLogic?: string;
+    effectiveAt?: Date;
 }) {
     return prisma.pointsRule.update({
         where: { id },
         data,
     });
 }
-
 /**
  * 删除积分规则
  */
 export async function deletePointsRule(id: string) {
     return prisma.pointsRule.delete({ where: { id } });
 }
-

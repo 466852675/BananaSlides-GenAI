@@ -11,16 +11,28 @@ export interface PointsRule {
     id: string;
     code: string;
     name: string;
-    description: string;
+    description: string | null;
+    module: string | null;
+    category: string | null;
+    calculationMethod?: string;
+    deductionLogic?: string;
     costPoints: number;
     isActive: boolean;
     sortOrder: number;
+    effectiveAt: string;
+    createdAt: string;
+    createdBy?: {
+        nickname: string;
+        avatar?: string;
+    };
 }
 
 export interface PointsBalance {
-    points: number;
-    vipLevel: number;
-    vipExpiresAt: string | null;
+    points: number;     // Alias for balance
+    balance: number;    // From backend
+    used: number;       // From backend
+    vipLevel?: number;
+    vipExpiresAt?: string | null;
 }
 
 export interface PointsTransaction {
@@ -30,30 +42,38 @@ export interface PointsTransaction {
     balance: number;
     description: string;
     createdAt: string;
+    module?: string;
+    category?: string;
+    subcategory?: string;
+    triggerTime?: string;
 }
 
 // 积分规则代码映射
 export type PointsActionCode =
     | 'outline_generation'
+    | 'outline_page_regen'
     | 'slide_content'
     | 'slide_image'
     | 'doc_parse'
     | 'style_apply'
     | 'export_pptx'
-    | 'vision_analyze';
+    | 'vision_analyze'
+    | 'smart_refine';
 
 // ============================================================
 // Fallback 规则（API 不可用时使用）
 // ============================================================
 
 const FALLBACK_RULES: PointsRule[] = [
-    { id: 'f1', code: 'outline_generation', name: '大纲生成', description: '', costPoints: 5, isActive: true, sortOrder: 1 },
-    { id: 'f2', code: 'slide_content', name: '内容生成', description: '', costPoints: 3, isActive: true, sortOrder: 2 },
-    { id: 'f3', code: 'slide_image', name: '图片生成', description: '', costPoints: 10, isActive: true, sortOrder: 3 },
-    { id: 'f4', code: 'doc_parse', name: '文档解析', description: '', costPoints: 5, isActive: true, sortOrder: 4 },
-    { id: 'f5', code: 'style_apply', name: '风格应用', description: '', costPoints: 1, isActive: true, sortOrder: 5 },
-    { id: 'f6', code: 'export_pptx', name: '导出 PPTX', description: '', costPoints: 2, isActive: true, sortOrder: 6 },
-    { id: 'f7', code: 'vision_analyze', name: '视觉分析', description: '', costPoints: 8, isActive: true, sortOrder: 7 },
+    { id: 'f1', code: 'outline_generation', name: '大纲一键生成', description: '', costPoints: 5, isActive: true, sortOrder: 1, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f1.5', code: 'outline_page_regen', name: '大纲单页重写', description: '', costPoints: 1, isActive: true, sortOrder: 1, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f2', code: 'slide_content', name: '内容生成', description: '', costPoints: 1, isActive: true, sortOrder: 2, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f3', code: 'slide_image', name: '图片生成', description: '', costPoints: 5, isActive: true, sortOrder: 3, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f4', code: 'doc_parse', name: '文档解析', description: '', costPoints: 1, isActive: true, sortOrder: 4, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f5', code: 'style_apply', name: '风格应用', description: '', costPoints: 1, isActive: true, sortOrder: 5, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f6', code: 'export_pptx', name: '导出 PPTX', description: '', costPoints: 5, isActive: true, sortOrder: 6, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f7', code: 'vision_analyze', name: '视觉分析', description: '', costPoints: 8, isActive: true, sortOrder: 7, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f8', code: 'smart_refine', name: '智能修饰', description: '', costPoints: 1, isActive: true, sortOrder: 8, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
 ];
 
 // ============================================================
@@ -65,13 +85,9 @@ let cachedRules: PointsRule[] | null = null;
 let cacheExpiry = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 分钟缓存
 
-/**
- * 获取积分规则列表（公开接口）
- * 如果 API 失败，使用 fallback 规则
- */
-export async function getRules(): Promise<PointsRule[]> {
+export async function getRules(bypassCache: boolean = false): Promise<PointsRule[]> {
     const now = Date.now();
-    if (cachedRules && now < cacheExpiry) {
+    if (!bypassCache && cachedRules && now < cacheExpiry) {
         return cachedRules;
     }
 
@@ -92,23 +108,23 @@ export async function getRules(): Promise<PointsRule[]> {
     return FALLBACK_RULES;
 }
 
+export async function getActionCost(actionCode: PointsActionCode, bypassCache: boolean = false): Promise<number> {
+    const rule = await getPointsRule(actionCode, bypassCache);
+    return rule?.costPoints ?? 0;
+}
+
 /**
- * 获取指定操作的积分消耗
- * 直接使用 FALLBACK_RULES，不再依赖 API
+ * 获取完整的积分规则对象
  */
-export async function getActionCost(actionCode: PointsActionCode): Promise<number> {
-    // 尝试从 API/缓存获取最新规则
-    const rules = await getRules();
+export async function getPointsRule(actionCode: PointsActionCode, bypassCache: boolean = false): Promise<PointsRule | null> {
+    const rules = await getRules(bypassCache);
     const rule = rules.find(r => r.code === actionCode && r.isActive);
 
-    // 如果没找到（极端情况），尝试从 Fallback 找
     if (!rule) {
-        const fallback = FALLBACK_RULES.find(r => r.code === actionCode && r.isActive);
-
-        return fallback?.costPoints ?? 0;
+        return FALLBACK_RULES.find(r => r.code === actionCode && r.isActive) || null;
     }
 
-    return rule.costPoints;
+    return rule;
 }
 
 /**
@@ -117,7 +133,13 @@ export async function getActionCost(actionCode: PointsActionCode): Promise<numbe
 export async function getBalance(): Promise<PointsBalance> {
     const result = await client.get('/points/balance') as any;
     if (result.success && result.data) {
-        return result.data;
+        // Map backend 'balance' to 'points' for compatibility
+        return {
+            ...result.data,
+            points: result.data.balance,
+            balance: result.data.balance,
+            used: result.data.used
+        };
     }
     throw new Error(result.error?.message || '获取积分余额失败');
 }
@@ -125,9 +147,46 @@ export async function getBalance(): Promise<PointsBalance> {
 /**
  * 获取积分交易历史
  */
-export async function getTransactions(page: number = 1, limit: number = 20): Promise<{ items: PointsTransaction[], total: number }> {
-    const result = await client.get(`/points/transactions?page=${page}&limit=${limit}`) as any;
+/**
+ * 获取积分交易历史
+ */
+export async function getTransactions(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    type?: string,
+    module?: string,
+    category?: string,
+    startDate?: string,
+    endDate?: string,
+    dateField: 'createdAt' | 'triggerTime' = 'createdAt',
+    sortOrder: 'asc' | 'desc' = 'desc'
+): Promise<{ items: PointsTransaction[], total: number }> {
+    const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+        dateField,
+        sortOrder
+    });
+
+    if (search) params.append('search', search);
+    if (type) params.append('type', type);
+    if (module) params.append('module', module);
+    if (category) params.append('category', category);
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+
+    const result = await client.get(`/points/transactions?${params.toString()}`) as any;
     if (result.success && result.data) {
+        // Backend returns structure { items: [], pagination: { total: number, ... } }
+        // We adapt it to { items: [], total: number } for frontend consumption
+        if (result.data.pagination) {
+            return {
+                items: result.data.items,
+                total: result.data.pagination.total
+            };
+        }
+        // Fallback for direct structure
         return result.data;
     }
     throw new Error(result.error?.message || '获取交易历史失败');
@@ -139,4 +198,46 @@ export async function getTransactions(page: number = 1, limit: number = 20): Pro
 export function clearRulesCache(): void {
     cachedRules = null;
     cacheExpiry = 0;
+}
+
+/**
+ * 直接扣除积分（执行动作）
+ * @param actionCode 动作代码
+ * @param projectId (可选) 关联的项目ID
+ * @param description (可选) 描述，不传则使用默认规则名称
+ * @returns 扣减结果
+ */
+export async function consumeAction(
+    actionCode: PointsActionCode,
+    projectId?: string,
+    description?: string,
+    options?: {
+        module?: string;
+        category?: string;
+        subcategory?: string;
+        triggerTime?: string; // ISO string
+    }
+): Promise<{ success: boolean, deductedAmount: number, remainingBalance: number }> {
+    const body = {
+        actionCode,
+        projectId,
+        description,
+        ...options
+    };
+    const result = await client.post('/points/deduct', body) as any;
+
+    if (result.success && result.data) {
+        return {
+            success: true,
+            deductedAmount: result.data.deductedAmount,
+            remainingBalance: result.data.remainingBalance
+        };
+    }
+
+    // 如果返回 402 或其他业务错误，抛出异常以便调用方处理
+    throw {
+        code: result.error?.code || 'UNKNOWN_ERROR',
+        message: result.error?.message || '扣费失败',
+        details: result.error
+    };
 }

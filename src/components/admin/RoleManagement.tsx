@@ -143,7 +143,7 @@ export const RoleManagement: React.FC = () => {
                     </div>
                     <div>
                         <h2 className="text-2xl font-black text-white tracking-tight mb-2">角色与权限管理</h2>
-                        <p className="text-violet-100 font-medium opacity-90">
+                        <p className="text-violet-100 font-medium opacity-90 whitespace-nowrap">
                             配置系统中不同角色的访问能力与功能限制。超级管理员拥有不可变更的最高权限。
                         </p>
                     </div>

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { PointsBadge } from './PointsBadge';
 import { X, Sparkles, Upload, FileText, Image as ImageIcon, Loader2, ArrowRight } from 'lucide-react';
 import { analyzeTemplateConcept, refinePrompt } from '../services/geminiService';
+import { getActionCost, getBalance } from '../api/points';
 import { AIGlowContainer } from './AIGlowContainer';
 import { StyleConfig, AppSettings } from '../types';
 
@@ -9,7 +10,7 @@ interface QuickTemplateModalProps {
     isOpen: boolean;
     onClose: () => void;
     onAnalyzeSuccess: (config: StyleConfig) => void;
-    onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+    onShowToast: (message: string, type: 'success' | 'error' | 'info' | 'loading') => void;
     appSettings: AppSettings;
 }
 
@@ -25,6 +26,21 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [loadingText, setLoadingText] = useState('正在分析...');
     const [isRefining, setIsRefining] = useState(false);
+    const [currentPointsInfo, setCurrentPointsInfo] = useState<{ balance: number, cost: number } | null>(null);
+
+    // --- Interruption Prevention ---
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (isAnalyzing) {
+                const msg = "AI 正在分析模版中，关闭页面可能导致积分损失。确定要离开吗？";
+                e.preventDefault();
+                e.returnValue = msg;
+                return msg;
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isAnalyzing]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,14 +71,19 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
         if (!inputText.trim()) return;
         setIsRefining(true);
         const providerName = getProviderName('text');
-        onShowToast(`调用 ${providerName} API 服务润色描述中...`, 'info');
+
         try {
+            const [cost, balance] = await Promise.all([
+                getActionCost('smart_refine', true),
+                getBalance()
+            ]);
+            onShowToast(`AI 正在润色描述词。本次预计扣除 ${cost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
             const refined = await refinePrompt(inputText);
             setInputText(refined);
             onShowToast(`调用 ${providerName} API 服务成功`, 'success');
-        } catch (error) {
+        } catch (error: any) {
             console.error("Refine failed", error);
-            onShowToast(`调用 ${providerName} API 服务失败`, 'error');
+            onShowToast(`调用 ${providerName} API 服务失败: ${error.message || ''}`, 'error');
         } finally {
             setIsRefining(false);
         }
@@ -75,9 +96,23 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
         const providerName = getProviderName('vision'); // Assuming mostly vision/text hybrid
         const actionText = selectedFile ? (selectedFile.type.startsWith('image/') ? '分析视觉风格' : '阅读文档') : '分析设计需求';
 
-        const loadingMsg = `正在调用 ${providerName} API ${actionText}...`;
-        setLoadingText(loadingMsg);
-        onShowToast(loadingMsg, 'info');
+        // Determine action code for cost fetching
+        const actionCode = selectedFile ? (selectedFile.type.startsWith('image/') ? 'vision_analyze' : 'doc_parse') : 'vision_analyze';
+
+        try {
+            const [cost, balance] = await Promise.all([
+                getActionCost(actionCode as any, true),
+                getBalance()
+            ]);
+            setCurrentPointsInfo({ balance: balance.points, cost });
+            const loadingMsg = `AI 正在${actionText}中。本次预计扣除 ${cost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`;
+            setLoadingText(loadingMsg);
+            onShowToast(loadingMsg, 'loading');
+        } catch (e) {
+            const fallbackMsg = `正在调用 ${providerName} API ${actionText}...`;
+            setLoadingText(fallbackMsg);
+            onShowToast(fallbackMsg, 'loading');
+        }
 
         try {
             let input: string | File = inputText;
@@ -183,7 +218,7 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
                         >
                             <Sparkles className="w-3 h-3" />
                             {isRefining ? '优化中...' : 'AI 润色描述'}
-                            <PointsBadge actionCode="style_apply" compact />
+                            <PointsBadge actionCode="smart_refine" compact />
                         </button>
                     </div>
 
@@ -205,30 +240,29 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
                     </AIGlowContainer>
 
                     {/* Action Area */}
-                    {isAnalyzing ? (
-                        <div className="text-center py-4 bg-white rounded-xl shadow-sm border border-slate-100 animate-in fade-in duration-300">
-                            <div className="flex items-center justify-center gap-3 text-violet-600 mb-2">
+                    <button
+                        onClick={handleSubmit}
+                        disabled={isAnalyzing || (!inputText.trim() && !selectedFile)}
+                        className={`w-full py-4 rounded-xl font-bold text-lg text-white shadow-xl shadow-violet-200 flex items-center justify-center gap-2 transition-all active:scale-[0.98]
+                        ${(isAnalyzing || (!inputText.trim() && !selectedFile))
+                                ? 'bg-slate-300 cursor-not-allowed shadow-none'
+                                : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:shadow-violet-300 hover:from-violet-500 hover:to-indigo-500'}
+                        `}
+                    >
+                        {isAnalyzing ? (
+                            <>
                                 <Loader2 size={24} className="animate-spin" />
-                                <span className="font-semibold">{loadingText}</span>
-                            </div>
-                            <p className="text-xs text-slate-400">正在进行深度视觉与结构分析，请稍候...</p>
-                        </div>
-                    ) : (
-                        <button
-                            onClick={handleSubmit}
-                            disabled={(!inputText.trim() && !selectedFile)}
-                            className={`w-full py-4 rounded-xl font-bold text-lg text-white shadow-xl shadow-violet-200 flex items-center justify-center gap-2 transition-all active:scale-[0.98]
-                            ${(!inputText.trim() && !selectedFile)
-                                    ? 'bg-slate-300 cursor-not-allowed shadow-none'
-                                    : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:shadow-violet-300 hover:from-violet-500 hover:to-indigo-500'}
-                            `}
-                        >
-                            <Sparkles className="w-5 h-5" />
-                            开始生成模版规范 (Start Analysis)
-                            <PointsBadge actionCode="vision_analyze" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
-                            <ArrowRight className="w-5 h-5 opacity-50" />
-                        </button>
-                    )}
+                                正在分析建议中...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="w-5 h-5" />
+                                开始生成模版规范 (Start Analysis)
+                                <PointsBadge actionCode="vision_analyze" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
+                                <ArrowRight className="w-5 h-5 opacity-50" />
+                            </>
+                        )}
+                    </button>
 
                 </div>
             </div>

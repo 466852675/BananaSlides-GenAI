@@ -63,7 +63,7 @@ export const AdminDashboard: React.FC = () => {
             <div className="relative mb-8">
                 <div className="flex flex-col gap-1">
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight">System Overview</h1>
-                    <p className="text-slate-500 font-medium">Welcome back, Super Admin</p>
+                    <p className="text-slate-500 font-medium whitespace-nowrap">Welcome back, Super Admin</p>
                 </div>
             </div>
 

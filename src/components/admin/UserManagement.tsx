@@ -16,19 +16,46 @@ import {
     Shield,
     Mail,
     Calendar,
-    CheckCircle
+    CheckCircle,
+    Trash2
 } from 'lucide-react';
 import * as AdminAPI from '../../api/admin';
+import { ConfirmDialog } from '../ConfirmDialog';
+import { UserEditModal } from './UserEditModal';
+import { PasswordResetModal } from './PasswordResetModal';
+import { useAuth } from '../../contexts/AuthContext';
 
 export const UserManagement: React.FC = () => {
     const [users, setUsers] = useState<AdminAPI.AdminUser[]>([]);
+    const { user: currentUser } = useAuth(); // 获取当前登录管理员
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [keyword, setKeyword] = useState('');
     const [roleFilter, setRoleFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
+    const [vipFilter, setVipFilter] = useState<number | ''>('');
     const [page, setPage] = useState(1);
     const [pagination, setPagination] = useState({ total: 0, totalPages: 1, pageSize: 20 });
+
+    // 弹窗状态
+    const [confirmConfig, setConfirmConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+        type: 'danger' | 'info';
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => { },
+        type: 'info'
+    });
+
+    // 编辑/重置密码弹窗状态
+    const [selectedUser, setSelectedUser] = useState<AdminAPI.AdminUser | null>(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
     // 防抖搜索
     const [debouncedKeyword, setDebouncedKeyword] = useState('');
@@ -60,6 +87,9 @@ export const UserManagement: React.FC = () => {
     useEffect(() => {
         loadUsers();
     }, [loadUsers]);
+
+    // 权限判断：只有超级管理员和系统管理员可以执行敏感操作
+    const isPowerfulAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
 
     // 格式化时间
     const formatDate = (dateStr: string | null) => {
@@ -129,8 +159,8 @@ export const UserManagement: React.FC = () => {
                     </div>
                     <div>
                         <h2 className="text-2xl font-black tracking-tight mb-2">用户中心</h2>
-                        <p className="text-violet-100 font-medium opacity-90 max-w-xl">
-                            全平台用户账号管理，支持搜索筛选、状态冻结及角色权限变更。
+                        <p className="text-violet-100 font-medium opacity-90 whitespace-nowrap">
+                            全平台用户账号核心枢纽，集成搜索筛选、状态管控、权限变更、密码重置及账号销毁功能。
                         </p>
                     </div>
                 </div>
@@ -180,6 +210,24 @@ export const UserManagement: React.FC = () => {
                             <option value="ACTIVE">正常</option>
                             <option value="DISABLED">已禁用</option>
                             <option value="PENDING">待验证</option>
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Filter size={12} />
+                        </div>
+                    </div>
+
+                    <div className="relative">
+                        <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <select
+                            value={vipFilter}
+                            onChange={(e) => { setVipFilter(e.target.value === '' ? '' : Number(e.target.value)); setPage(1); }}
+                            className="pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[140px]"
+                        >
+                            <option value="">全部VIP等级</option>
+                            <option value="0">VIP 0 (普通)</option>
+                            <option value="1">VIP 1 (基础)</option>
+                            <option value="2">VIP 2 (专业)</option>
+                            <option value="3">VIP 3 (企业)</option>
                         </select>
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                             <Filter size={12} />
@@ -278,28 +326,84 @@ export const UserManagement: React.FC = () => {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                                            <div className="flex items-center justify-end gap-2 transition-all">
                                                 <button
-                                                    className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                                                    onClick={() => {
+                                                        setSelectedUser(user);
+                                                        setIsEditModalOpen(true);
+                                                    }}
+                                                    className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
                                                     title="编辑详情"
                                                 >
                                                     <Edit2 size={16} />
                                                 </button>
                                                 <button
-                                                    className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                    onClick={() => {
+                                                        setSelectedUser(user);
+                                                        setIsResetModalOpen(true);
+                                                    }}
+                                                    className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
                                                     title="重置密码"
                                                 >
                                                     <Key size={16} />
                                                 </button>
-                                                <button
-                                                    className={`p-2 rounded-lg transition-colors ${user.status === 'DISABLED'
-                                                        ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50'
-                                                        : 'text-rose-400 hover:text-rose-600 hover:bg-rose-50'
-                                                        }`}
-                                                    title={user.status === 'DISABLED' ? '启用账号' : '禁用账号'}
-                                                >
-                                                    {user.status === 'DISABLED' ? <Check size={16} /> : <Ban size={16} />}
-                                                </button>
+                                                {isPowerfulAdmin && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => {
+                                                                const newStatus = user.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED';
+                                                                const actionText = user.status === 'DISABLED' ? '启用' : '禁用';
+                                                                setConfirmConfig({
+                                                                    isOpen: true,
+                                                                    title: `${actionText}用户确认`,
+                                                                    message: `您确定要${actionText}用户 "${user.nickname || user.email}" 吗？`,
+                                                                    type: user.status === 'DISABLED' ? 'info' : 'danger',
+                                                                    onConfirm: async () => {
+                                                                        try {
+                                                                            await AdminAPI.updateUser(user.id, { status: newStatus });
+                                                                            loadUsers();
+                                                                        } catch (err: any) {
+                                                                            alert(err.message || '操作失败');
+                                                                        } finally {
+                                                                            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }}
+                                                            className={`p-2 rounded-lg transition-colors border border-slate-100/50 shadow-sm ${user.status === 'DISABLED'
+                                                                ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50'
+                                                                : 'text-rose-400 hover:text-rose-600 hover:bg-rose-50'
+                                                                }`}
+                                                            title={user.status === 'DISABLED' ? '启用账号' : '禁用账号'}
+                                                        >
+                                                            {user.status === 'DISABLED' ? <Check size={16} /> : <Ban size={16} />}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setConfirmConfig({
+                                                                    isOpen: true,
+                                                                    title: "删除用户确认 (高危操作)",
+                                                                    message: `您确定要永久删除用户 "${user.nickname || user.email}" 吗？此操作不可逆，将清除该用户的所有关联数据！`,
+                                                                    type: 'danger',
+                                                                    onConfirm: async () => {
+                                                                        try {
+                                                                            await AdminAPI.deleteUser(user.id);
+                                                                            loadUsers();
+                                                                        } catch (err: any) {
+                                                                            alert(err.message || '操作失败');
+                                                                        } finally {
+                                                                            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }}
+                                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
+                                                            title="删除用户"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -337,6 +441,28 @@ export const UserManagement: React.FC = () => {
                     </div>
                 )}
             </div>
+            {/* 用户模态框 */}
+            <UserEditModal
+                isOpen={isEditModalOpen}
+                user={selectedUser}
+                onClose={() => setIsEditModalOpen(false)}
+                onSuccess={loadUsers}
+            />
+
+            <PasswordResetModal
+                isOpen={isResetModalOpen}
+                user={selectedUser}
+                onClose={() => setIsResetModalOpen(false)}
+            />
+
+            <ConfirmDialog
+                isOpen={confirmConfig.isOpen}
+                title={confirmConfig.title}
+                message={confirmConfig.message}
+                type={confirmConfig.type}
+                onConfirm={confirmConfig.onConfirm}
+                onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+            />
         </div>
     );
 };

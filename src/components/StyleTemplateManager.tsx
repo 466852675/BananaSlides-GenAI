@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PointsBadge } from './PointsBadge';
+import { getActionCost, getBalance } from '../api/points';
 import {
   X,
   Plus,
@@ -24,6 +25,7 @@ import {
   Clock,
   AlertTriangle
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { StyleConfig, StyleTemplate, GlobalStyleMap, PageType, StylePreset, AppSettings, StoredResource } from '../types';
 import { ImageUploader } from './ImageUploader';
 import { SharedStyleCard, SharedStyleItem } from './SharedStyleCard';
@@ -197,7 +199,7 @@ interface StyleTemplateManagerProps {
   onDeleteFavorite?: (id: string) => void;
   onToggleFavorite?: (template: StyleTemplate) => void;
   appSettings: AppSettings;
-  onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  onShowToast: (message: string, type: 'success' | 'error' | 'info' | 'loading') => void;
   initialEditingTemplateId?: string | null;
   onClearEditingTemplateId?: () => void;
   // Lifted States
@@ -280,6 +282,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   sortOrder,
   setSortOrder
 }) => {
+  const { isAdmin } = useAuth();
   const [view, setView] = useState<'gallery' | 'creator'>('gallery');
   // ... (keep state)
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
@@ -379,14 +382,19 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
           }
 
           if (template.id) {
-            await updateTemplateMutation.mutateAsync({
-              id: template.id,
-              updates: {
-                favoriteCount: Math.max(0, (template.favoriteCount || 0) + (isFavorited ? -1 : 1))
-              }
-            });
+            try {
+              await updateTemplateMutation.mutateAsync({
+                id: template.id,
+                updates: {
+                  favoriteCount: Math.max(0, (template.favoriteCount || 0) + (isFavorited ? -1 : 1))
+                }
+              });
+            } catch (ignore) {
+              console.warn('Failed to update favorite count (non-critical)', ignore);
+            }
           }
         } catch (e) {
+          console.error("Favorite toggle failed", e);
           onShowToast('操作失败', 'error');
         }
       },
@@ -406,15 +414,20 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
           if (preset.templateId) {
             const relatedTemplate = templates.find(t => t.id === preset.templateId);
             if (relatedTemplate) {
-              await updateTemplateMutation.mutateAsync({
-                id: preset.templateId,
-                updates: {
-                  favoriteCount: Math.max(0, (relatedTemplate.favoriteCount || 0) - 1)
-                }
-              });
+              try {
+                await updateTemplateMutation.mutateAsync({
+                  id: preset.templateId,
+                  updates: {
+                    favoriteCount: Math.max(0, (relatedTemplate.favoriteCount || 0) - 1)
+                  }
+                });
+              } catch (ignore) {
+                console.warn('Failed to update favorite count (non-critical)', ignore);
+              }
             }
           }
         } catch (e) {
+          console.error("Remove favorite failed", e);
           onShowToast('操作失败', 'error');
         }
       },
@@ -1059,7 +1072,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                         </div>
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-blue-600/90 opacity-0 group-hover:opacity-100 transition-opacity p-6">
                           <button onClick={() => handleApplyFavoriteEnhanced(preset)} className="flex items-center justify-center gap-2 bg-white text-blue-600 px-5 py-2.5 rounded-xl text-sm font-black shadow-xl hover:scale-105 transition-transform active:scale-95 w-full">
-                            <Sparkles size={16} /> 应用预设
+                            <Sparkles size={16} /> 应用 <PointsBadge actionCode="style_apply" compact showIcon={false} className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded ml-1" />
                           </button>
                           <button onClick={() => {
                             // For favorites in this manager, we can simply open the editor in read-only mode
@@ -1159,16 +1172,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                               )}
                             </div>
                             <div className="absolute top-3 right-3 flex gap-2 z-20">
-                              <button
-                                onClick={() => handleToggleRecommend(template)}
-                                className={`p-2 rounded-full shadow-lg transition-all ${template.isRecommended
-                                  ? 'bg-blue-500 text-white scale-110 ring-2 ring-blue-400 ring-offset-2 ring-offset-white/50'
-                                  : 'bg-white text-slate-400 hover:text-blue-500 hover:bg-blue-50 hover:scale-105'
-                                  }`}
-                                title={template.isRecommended ? '取消推荐' : '热门推荐'}
-                              >
-                                <Star size={14} fill={template.isRecommended ? "currentColor" : "none"} strokeWidth={2.5} />
-                              </button>
+                              {/* 推荐按钮仅管理员可见，此处对普通用户隐藏 */}
                               {activeTab === 'market' && (
                                 <button
                                   onClick={() => handleToggleFavoriteInternal(template)}
@@ -1179,6 +1183,23 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                                   title={favorites.some(f => f.templateId === template.id) ? "取消收藏" : "收藏模版"}
                                 >
                                   <Heart size={14} fill={favorites.some(f => f.templateId === template.id) ? "currentColor" : "none"} strokeWidth={2.5} />
+                                </button>
+                              )}
+
+                              {/* Admin Hot Recommend Button */}
+                              {isAdmin && (activeTab === 'market' || activeTab === 'popular') && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleRecommend(template);
+                                  }}
+                                  className={`p-2 rounded-full shadow-lg transition-all ${template.isRecommended
+                                    ? 'bg-blue-500 text-white scale-110 ring-2 ring-blue-400 ring-offset-2 ring-offset-white/50'
+                                    : 'bg-white text-slate-400 hover:text-blue-500 hover:bg-blue-50 hover:scale-105'
+                                    }`}
+                                  title={template.isRecommended ? "取消推荐" : "设为推荐"}
+                                >
+                                  <Star size={14} fill={template.isRecommended ? "currentColor" : "none"} strokeWidth={2.5} />
                                 </button>
                               )}
                             </div>
@@ -1238,9 +1259,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
                             </div>
                           </div>
                           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] z-10">
-                            <button onClick={() => handleApplyTemplateEnhanced(template)} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-black shadow-xl hover:scale-105 hover:bg-blue-700 transition-all w-48 justify-center">
-                              <Sparkles size={16} /> 应用此模版
-                            </button>
+                            {/* Apply button removed for market/popular */}
                             <div className="flex gap-2 w-48">
                               <button
                                 onClick={() => {
@@ -1378,26 +1397,40 @@ const StyleEditor: React.FC<{
   onCancel: () => void;
   initialEditMode?: boolean;
   appSettings: AppSettings;
-  onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  onShowToast: (message: string, type: 'success' | 'error' | 'info' | 'loading') => void;
 }> = ({ template, onSave, onCancel, initialEditMode = false, appSettings, onShowToast }) => {
   const [localTemplate, setLocalTemplate] = useState<StyleTemplate>(template);
   const [customColor, setCustomColor] = useState<string>('');
   const [isEditing, setIsEditing] = useState(initialEditMode);
   const [isRefining, setIsRefining] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [currentPointsInfo, setCurrentPointsInfo] = useState<{ balance: number, cost: number } | null>(null);
+  const { user, refreshUser } = useAuth();
 
-  // Auto-Save Draft Logic
+  // --- Interruption Prevention ---
   React.useEffect(() => {
-    if (isEditing && localTemplate) {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isRefining) {
+        const msg = "AI 正在润色中词中，关闭页面可能导致积分损失。确定要离开吗？";
+        e.preventDefault();
+        e.returnValue = msg;
+        return msg;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isRefining]);
+
+  React.useEffect(() => {
+    if (isEditing && localTemplate && user?.id) {
       const timer = setTimeout(() => {
-        // Only save if it's an AI-generated template (usually has a specific ID pattern or name, but allowing all edits to be robust)
-        // Storing strictly as 'ai_template_draft' implies we only support one draft at a time, which matches the spec.
-        localStorage.setItem('ai_template_draft', JSON.stringify(localTemplate));
+        const draftKey = `ai_template_draft_${user.id}`;
+        localStorage.setItem(draftKey, JSON.stringify(localTemplate));
       }, 1000); // Debounce 1s
 
       return () => clearTimeout(timer);
     }
-  }, [localTemplate, isEditing]);
+  }, [localTemplate, isEditing, user?.id]);
 
   // 上传单个图片到服务器
   const uploadStyleImage = async (file: File): Promise<string> => {
@@ -1446,7 +1479,7 @@ const StyleEditor: React.FC<{
         styleMap: serializedMap
       };
       onSave(savedTemplate);
-      localStorage.removeItem('ai_template_draft'); // Clear draft on success
+      if (user?.id) localStorage.removeItem(`ai_template_draft_${user.id}`); // Clear draft on success
       setIsEditing(false);
       onShowToast('模板保存成功', 'success');
     } catch (err: any) {
@@ -1499,12 +1532,25 @@ const StyleEditor: React.FC<{
     if (!localTemplate.config.requirements) return;
 
     setIsRefining(true);
-    onShowToast('正在调用 AI 服务优化提示词...', 'info');
+
+    // Fetch fresh balance and cost for warning
+    try {
+      const [cost, balance] = await Promise.all([
+        getActionCost('smart_refine', true),
+        getBalance()
+      ]);
+      setCurrentPointsInfo({ balance: balance.points, cost });
+      onShowToast(`AI 正在润色模板描述词。本次预计扣除 ${cost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+    } catch (e) {
+      onShowToast('正在调用 AI 服务优化模板描述词...', 'loading');
+    }
+
     try {
       // Pass appSettings to enable correct API configuration for AI
       const refined = await smartRefine(localTemplate.config.requirements, 'requirement');
       updateConfig('requirements', refined);
       onShowToast('AI 润色已完成，内容已更新', 'success');
+      setTimeout(refreshUser, 500);
     } catch (error: any) {
       console.error(error);
       onShowToast(`AI 修饰失败: ${error.message || '未知错误'}`, 'error');

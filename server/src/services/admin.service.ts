@@ -14,6 +14,7 @@ export interface UserListFilters {
     search?: string;
     role?: UserRole;
     status?: UserStatus;
+    vipLevel?: number;
     sortBy?: 'createdAt' | 'points' | 'lastLoginAt';
     sortOrder?: 'asc' | 'desc';
 }
@@ -27,7 +28,7 @@ export interface Pagination {
  * 获取用户列表
  */
 export async function listUsers(filters: UserListFilters, pagination: Pagination) {
-    const { search, role, status, sortBy = 'createdAt', sortOrder = 'desc' } = filters;
+    const { search, role, status, vipLevel, sortBy = 'createdAt', sortOrder = 'desc' } = filters;
     const { page, limit } = pagination;
 
     // 构建查询条件
@@ -50,8 +51,12 @@ export async function listUsers(filters: UserListFilters, pagination: Pagination
         where.status = status;
     }
 
-    // 分页查询
-    const [items, total] = await Promise.all([
+    if (vipLevel !== undefined) {
+        where.vipLevel = vipLevel;
+    }
+
+    // 分页查询与统计
+    const [rawItems, total, allProjectCount] = await Promise.all([
         prisma.user.findMany({
             where,
             select: {
@@ -68,13 +73,30 @@ export async function listUsers(filters: UserListFilters, pagination: Pagination
                 vipLevel: true,
                 lastLoginAt: true,
                 createdAt: true,
+                _count: {
+                    select: { projects: true }
+                }
             },
             orderBy: { [sortBy]: sortOrder },
             skip: (page - 1) * limit,
             take: limit,
         }),
         prisma.user.count({ where }),
+        prisma.project.count(), // 获取全站项目总数
     ]);
+
+    // 转换为前端期望的格式
+    const items = rawItems.map(item => {
+        const { _count, ...rest } = item as any;
+        // 超级管理员 (SUPER_ADMIN) 和 普通管理员 (ADMIN) 都显示全站总数
+        // 注意：用户提到的“系统管理员”、“业务管理员”目前都对应 UserRole.ADMIN
+        const isAdminType = item.role === UserRole.SUPER_ADMIN || item.role === UserRole.ADMIN;
+
+        return {
+            ...rest,
+            projectCount: isAdminType ? allProjectCount : (_count?.projects || 0)
+        };
+    });
 
     return {
         items,
@@ -146,6 +168,7 @@ export async function updateUser(
         role?: UserRole;
         status?: UserStatus;
         points?: number;
+        vipLevel?: number;
     },
     operatorId: string
 ) {
@@ -170,6 +193,10 @@ export async function updateUser(
 
     if (data.status !== undefined) {
         updateData.status = data.status;
+    }
+
+    if (data.vipLevel !== undefined) {
+        updateData.vipLevel = data.vipLevel;
     }
 
     // 如果调整积分，创建交易记录
@@ -218,6 +245,24 @@ export async function resetUserPassword(id: string, newPassword: string) {
             loginFailCount: 0,
             lockedUntil: null,
         },
+    });
+}
+
+/**
+ * 删除单个用户
+ */
+export async function deleteUserById(id: string) {
+    // 检查是否为超级管理员，保护超管不被删除
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+        throw new Error('用户不存在');
+    }
+    if (user.role === UserRole.SUPER_ADMIN) {
+        throw new Error('无法删除超级管理员账号');
+    }
+
+    return await prisma.user.delete({
+        where: { id }
     });
 }
 
