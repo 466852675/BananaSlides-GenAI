@@ -151,7 +151,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                             <option value="">全部板块</option>
                             <option value="创作室">创作室</option>
                             <option value="模版间">模版间</option>
-                            <option value="系统">系统操作</option>
+                            <option value="系统操作">系统操作</option>
                         </select>
 
                         {/* Category Filter */}
@@ -290,6 +290,15 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                                             // Ignore parse error
                                         }
                                     }
+
+                                    // 兼容旧数据的显示逻辑（如管理员加分/扣分）
+                                    // 迁移后，module 应为 '系统操作' 或空 (如果是极旧数据未被脚本覆盖)
+                                    if ((info.module === '-' || info.module === '系统') && (item.type === 'reward' || item.type === 'adjust' || item.description?.includes('管理员'))) {
+                                        info.module = '系统操作';
+                                        info.category = item.amount > 0 ? '奖励' : '扣除';
+                                    }
+
+                                    // 移除之前的临时映射逻辑，因为现在应当直接处理或由上方逻辑覆盖
 
                                     const isPositive = item.amount > 0;
                                     const rowIndex = (page - 1) * 10 + index + 1;

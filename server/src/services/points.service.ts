@@ -219,6 +219,8 @@ export async function addPoints(
                 amount,
                 balance: newBalance,
                 description,
+                module: '系统操作', // 默认为系统操作板块
+                category: type === 'reward' ? '奖励' : (type === 'adjust' ? (amount > 0 ? '奖励' : '扣除') : '充值'),
                 operatorId,
                 orderId,
             },
@@ -252,7 +254,23 @@ export async function getTransactionHistory(
         whereClause.description = { contains: search };
     }
 
-    if (type) whereClause.type = type;
+    if (type) {
+        if (type === 'reward') {
+            // 筛选"奖励"：包含 reward (系统奖励) 和 正向的 adjust (管理员加分)
+            whereClause.OR = [
+                { type: 'reward' },
+                { type: 'adjust', amount: { gt: 0 } }
+            ];
+        } else if (type === 'consume') {
+            // 筛选"支出"：包含 consume (正常消费) 和 负向的 adjust (管理员扣分)
+            whereClause.OR = [
+                { type: 'consume' },
+                { type: 'adjust', amount: { lt: 0 } }
+            ];
+        } else {
+            whereClause.type = type;
+        }
+    }
     if (module) whereClause.module = module;
     if (category) whereClause.category = category;
 
