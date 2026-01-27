@@ -282,7 +282,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   sortOrder,
   setSortOrder
 }) => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user, isLoading: isAuthLoading } = useAuth();
   const [view, setView] = useState<'gallery' | 'creator'>('gallery');
   // ... (keep state)
   const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
@@ -629,8 +629,20 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   };
 
   const handleAIButtonClick = () => {
-    const draft = localStorage.getItem('ai_template_draft');
+    // 1. Always open the AI Modal (Background)
+    setIsQuickModalOpen(true);
+
+    // 2. 安全锁定：Auth 加载期间不读取草稿，防止读取错误用户的数据
+    if (isAuthLoading || !user?.id) {
+      return; // Skip draft check during auth loading
+    }
+
+    // 3. Check for draft (only when user is confirmed)
+    const draftKey = `ai_template_draft_${user.id}`;
+    const draft = localStorage.getItem(draftKey);
+
     if (draft) {
+      // 3. Open Confirmation Dialog (Foreground)
       setConfirmDialog({
         isOpen: true,
         title: '恢复未保存的草稿',
@@ -642,29 +654,26 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
             const template = JSON.parse(draft);
             setEditingTemplate(template);
             setIsOpeningInEditMode(true);
-            setView('creator'); // NOTE: Changed from 'editor' to 'creator' to match other handlers if needed, but wait, 'editor' is not a view state?
-            // Actually existing code uses 'creator' view (which shows StyleEditor).
-            // Lines 582 and 595 use setView('creator').
-            // Line 610 uses setView('creator').
-            // So I should use setView('creator').
+            setView('creator');
 
+            // On Restore: Close BOTH modals
+            setIsQuickModalOpen(false);
             setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+
             onShowToast('已恢复上次的草稿', 'success');
           } catch (e) {
             console.error('Failed to parse draft', e);
-            localStorage.removeItem('ai_template_draft');
-            setIsQuickModalOpen(true);
+            localStorage.removeItem(draftKey);
+            // On Error: Keep AI Modal open
             setConfirmDialog(prev => ({ ...prev, isOpen: false }));
           }
         },
         onCancel: () => {
-          localStorage.removeItem('ai_template_draft');
-          setIsQuickModalOpen(true);
+          // On New Generation: Clear draft, Close Confirm, KEEP AI Modal open
+          localStorage.removeItem(draftKey);
           setConfirmDialog(prev => ({ ...prev, isOpen: false }));
         }
       });
-    } else {
-      setIsQuickModalOpen(true);
     }
   };
 
@@ -1340,6 +1349,7 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
         onClose={closeConfirm}
         title={confirmDialog.title}
         maxWidth="max-w-md"
+        zIndex="z-[200]" // Layer above QuickTemplateModal (z-[100])
         footer={
           <div className="flex gap-2 w-full justify-end">
             <button

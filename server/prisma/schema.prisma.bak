@@ -1,0 +1,168 @@
+// server/prisma/schema.prisma
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+  role         UserRole
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  
+  // ========== 时间戳 ==========
+  createdAt    DateTime   @default(now())
+  // ========== 唯一约束 ==========
+  @@unique([role, permissionId])
+}
+
+// ============================================================
+// 现有业务模型 (Existing Models - 已扩展用户关联)
+// ============================================================
+
+model Project {
+  id           String   @id @default(uuid())
+  title        String
+  displayId    String?  // Human-readable ID like PID-240114-ABCD
+  status       String   @default("idle") // 'idle' | 'generating' | 'completed' | 'error'
+  isPinned     Boolean  @default(false)
+  scenarioType String   @default("BUSINESS") // 'ACADEMIC' | 'BUSINESS' | 'CREATIVE'
+  
+  
+  thumbnailUrl String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now())
+  completedAt  DateTime? // Fixed timestamp when status becomes 'completed'
+  
+  snapshots    ProjectSnapshot[]
+  
+  // ========== 🆕 用户关联 (可选，支持现有数据迁移) ==========
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  // ========== 索引 ==========
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model ProjectSnapshot {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  version   Int      // Incremental version number for the project
+  summary   String?  // AI generated summary of changes
+  
+  data      String   // Full JSON payload of the project state
+  
+  createdAt DateTime @default(now())
+  
+  @@index([projectId])
+}
+
+model Slide {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  index           Int      // Sort order
+  pageType        String   // 'cover' | 'directory' | ...
+  contentType     String   // 'text' | 'image'
+  
+  title           String
+  content         String   // Markdown
+  brief           String?  // Brief description
+  
+  // Visual variants
+  variants        String   @default("[]") // JSON Array of URL strings
+  variantCount    Int      @default(2)    // Number of variants to generate
+  previewUrl      String?  // Currently selected variant URL
+  
+  // Original file reference (for traceability)
+  originalFileRef String?  // JSON string
+  
+  status          String   @default("idle")
+  createdAt       DateTime @default(now())
+}
+  config         String   // JSON StyleConfig
+  styleMap       String?  // JSON GlobalStyleMap
+  isCustom       Boolean  @default(true)
+  isOfficial     Boolean  @default(false)
+  isRecommended  Boolean  @default(false)
+  usageCount     Int      @default(0)
+  favoriteCount  Int      @default(0)
+  recommendCount Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  favorites      Favorite[]
+  
+
+model Favorite {
+  id           String   @id @default(uuid())
+  templateId   String?  // 关联的模版 ID（可选，用于判断收藏状态）
+  template     StyleTemplate? @relation(fields: [templateId], references: [id])
+  name         String
+  config       String   // JSON StyleConfig
+  styleMap     String?  // JSON GlobalStyleMap
+  sampleImages String?  // JSON string array
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  // ========== 🆕 用户关联 (可选) ==========
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model AppSettings {
+  id        String   @id @default("global") // Primary record is 'global'
+  config    String   // JSON AppSettings
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// V8.0 运营中台新增模型 (Operation OS)
+// ============================================================
+
+// 全局配置字典 (Key-Value)
+model GlobalConfig {
+  key       String   @id
+  value     String
+  category  String?  // SYSTEM, RISK, UI
+  desc      String?
+  updatedAt DateTime @updatedAt
+}
+
+// 商品与营销模型
+model Product {
+  id            String    @id @default(uuid())
+  type          String    // VIP_MONTHLY, POINTS_PACK
+  name          String
+  originalPrice Float?    // 划线价
+  price         Float     // 售价
+  points        Int       // 赠送积分
+  tags          String?   // JSON: ["HOT", "LIMITED"]
+  features      String?   // JSON: ["解除限制", "专属客服"]
+  desc          String?   // [Legacy] Preserved to avoid data loss
+  discountEnd   DateTime? // 优惠截止倒计时
+  isActive      Boolean   @default(true)
+  sortOrder     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt // [Legacy] Preserved
+}
+
+// 签到流水 (防刷与统计)
+model CheckInLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String   // "YYYY-MM-DD" (不使用 DateTime 以避免时区问题)
+  points    Int      // 实际发放积分
+  streak    Int      // 当时连签天数
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, date]) // 确保单日单人唯一
+  @@index([createdAt])
+}

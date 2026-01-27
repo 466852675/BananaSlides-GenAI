@@ -103,9 +103,16 @@ const server = app.listen(port, async () => {
     - /api/projects/:id/snapshots`);
 });
 
-server.on('error', (err) => {
+server.on('error', (err: NodeJS.ErrnoException) => {
     console.error('[App] Server encountered an error:', err);
+    // 端口占用时立即退出，避免继续执行初始化逻辑
+    if (err.code === 'EADDRINUSE') {
+        console.error(`[App] ❌ 端口 ${port} 已被占用！请先关闭占用该端口的程序，或更改 .env 中的 PORT 配置。`);
+        console.error(`[App] 提示：运行 'taskkill /F /IM node.exe' 可杀死所有 Node 进程`);
+        process.exit(1);
+    }
 });
+
 
 // Global Error Handlers
 process.on('uncaughtException', (err) => {

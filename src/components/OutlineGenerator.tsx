@@ -48,7 +48,7 @@ const getPageTypeLabel = (type: PageType) => {
 
 
 export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onClose, onFinish, initialTopic = "", config, appSettings, onShowToast, projectId }) => {
-    const { user, refreshUser } = useAuth();
+    const { user, refreshUser, isLoading: isAuthLoading } = useAuth();
     const draftKey = useMemo(() => getOutlineDraftKey(user?.id), [user?.id]);
     const [step, setStep] = useState<1 | 2 | 3>(1);
     // Tab 1 input state
@@ -115,6 +115,8 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
     // --- Auto-Save Logic ---
     useEffect(() => {
         if (!isOpen) return;
+        // 安全锁定：Auth 加载期间不保存草稿，防止跨账号数据污染
+        if (isAuthLoading) return;
 
         // Fix: logic to include fileParsedContent in validity check
         const hasContent = topic.trim() || (attachedFile && fileParsedContent?.trim());
@@ -134,10 +136,12 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         }, 1000);
 
         return () => clearTimeout(timer);
-    }, [topic, step, outlineItems, attachedFile, fileParsedContent, isOpen, draftKey]);
+    }, [topic, step, outlineItems, attachedFile, fileParsedContent, isOpen, draftKey, isAuthLoading]);
 
     // --- Restore Logic ---
     useEffect(() => {
+        // 安全锁定：Auth 加载期间不读取草稿，防止读取错误用户的数据
+        if (isAuthLoading) return;
         if (isOpen) {
             const saved = localStorage.getItem(draftKey);
             if (saved) {
@@ -181,7 +185,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 }
             }
         }
-    }, [isOpen, draftKey]);
+    }, [isOpen, draftKey, isAuthLoading]);
 
     if (!isOpen) return null;
 
@@ -289,7 +293,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
 
         try {
             const [rule, balance] = await Promise.all([
-                getPointsRule('style_apply', true), // Smart Refine uses style_apply rule here
+                getPointsRule('smart_refine', true), // Smart Refine uses smart_refine rule
                 getBalance()
             ]);
             const cost = rule?.costPoints ?? 1;

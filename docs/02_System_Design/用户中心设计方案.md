@@ -1,0 +1,1328 @@
+# 详细设计文档：用户中心与管理员后台系统 (v3.0 - 完整技术规格)
+
+> **版本**: v3.0 | **日期**: 2026-01-25 | **作者**: 全栈架构师 Agent
+> **文档状态**: 可直接指导开发
+
+---
+
+## 目录
+1. [产品规格 (PRD)](#1-产品规格-prd)
+2. [数据库设计 (Schema)](#2-数据库设计-schema)
+3. [后端 API 设计](#3-后端-api-设计)
+4. [前端组件设计](#4-前端组件设计)
+5. [安全与权限设计](#5-安全与权限设计)
+6. [边界情况与错误处理](#6-边界情况与错误处理)
+7. [部署与配置](#7-部署与配置)
+
+---
+
+## 1. 产品规格 (PRD)
+
+### 1.1 核心价值
+构建 BananaSlides 的**双轨运营体系**，支撑从个人工具向 SaaS 平台的商业化转型。
+
+### 1.2 用户角色矩阵
+
+| 角色 | 代码 | 默认积分 | 访问范围 | 典型用户 |
+|:---|:---|:---|:---|:---|
+| 游客 | `GUEST` | 0 | Landing Page | 未注册访客 |
+| 普通用户 | `USER` | 30 | Dashboard + Workbench | 注册用户 |
+| 管理员 | `ADMIN` | 999999 | 全部 + Admin Panel | 运营人员 |
+| 超级管理员 | `SUPER_ADMIN` | 999999 | 全部 + 系统配置 | 系统所有者 |
+
+### 1.3 功能模块清单
+
+#### A. 用户端功能 (User Features)
+
+| 功能 | 优先级 | 说明 |
+|:---|:---|:---|
+| 用户注册 | P0 | 邮箱/手机号注册，密码强度校验 |
+| 用户登录 | P0 | 邮箱/手机号/用户名登录，JWT 持久化 |
+| 密码重置 | P0 | 邮箱验证码重置 |
+| 个人资料 | P1 | 头像、昵称、联系方式修改 |
+| 积分明细 | P1 | 消耗/充值/赠送记录查询 |
+| 订单历史 | P1 | 会员购买、积分充值记录 |
+| 会员升级 | P2 | 套餐选择、支付跳转 |
+
+#### B. 管理端功能 (Admin Features)
+
+| 功能 | 优先级 | 说明 |
+|:---|:---|:---|
+| 用户管理 | P0 | 列表、搜索、禁用/启用、调整积分 |
+| 订单管理 | P0 | 列表、状态变更、退款 |
+| 积分规则 | P0 | 消耗规则配置、活动规则配置 |
+| 角色权限 | P1 | 权限分配、角色管理 |
+| 系统统计 | P1 | 用户数、订单额、积分流水统计 |
+| 系统设置 | P2 | AI 参数、邮件配置、基础设置 |
+
+---
+
+## 2. 数据库设计 (Schema)
+
+### 2.1 枚举类型定义
+
+```prisma
+// 用户角色
+enum UserRole {
+  USER        // 普通用户
+  ADMIN       // 管理员
+  SUPER_ADMIN // 超级管理员
+}
+
+// 用户状态
+enum UserStatus {
+  ACTIVE      // 正常
+  DISABLED    // 已禁用
+  PENDING     // 待验证
+}
+
+// 订单状态
+enum OrderStatus {
+  PENDING     // 待支付
+  PAID        // 已支付
+  CANCELLED   // 已取消
+  REFUNDED    // 已退款
+}
+
+// 交易类型
+enum TransactionType {
+  CONSUME     // 消耗
+  RECHARGE    // 充值
+  BONUS       // 赠送
+  REFUND      // 退还
+  ADJUST      // 管理员调整
+}
+```
+
+### 2.2 用户模型 (User)
+
+```prisma
+model User {
+  id            String      @id @default(uuid())
+  
+  // ========== 登录凭证 ==========
+  email         String?     @unique  // 邮箱登录
+  phone         String?     @unique  // 手机号登录
+  username      String?     @unique  // 用户名登录 (如 admin)
+  passwordHash  String                // bcrypt 哈希后的密码
+  
+  // ========== 用户资料 ==========
+  nickname      String?              // 显示昵称
+  avatar        String?              // 头像 URL
+  bio           String?              // 个人简介
+  
+  // ========== 角色与状态 ==========
+  role          UserRole    @default(USER)
+  status        UserStatus  @default(ACTIVE)
+  
+  // ========== 积分与会员 ==========
+  points        Int         @default(30)   // 当前可用积分
+  pointsUsed    Int         @default(0)    // 累计消耗积分
+  vipLevel      Int         @default(0)    // 会员等级 (0=无, 1=基础, 2=专业, 3=企业)
+  vipExpiresAt  DateTime?               // 会员过期时间
+  
+  // ========== 安全与审计 ==========
+  lastLoginAt   DateTime?               // 最后登录时间
+  lastLoginIp   String?                 // 最后登录 IP
+  loginFailCount Int        @default(0)    // 连续登录失败次数
+  lockedUntil   DateTime?               // 锁定截止时间
+  
+  // ========== 验证码 (密码重置) ==========
+  resetCode     String?                 // 6位验证码
+  resetCodeExp  DateTime?               // 验证码过期时间
+  
+  // ========== 时间戳 ==========
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // ========== 关联 ==========
+  projects       Project[]
+  socialAccounts SocialAccount[]
+  transactions   Transaction[]
+  orders         Order[]
+  
+  // ========== 索引 ==========
+  @@index([role])
+  @@index([status])
+  @@index([createdAt])
+}
+```
+
+### 2.3 项目模型扩展 (Project)
+
+```prisma
+model Project {
+  id           String   @id @default(uuid())
+  title        String
+  displayId    String?
+  status       String   @default("idle")
+  isPinned     Boolean  @default(false)
+  globalConfig String
+  styleMap     String?
+  thumbnailUrl String?
+  
+  // ========== 🆕 用户关联 ==========
+  userId       String?              // 可选，支持无主项目迁移
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  items        Slide[]
+  snapshots    ProjectSnapshot[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now())
+  completedAt  DateTime?
+  
+  // ========== 索引 ==========
+  @@index([userId])
+  @@index([createdAt])
+}
+```
+
+### 2.4 积分规则模型 (PointsRule)
+
+```prisma
+model PointsRule {
+  id          String   @id @default(uuid())
+  
+  // ========== 规则标识 ==========
+  code        String   @unique   // 规则代码 (如 "outline_generation")
+  name        String             // 规则名称 (如 "AI大纲生成")
+  description String?            // 规则描述
+  
+  // ========== 扣费配置 ==========
+  costPoints  Int                // 消耗积分数
+  costType    String   @default("fixed") // fixed=固定, percent=百分比
+  
+  // ========== 状态控制 ==========
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)  // 排序权重
+  
+  // ========== 时间戳 ==========
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+```
+
+### 2.5 交易流水模型 (Transaction)
+
+```prisma
+model Transaction {
+  id          String          @id @default(uuid())
+  
+  // ========== 用户关联 ==========
+  userId      String
+  user        User            @relation(fields: [userId], references: [id])
+  
+  // ========== 交易信息 ==========
+  type        TransactionType // 交易类型
+  amount      Int             // 变动数量 (正数加/负数减)
+  balance     Int             // 变动后余额快照
+  
+  // ========== 关联信息 ==========
+  ruleCode    String?         // 关联的积分规则代码
+  projectId   String?         // 关联的项目 ID
+  orderId     String?         // 关联的订单 ID
+  operatorId  String?         // 操作人 ID (管理员调整时)
+  
+  // ========== 描述 ==========
+  description String?         // 交易描述
+  
+  // ========== 时间戳 ==========
+  createdAt   DateTime @default(now())
+  
+  // ========== 索引 ==========
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+```
+
+### 2.6 订单模型 (Order)
+
+```prisma
+model Order {
+  id            String      @id @default(uuid())
+  
+  // ========== 订单标识 ==========
+  orderNo       String      @unique  // 商户订单号 (如 ORD20260125001)
+  
+  // ========== 用户关联 ==========
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  
+  // ========== 商品信息 ==========
+  productType   String               // 商品类型: "vip" | "points"
+  productName   String               // 商品名称 (如 "专业版月卡")
+  productDesc   String?              // 商品描述
+  quantity      Int         @default(1) // 数量
+  
+  // ========== 金额信息 ==========
+  originalPrice Float                // 原价 (元)
+  discountPrice Float?               // 折扣价 (元)
+  finalPrice    Float                // 实付金额 (元)
+  
+  // ========== 状态与支付 ==========
+  status        OrderStatus @default(PENDING)
+  paymentMethod String?              // 支付方式: alipay | wechat | stripe
+  paymentNo     String?              // 第三方支付单号
+  paidAt        DateTime?            // 支付时间
+  
+  // ========== 退款信息 ==========
+  refundReason  String?              // 退款原因
+  refundedAt    DateTime?            // 退款时间
+  
+  // ========== 时间戳 ==========
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // ========== 索引 ==========
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+```
+
+### 2.7 社交账号模型 (SocialAccount)
+
+```prisma
+model SocialAccount {
+  id          String   @id @default(uuid())
+  
+  // ========== 用户关联 ==========
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // ========== 第三方信息 ==========
+  provider    String             // github | google | wechat | dingtalk
+  providerId  String             // 第三方用户 ID
+  accessToken String?           // 访问令牌 (加密存储)
+  
+  // ========== 时间戳 ==========
+  createdAt   DateTime @default(now())
+  
+  // ========== 唯一约束 ==========
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+```
+
+### 2.8 权限模型 (Permission & RolePermission)
+
+```prisma
+model Permission {
+  id          String           @id @default(uuid())
+  
+  // ========== 权限标识 ==========
+  code        String           @unique  // 如 "admin.users.read"
+  name        String                   // 如 "查看用户列表"
+  module      String                   // 如 "users"
+  
+  // ========== 元数据 ==========
+  description String?
+  sortOrder   Int              @default(0)
+  
+  // ========== 关联 ==========
+  rolePermissions RolePermission[]
+  
+  // ========== 时间戳 ==========
+  createdAt   DateTime         @default(now())
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  
+  // ========== 角色-权限映射 ==========
+  role         UserRole
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  
+  // ========== 时间戳 ==========
+  createdAt    DateTime   @default(now())
+  
+  // ========== 唯一约束 ==========
+  @@unique([role, permissionId])
+}
+```
+
+---
+
+## 3. 后端 API 设计
+
+### 3.1 认证接口 (Auth)
+
+#### 3.1.1 用户注册
+```
+POST /api/auth/register
+
+Request:
+{
+  "email": "user@example.com",      // 必填
+  "password": "MyPassword123!",     // 必填, 8-32位, 需包含字母和数字
+  "nickname": "张三"                 // 可选
+}
+
+Response (201):
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "nickname": "张三",
+      "role": "USER",
+      "points": 30
+    },
+    "token": "eyJhbGc..."
+  }
+}
+
+Error (400):
+{
+  "success": false,
+  "error": {
+    "code": "EMAIL_EXISTS",
+    "message": "该邮箱已被注册"
+  }
+}
+
+Error Codes:
+- EMAIL_EXISTS: 邮箱已存在
+- INVALID_EMAIL: 邮箱格式错误
+- WEAK_PASSWORD: 密码强度不足
+```
+
+#### 3.1.2 用户登录
+```
+POST /api/auth/login
+
+Request:
+{
+  "identity": "user@example.com",   // 邮箱/手机号/用户名
+  "password": "MyPassword123!"
+}
+
+Response (200):
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "nickname": "张三",
+      "role": "USER",
+      "points": 30,
+      "vipLevel": 0
+    },
+    "token": "eyJhbGc...",
+    "expiresIn": 86400  // 秒
+  }
+}
+
+Error (401):
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_CREDENTIALS",
+    "message": "账号或密码错误"
+  }
+}
+
+Error (403):
+{
+  "success": false,
+  "error": {
+    "code": "ACCOUNT_LOCKED",
+    "message": "账户已锁定，请15分钟后重试"
+  }
+}
+
+Error Codes:
+- INVALID_CREDENTIALS: 账号或密码错误
+- USER_NOT_FOUND: 用户不存在 (特殊处理: 前端切换到注册)
+- ACCOUNT_DISABLED: 账户已被禁用
+- ACCOUNT_LOCKED: 账户已锁定
+```
+
+#### 3.1.3 忘记密码
+```
+POST /api/auth/forgot-password
+
+Request:
+{
+  "email": "user@example.com"
+}
+
+Response (200):
+{
+  "success": true,
+  "message": "验证码已发送至邮箱"
+}
+
+后端逻辑:
+1. 生成6位随机验证码
+2. 存储到 User.resetCode, 设置 resetCodeExp = now + 10min
+3. 发送邮件 (开发环境打印到控制台)
+```
+
+#### 3.1.4 重置密码
+```
+POST /api/auth/reset-password
+
+Request:
+{
+  "email": "user@example.com",
+  "code": "123456",
+  "newPassword": "NewPassword456!"
+}
+
+Response (200):
+{
+  "success": true,
+  "message": "密码重置成功"
+}
+
+Error Codes:
+- INVALID_CODE: 验证码错误
+- CODE_EXPIRED: 验证码已过期
+- WEAK_PASSWORD: 密码强度不足
+```
+
+#### 3.1.5 获取当前用户
+```
+GET /api/auth/me
+Authorization: Bearer <token>
+
+Response (200):
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "nickname": "张三",
+    "avatar": "/uploads/avatar.jpg",
+    "role": "USER",
+    "points": 25,
+    "pointsUsed": 5,
+    "vipLevel": 0,
+    "vipExpiresAt": null
+  }
+}
+```
+
+### 3.2 用户管理接口 (Admin)
+
+#### 3.2.1 获取用户列表
+```
+GET /api/admin/users?page=1&limit=20&search=&role=&status=
+Authorization: Bearer <admin-token>
+
+Query Params:
+- page: 页码 (默认 1)
+- limit: 每页数量 (默认 20, 最大 100)
+- search: 搜索关键词 (邮箱/昵称/手机号)
+- role: 角色筛选 (USER | ADMIN | SUPER_ADMIN)
+- status: 状态筛选 (ACTIVE | DISABLED | PENDING)
+- sortBy: 排序字段 (createdAt | points | lastLoginAt)
+- sortOrder: 排序方向 (asc | desc)
+
+Response (200):
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "email": "user@example.com",
+        "phone": null,
+        "nickname": "张三",
+        "role": "USER",
+        "status": "ACTIVE",
+        "points": 25,
+        "pointsUsed": 5,
+        "vipLevel": 0,
+        "lastLoginAt": "2026-01-25T10:00:00Z",
+        "createdAt": "2026-01-20T08:00:00Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 150,
+      "totalPages": 8
+    }
+  }
+}
+```
+
+#### 3.2.2 获取用户详情
+```
+GET /api/admin/users/:id
+Authorization: Bearer <admin-token>
+
+Response (200):
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "phone": null,
+    "username": null,
+    "nickname": "张三",
+    "avatar": null,
+    "bio": null,
+    "role": "USER",
+    "status": "ACTIVE",
+    "points": 25,
+    "pointsUsed": 5,
+    "vipLevel": 0,
+    "vipExpiresAt": null,
+    "lastLoginAt": "2026-01-25T10:00:00Z",
+    "lastLoginIp": "192.168.1.100",
+    "loginFailCount": 0,
+    "createdAt": "2026-01-20T08:00:00Z",
+    "statistics": {
+      "projectCount": 10,
+      "orderCount": 2,
+      "transactionCount": 15
+    }
+  }
+}
+```
+
+#### 3.2.3 更新用户信息
+```
+PUT /api/admin/users/:id
+Authorization: Bearer <admin-token>
+
+Request:
+{
+  "nickname": "新昵称",      // 可选
+  "role": "ADMIN",           // 可选, 仅 SUPER_ADMIN 可修改
+  "status": "DISABLED",      // 可选
+  "points": 100              // 可选, 调整积分
+}
+
+Response (200):
+{
+  "success": true,
+  "data": { /* 更新后的用户信息 */ }
+}
+
+业务逻辑:
+- 如果调整了 points，自动创建 Transaction 记录 (type=ADJUST)
+- 不能禁用自己
+- 不能修改 SUPER_ADMIN 的角色
+```
+
+#### 3.2.4 重置用户密码
+```
+POST /api/admin/users/:id/reset-password
+Authorization: Bearer <admin-token>
+
+Request:
+{
+  "newPassword": "TempPassword123!"
+}
+
+Response (200):
+{
+  "success": true,
+  "message": "密码已重置"
+}
+
+业务逻辑:
+- 重置后 loginFailCount = 0, lockedUntil = null
+- 记录操作日志
+```
+
+#### 3.2.5 批量操作
+```
+POST /api/admin/users/batch
+Authorization: Bearer <admin-token>
+
+Request:
+{
+  "action": "disable",       // disable | enable | delete
+  "userIds": ["uuid1", "uuid2"]
+}
+
+Response (200):
+{
+  "success": true,
+  "data": {
+    "affected": 2
+  }
+}
+```
+
+### 3.3 订单管理接口 (Admin)
+
+#### 3.3.1 获取订单列表
+```
+GET /api/admin/orders?page=1&limit=20&status=&userId=
+Authorization: Bearer <admin-token>
+
+Response (200):
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "orderNo": "ORD20260125001",
+        "user": {
+          "id": "uuid",
+          "email": "user@example.com",
+          "nickname": "张三"
+        },
+        "productType": "vip",
+        "productName": "专业版月卡",
+        "finalPrice": 99.00,
+        "status": "PAID",
+        "paymentMethod": "alipay",
+        "paidAt": "2026-01-25T10:00:00Z",
+        "createdAt": "2026-01-25T09:55:00Z"
+      }
+    ],
+    "pagination": { /* ... */ }
+  }
+}
+```
+
+#### 3.3.2 更新订单状态
+```
+PUT /api/admin/orders/:id
+Authorization: Bearer <admin-token>
+
+Request:
+{
+  "status": "CANCELLED"
+}
+
+业务逻辑:
+- PAID -> CANCELLED: 仅记录，不自动退款
+- PAID -> REFUNDED: 需要调用退款接口
+```
+
+#### 3.3.3 订单退款
+```
+POST /api/admin/orders/:id/refund
+Authorization: Bearer <admin-token>
+
+Request:
+{
+  "reason": "用户申请退款",
+  "refundAmount": 99.00      // 可选，默认全额
+}
+
+Response (200):
+{
+  "success": true,
+  "message": "退款处理成功"
+}
+
+业务逻辑:
+1. 更新订单状态为 REFUNDED
+2. 如果是积分充值订单，扣除对应积分
+3. 如果是 VIP 订单，取消 VIP 资格
+4. 创建 Transaction 记录 (type=REFUND)
+```
+
+### 3.4 积分规则接口 (Admin)
+
+#### 3.4.1 获取规则列表
+```
+GET /api/admin/points-rules
+Authorization: Bearer <admin-token>
+
+Response (200):
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "code": "outline_generation",
+      "name": "AI大纲生成",
+      "description": "使用AI生成PPT大纲",
+      "costPoints": 5,
+      "costType": "fixed",
+      "isActive": true,
+      "sortOrder": 1
+    }
+  ]
+}
+```
+
+#### 3.4.2 创建规则
+```
+POST /api/admin/points-rules
+Authorization: Bearer <admin-token>
+
+Request:
+{
+  "code": "new_feature",
+  "name": "新功能",
+  "description": "新功能描述",
+  "costPoints": 10,
+  "costType": "fixed",
+  "isActive": true
+}
+
+Response (201):
+{
+  "success": true,
+  "data": { /* 新创建的规则 */ }
+}
+```
+
+#### 3.4.3 更新规则
+```
+PUT /api/admin/points-rules/:id
+Authorization: Bearer <admin-token>
+
+Request:
+{
+  "costPoints": 8,
+  "isActive": false
+}
+```
+
+### 3.5 系统统计接口 (Admin)
+
+```
+GET /api/admin/system/stats
+Authorization: Bearer <admin-token>
+
+Response (200):
+{
+  "success": true,
+  "data": {
+    "users": {
+      "total": 1500,
+      "today": 25,
+      "active": 1200,
+      "disabled": 10
+    },
+    "orders": {
+      "total": 500,
+      "totalRevenue": 49500.00,
+      "today": 15,
+      "todayRevenue": 1485.00
+    },
+    "points": {
+      "totalConsumed": 50000,
+      "todayConsumed": 800
+    },
+    "projects": {
+      "total": 3000,
+      "todayCreated": 50
+    }
+  }
+}
+```
+
+---
+
+## 4. 前端组件设计
+
+### 4.1 目录结构
+```
+src/
+├── api/
+│   ├── client.ts              # axios 客户端 (添加 Auth 拦截器)
+│   ├── auth.ts                # 认证 API
+│   ├── admin.ts               # 管理 API
+│   └── ... (现有)
+├── contexts/
+│   └── AuthContext.tsx        # 认证上下文
+├── hooks/
+│   ├── useAuth.ts             # 认证 Hook
+│   ├── usePermission.ts       # 权限 Hook
+│   └── useAdmin.ts            # 管理 Hook
+├── components/
+│   ├── auth/
+│   │   ├── LoginModal.tsx     # 登录弹窗
+│   │   ├── SignInForm.tsx     # 登录表单
+│   │   ├── SignUpForm.tsx     # 注册表单
+│   │   ├── ForgotPasswordForm.tsx
+│   │   └── AuthGuard.tsx      # 路由守卫
+│   ├── admin/
+│   │   ├── AdminLayout.tsx    # 管理后台布局
+│   │   ├── AdminSidebar.tsx   # 管理导航
+│   │   ├── AdminHeader.tsx    # 管理头部
+│   │   ├── UserManagement.tsx
+│   │   ├── UserDetail.tsx
+│   │   ├── OrderManagement.tsx
+│   │   ├── PointsRuleEditor.tsx
+│   │   ├── RoleManagement.tsx
+│   │   ├── SystemStats.tsx
+│   │   └── SystemSettings.tsx
+│   ├── user/
+│   │   ├── UserWidget.tsx     # 导航栏用户组件
+│   │   ├── UserPopover.tsx    # 用户下拉菜单
+│   │   ├── ProfileCenter.tsx  # 个人中心
+│   │   └── PointsHistory.tsx  # 积分明细
+│   └── ... (现有)
+└── App.tsx
+```
+
+### 4.2 AuthContext 设计
+
+```typescript
+// src/contexts/AuthContext.tsx
+
+interface User {
+  id: string;
+  email: string;
+  nickname: string;
+  avatar: string | null;
+  role: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
+  points: number;
+  vipLevel: number;
+}
+
+interface AuthContextType {
+  // 状态
+  user: User | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+  
+  // 方法
+  login: (identity: string, password: string) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
+  logout: () => void;
+  refreshUser: () => Promise<void>;
+  
+  // 弹窗控制
+  showLoginModal: boolean;
+  setShowLoginModal: (show: boolean) => void;
+  loginModalTab: 'signin' | 'signup' | 'forgot';
+  setLoginModalTab: (tab: 'signin' | 'signup' | 'forgot') => void;
+}
+
+// 使用示例
+const { user, isAdmin, login, showLoginModal, setShowLoginModal } = useAuth();
+```
+
+### 4.3 API Client 改造
+
+```typescript
+// src/api/client.ts
+
+import axios from 'axios';
+
+const TOKEN_KEY = 'bananaslides_token';
+
+export const client = axios.create({
+  baseURL: '/api',
+  headers: { 'Content-Type': 'application/json' },
+});
+
+// 请求拦截器: 添加 Token
+client.interceptors.request.use((config) => {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// 响应拦截器: 处理 401
+client.interceptors.response.use(
+  (response) => response.data,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      window.dispatchEvent(new CustomEvent('auth:logout'));
+    }
+    // ... 其他错误处理
+    return Promise.reject(error);
+  }
+);
+```
+
+### 4.4 LoginModal 组件
+
+```typescript
+// src/components/auth/LoginModal.tsx
+
+interface LoginModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  defaultTab?: 'signin' | 'signup' | 'forgot';
+}
+
+// 状态管理
+const [activeTab, setActiveTab] = useState<'signin' | 'signup' | 'forgot'>(defaultTab);
+const [isLoading, setIsLoading] = useState(false);
+const [error, setError] = useState<string | null>(null);
+
+// 视觉设计
+- 磨砂玻璃背景 (backdrop-blur-xl)
+- HSL 动态渐变
+- Tab 切换动画 (Framer Motion)
+- 输入框聚焦动效
+- 错误状态抖动反馈
+```
+
+### 4.5 AdminLayout 组件
+
+```typescript
+// src/components/admin/AdminLayout.tsx
+
+interface AdminLayoutProps {
+  children: React.ReactNode;
+}
+
+// 布局结构
+<div className="flex h-screen">
+  <AdminSidebar />           {/* 固定宽度侧边栏 */}
+  <div className="flex-1 flex flex-col">
+    <AdminHeader />          {/* 顶部工具栏 */}
+    <main className="flex-1 overflow-auto p-6 bg-slate-50">
+      {children}
+    </main>
+  </div>
+</div>
+
+// 侧边栏菜单
+const menuItems = [
+  { icon: LayoutDashboard, label: '控制台', path: '/admin' },
+  { icon: Users, label: '用户管理', path: '/admin/users' },
+  { icon: ClipboardList, label: '订单管理', path: '/admin/orders' },
+  { icon: Coins, label: '积分规则', path: '/admin/points-rules' },
+  { icon: Shield, label: '角色权限', path: '/admin/roles' },
+  { icon: Settings, label: '系统设置', path: '/admin/settings' },
+];
+```
+
+### 4.6 UserManagement 组件
+
+```typescript
+// src/components/admin/UserManagement.tsx
+
+// 状态
+const [users, setUsers] = useState<User[]>([]);
+const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
+const [filters, setFilters] = useState({ search: '', role: '', status: '' });
+const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+const [editingUser, setEditingUser] = useState<User | null>(null);
+
+// 功能
+- 搜索框 (防抖 300ms)
+- 角色/状态筛选器
+- 分页控件
+- 批量选择 + 批量操作
+- 单行操作: 查看详情、禁用/启用、重置密码、调整积分
+- 编辑弹窗
+
+// 表格列
+const columns = [
+  { key: 'email', label: '邮箱' },
+  { key: 'nickname', label: '昵称' },
+  { key: 'role', label: '角色', render: RoleBadge },
+  { key: 'status', label: '状态', render: StatusBadge },
+  { key: 'points', label: '积分' },
+  { key: 'lastLoginAt', label: '最后登录', render: formatTime },
+  { key: 'actions', label: '操作', render: ActionButtons },
+];
+```
+
+---
+
+## 5. 安全与权限设计
+
+### 5.1 JWT 配置
+
+```typescript
+// 签发配置
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key';
+const JWT_EXPIRES_IN = '24h';  // Token 有效期
+
+// Token Payload
+interface JwtPayload {
+  userId: string;
+  role: UserRole;
+  iat: number;  // 签发时间
+  exp: number;  // 过期时间
+}
+```
+
+### 5.2 密码策略
+
+```typescript
+// 密码规则
+const PASSWORD_RULES = {
+  minLength: 8,
+  maxLength: 32,
+  requireLetter: true,
+  requireNumber: true,
+  requireSpecial: false,  // 可选
+};
+
+// 密码强度校验
+function validatePassword(password: string): { valid: boolean; message?: string } {
+  if (password.length < 8) return { valid: false, message: '密码至少8位' };
+  if (password.length > 32) return { valid: false, message: '密码最多32位' };
+  if (!/[a-zA-Z]/.test(password)) return { valid: false, message: '密码需包含字母' };
+  if (!/[0-9]/.test(password)) return { valid: false, message: '密码需包含数字' };
+  return { valid: true };
+}
+```
+
+### 5.3 账户锁定策略
+
+```typescript
+// 锁定规则
+const LOCK_RULES = {
+  maxFailCount: 5,       // 最大失败次数
+  lockDuration: 15 * 60, // 锁定时长 (秒)
+};
+
+// 登录失败处理
+async function handleLoginFailure(user: User) {
+  user.loginFailCount += 1;
+  if (user.loginFailCount >= LOCK_RULES.maxFailCount) {
+    user.lockedUntil = new Date(Date.now() + LOCK_RULES.lockDuration * 1000);
+  }
+  await prisma.user.update({ where: { id: user.id }, data: user });
+}
+
+// 登录成功处理
+async function handleLoginSuccess(user: User) {
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      loginFailCount: 0,
+      lockedUntil: null,
+      lastLoginAt: new Date(),
+      lastLoginIp: getClientIp(),
+    }
+  });
+}
+```
+
+### 5.4 权限中间件
+
+```typescript
+// src/server/middlewares/auth.middleware.ts
+
+// JWT 验证中间件
+export const authenticate = async (req, res, next) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ error: '请先登录' });
+  }
+  
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+    
+    if (!user || user.status !== 'ACTIVE') {
+      return res.status(401).json({ error: '账户不可用' });
+    }
+    
+    req.user = user;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Token 无效或已过期' });
+  }
+};
+
+// 角色检查中间件
+export const requireRole = (...roles: UserRole[]) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: '请先登录' });
+    }
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ error: '权限不足' });
+    }
+    next();
+  };
+};
+
+// 超级管理员检查
+export const requireSuperAdmin = requireRole('SUPER_ADMIN');
+
+// 管理员检查
+export const requireAdmin = requireRole('ADMIN', 'SUPER_ADMIN');
+```
+
+### 5.5 权限矩阵
+
+| 权限代码 | USER | ADMIN | SUPER_ADMIN |
+|:---|:---:|:---:|:---:|
+| `project.create` | ✅ | ✅ | ✅ |
+| `project.read.own` | ✅ | ✅ | ✅ |
+| `project.read.all` | ❌ | ✅ | ✅ |
+| `project.delete.own` | ✅ | ✅ | ✅ |
+| `project.delete.all` | ❌ | ✅ | ✅ |
+| `admin.access` | ❌ | ✅ | ✅ |
+| `admin.users.read` | ❌ | ✅ | ✅ |
+| `admin.users.write` | ❌ | ✅ | ✅ |
+| `admin.users.delete` | ❌ | ❌ | ✅ |
+| `admin.orders.read` | ❌ | ✅ | ✅ |
+| `admin.orders.refund` | ❌ | ❌ | ✅ |
+| `admin.roles.write` | ❌ | ❌ | ✅ |
+| `admin.system.write` | ❌ | ❌ | ✅ |
+
+---
+
+## 6. 边界情况与错误处理
+
+### 6.1 认证边界
+
+| 场景 | 处理方式 |
+|:---|:---|
+| Token 过期 | 前端自动登出，弹出登录弹窗 |
+| Token 被篡改 | 返回 401，清除本地 Token |
+| 账户被禁用 | 返回 401，提示"账户已被禁用" |
+| 账户被锁定 | 返回 403，提示"账户已锁定，请X分钟后重试" |
+| 并发登录 | 允许多端登录，Token 独立 |
+| 密码修改后 | 不影响已签发的 Token（可选：强制失效） |
+
+### 6.2 权限边界
+
+| 场景 | 处理方式 |
+|:---|:---|
+| 普通用户访问 /admin | 返回 403，前端重定向至 Dashboard |
+| 管理员禁用自己 | 拒绝操作，提示"无法禁用当前账户" |
+| 管理员修改超管 | 拒绝操作，提示"无法修改超级管理员" |
+| 超管删除自己 | 拒绝操作，提示"无法删除当前账户" |
+
+### 6.3 积分边界
+
+| 场景 | 处理方式 |
+|:---|:---|
+| 积分不足 | 阻止操作，弹出升级引导弹窗 |
+| 负积分 | 允许（用于欠费场景），但阻止新消耗 |
+| 并发扣费 | 使用数据库事务，确保一致性 |
+| 管理员调整 | 记录操作人 ID，创建 Transaction |
+
+### 6.4 订单边界
+
+| 场景 | 处理方式 |
+|:---|:---|
+| 重复支付回调 | 幂等处理，检查订单状态 |
+| 退款超过实付 | 拒绝操作 |
+| 已消耗积分退款 | 扣除已消耗积分（可能变负） |
+| VIP 过期后退款 | 正常退款，无需额外处理 |
+
+---
+
+## 7. 部署与配置
+
+### 7.1 环境变量
+
+```bash
+# 数据库
+DATABASE_URL="file:./dev.db"
+
+# JWT
+JWT_SECRET="your-super-secret-key-change-in-production"
+JWT_EXPIRES_IN="24h"
+
+# 默认管理员
+BOOTSTRAP_ADMIN_EMAIL="admin@local"
+BOOTSTRAP_ADMIN_USERNAME="admin"
+BOOTSTRAP_ADMIN_PASSWORD="admin12345678"
+BOOTSTRAP_ADMIN_TAKE_OVER="1"
+
+# 邮件 (生产环境)
+SMTP_HOST="smtp.example.com"
+SMTP_PORT="465"
+SMTP_USER="noreply@example.com"
+SMTP_PASS="password"
+SMTP_FROM="BananaSlides <noreply@example.com>"
+
+# 开发环境邮件 (打印到控制台)
+MAIL_DEV_MODE="1"
+```
+
+### 7.2 数据库迁移
+
+```bash
+# 1. 更新 Schema
+npx prisma db push
+
+# 2. 生成客户端
+npx prisma generate
+
+# 3. 初始化种子数据
+npx prisma db seed
+```
+
+### 7.3 种子数据
+
+```typescript
+// prisma/seed.ts
+
+async function main() {
+  // 1. 创建默认管理员
+  await bootstrapAdmin();
+  
+  // 2. 创建默认积分规则
+  const rules = [
+    { code: 'outline_generation', name: 'AI大纲生成', costPoints: 5 },
+    { code: 'slide_content', name: '单页正文扩充', costPoints: 2 },
+    { code: 'slide_image', name: '单页图片生成', costPoints: 10 },
+    { code: 'doc_parse', name: '文档解析', costPoints: 3 },
+  ];
+  
+  for (const rule of rules) {
+    await prisma.pointsRule.upsert({
+      where: { code: rule.code },
+      update: {},
+      create: rule,
+    });
+  }
+  
+  // 3. 创建默认权限
+  const permissions = [
+    { code: 'admin.access', name: '访问管理后台', module: 'admin' },
+    { code: 'admin.users.read', name: '查看用户列表', module: 'users' },
+    { code: 'admin.users.write', name: '编辑用户', module: 'users' },
+    // ... 更多权限
+  ];
+  
+  for (const perm of permissions) {
+    await prisma.permission.upsert({
+      where: { code: perm.code },
+      update: {},
+      create: perm,
+    });
+  }
+}
+```
+
+---
+
+## 附录 A: 默认积分规则
+
+| 规则代码 | 名称 | 消耗积分 | 说明 |
+|:---|:---|:---|:---|
+| `outline_generation` | AI大纲生成 | 5 | 生成完整 PPT 大纲 |
+| `slide_content` | 单页正文扩充 | 2 | AI 扩充单页内容 |
+| `slide_image` | 单页图片生成 | 10 | AI 生成单页背景图 |
+| `doc_parse` | 文档解析 | 3 | PDF/Word 解析 |
+| `vision_analysis` | 视觉分析 | 3 | 参考图风格提取 |
+
+## 附录 B: 错误码规范
+
+| 错误码 | HTTP Status | 说明 |
+|:---|:---|:---|
+| `EMAIL_EXISTS` | 400 | 邮箱已被注册 |
+| `INVALID_EMAIL` | 400 | 邮箱格式错误 |
+| `WEAK_PASSWORD` | 400 | 密码强度不足 |
+| `INVALID_CREDENTIALS` | 401 | 账号或密码错误 |
+| `USER_NOT_FOUND` | 401 | 用户不存在 |
+| `ACCOUNT_DISABLED` | 401 | 账户已被禁用 |
+| `ACCOUNT_LOCKED` | 403 | 账户已锁定 |
+| `UNAUTHORIZED` | 401 | 未登录 |
+| `FORBIDDEN` | 403 | 权限不足 |
+| `INVALID_CODE` | 400 | 验证码错误 |
+| `CODE_EXPIRED` | 400 | 验证码已过期 |
+| `INSUFFICIENT_POINTS` | 402 | 积分不足 |

@@ -45,15 +45,24 @@ export interface UserListResult {
 
 export interface Order {
     id: string;
+    orderNo: string;
     userId: string;
     user?: AdminUser;
-    type: string;
-    amount: number;
-    points: number;
-    status: string;
-    paymentMethod: string | null;
-    transactionId: string | null;
+    productType: string;  // POINTS, VIP, FEATURE 等
+    productName: string;
+    productDesc?: string | null;
+    quantity: number;
+    originalPrice: number;
+    discountPrice?: number | null;
+    finalPrice: number;
+    status: string;  // PENDING, PAID, CANCELLED, REFUNDED
+    paymentMethod?: string | null;
+    paymentNo?: string | null;
+    paidAt?: string | null;
+    refundReason?: string | null;
+    refundedAt?: string | null;
     createdAt: string;
+    updatedAt: string;
 }
 
 export interface PointsRule {

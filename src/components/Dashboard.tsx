@@ -950,7 +950,7 @@ const ProjectCard: React.FC<{
             </div>
             <h5 className="font-bold text-slate-800 truncate mb-1">{project.title}</h5>
             <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight ${project.status === 'generating' ? 'bg-blue-50 text-blue-600 animate-pulse' :
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-tight whitespace-nowrap ${project.status === 'generating' ? 'bg-blue-50 text-blue-600 animate-pulse' :
                 project.status === 'in-progress' ? 'bg-indigo-50 text-indigo-600' :
                   project.status === 'error' ? 'bg-rose-50 text-rose-600' :
                     project.status === 'completed' ? 'bg-emerald-50 text-emerald-600' :
@@ -961,7 +961,7 @@ const ProjectCard: React.FC<{
                     project.status === 'error' ? '生成失败' :
                       project.status === 'completed' ? '已完成' : '未开始'}
               </span>
-              <span className="text-[10px] text-slate-400 font-medium">
+              <span className="text-[10px] text-slate-400 font-medium truncate">
                 样式: {project.globalConfig?.styleName || project.styleTemplateId || '自定义'}
               </span>
             </div>

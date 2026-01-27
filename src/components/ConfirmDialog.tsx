@@ -11,6 +11,10 @@ interface ConfirmDialogProps {
     type?: 'danger' | 'info';
     confirmText?: string;
     cancelText?: string;
+    showInput?: boolean;
+    inputValue?: string;
+    onInputChange?: (value: string) => void;
+    inputPlaceholder?: string;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -21,7 +25,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     onCancel,
     type = 'info',
     confirmText = '确认',
-    cancelText = '取消'
+    cancelText = '取消',
+    showInput,
+    inputValue,
+    onInputChange,
+    inputPlaceholder
 }) => {
     if (!isOpen) return null;
     return (
@@ -33,6 +41,20 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 </div>
                 <h3 className="text-lg font-bold text-slate-800 mb-2 text-center">{title}</h3>
                 <p className="text-sm text-slate-500 mb-6 leading-relaxed whitespace-pre-wrap text-center">{message}</p>
+
+                {showInput && (
+                    <div className="mb-6">
+                        <textarea
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all resize-none"
+                            rows={3}
+                            placeholder={inputPlaceholder || '请输入...'}
+                            value={inputValue}
+                            onChange={(e) => onInputChange?.(e.target.value)}
+                            autoFocus
+                        />
+                    </div>
+                )}
+
                 <div className="flex gap-3">
                     <button onClick={onCancel} className="flex-1 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-medium transition-colors">
                         {cancelText}

@@ -13,17 +13,33 @@ call "scripts\备份数据库.bat" --silent
 echo.
 
 echo [2/5] Cleaning up ports (1111, 1000)...
+echo    - Killing all Node.js processes first...
+taskkill /F /IM node.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+
+:: 清理端口 1111
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :1111 ^| findstr LISTENING 2^>nul') do (
     echo    - Killing process on port 1111 (PID: %%a)
     taskkill /F /PID %%a >nul 2>&1
 )
+:: 清理端口 1000
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :1000 ^| findstr LISTENING 2^>nul') do (
     echo    - Killing process on port 1000 (PID: %%a)
     taskkill /F /PID %%a >nul 2>&1
 )
-timeout /t 1 /nobreak >nul
+timeout /t 2 /nobreak >nul
+
+:: 验证端口是否已释放
+netstat -ano | findstr :1111 | findstr LISTENING >nul 2>&1
+if not errorlevel 1 (
+    echo    [WARNING] Port 1111 still in use! Retrying...
+    taskkill /F /IM node.exe >nul 2>&1
+    timeout /t 3 /nobreak >nul
+)
+
 echo    Done.
 echo.
+
 
 echo [3/5] Syncing database schema...
 cd server

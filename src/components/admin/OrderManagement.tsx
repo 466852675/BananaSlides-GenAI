@@ -17,6 +17,7 @@ import {
     User,
     RefreshCcw
 } from 'lucide-react';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 export const OrderManagement: React.FC = () => {
     const queryClient = useQueryClient();
@@ -24,6 +25,17 @@ export const OrderManagement: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState<string>('');
     const [typeFilter, setTypeFilter] = useState<string>('');
     const [keyword, setKeyword] = useState('');
+
+    // Refund Dialog State
+    const [refundDialog, setRefundDialog] = useState<{
+        isOpen: boolean;
+        orderId: string | null;
+        reason: string;
+    }>({
+        isOpen: false,
+        orderId: null,
+        reason: ''
+    });
 
     // Fetch orders
     const { data, isLoading, error } = useQuery({
@@ -43,6 +55,8 @@ export const OrderManagement: React.FC = () => {
             AdminApi.refundOrder(id, reason),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+            // Close dialog reset state
+            setRefundDialog({ isOpen: false, orderId: null, reason: '' });
             alert('退款成功');
         },
         onError: (err: any) => {
@@ -50,11 +64,24 @@ export const OrderManagement: React.FC = () => {
         }
     });
 
-    const handleRefund = (order: Order) => {
-        const reason = prompt('请输入退款原因:');
-        if (reason) {
-            refundMutation.mutate({ id: order.id, reason });
+    const handleRefundClick = (order: Order) => {
+        setRefundDialog({
+            isOpen: true,
+            orderId: order.id,
+            reason: ''
+        });
+    };
+
+    const handleConfirmRefund = () => {
+        if (!refundDialog.orderId) return;
+        if (!refundDialog.reason.trim()) {
+            alert('请输入退款原因');
+            return;
         }
+        refundMutation.mutate({
+            id: refundDialog.orderId,
+            reason: refundDialog.reason
+        });
     };
 
     const StatusBadge = ({ status }: { status: string }) => {
@@ -62,12 +89,14 @@ export const OrderManagement: React.FC = () => {
             'PAID': 'bg-emerald-50 text-emerald-600 border-emerald-100',
             'PENDING': 'bg-amber-50 text-amber-600 border-amber-100',
             'REFUNDED': 'bg-slate-50 text-slate-500 border-slate-200',
+            'CANCELLED': 'bg-rose-50 text-rose-400 border-rose-100',
             'FAILED': 'bg-rose-50 text-rose-600 border-rose-100'
         };
         const labels: Record<string, string> = {
             'PAID': '已支付',
             'PENDING': '待支付',
             'REFUNDED': '已退款',
+            'CANCELLED': '已取消',
             'FAILED': '支付失败'
         };
         return (
@@ -185,7 +214,7 @@ export const OrderManagement: React.FC = () => {
                                 <tr key={order.id} className="group hover:bg-blue-50/30 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded w-fit">
-                                            {order.id.slice(0, 8)}...
+                                            {order.orderNo?.slice(0, 12) || order.id.slice(0, 8)}...
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
@@ -204,21 +233,23 @@ export const OrderManagement: React.FC = () => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`text-xs font-bold px-2 py-1 rounded border ${order.type === 'points'
+                                        <span className={`text-xs font-bold px-2 py-1 rounded border ${order.productType === 'POINTS'
                                             ? 'bg-amber-50 text-amber-600 border-amber-100'
-                                            : 'bg-violet-50 text-violet-600 border-violet-100'
+                                            : order.productType === 'VIP'
+                                                ? 'bg-violet-50 text-violet-600 border-violet-100'
+                                                : 'bg-blue-50 text-blue-600 border-blue-100'
                                             }`}>
-                                            {order.type === 'points' ? '积分充值' : '会员订阅'}
+                                            {order.productType === 'POINTS' ? '积分充值' : order.productType === 'VIP' ? '会员订阅' : order.productName || '其他'}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className="text-sm font-black text-slate-800">
-                                            ¥{order.amount.toFixed(2)}
+                                            ¥{(order.finalPrice ?? order.originalPrice ?? 0).toFixed(2)}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="text-sm font-medium text-slate-600">
-                                            {order.points > 0 ? `+${order.points} PTS` : '-'}
+                                        <span className="text-sm font-medium text-slate-600 truncate max-w-[120px] block" title={order.productName}>
+                                            {order.productName || '-'}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
@@ -236,7 +267,7 @@ export const OrderManagement: React.FC = () => {
                                     <td className="px-6 py-4 text-right">
                                         {order.status === 'PAID' && (
                                             <button
-                                                onClick={() => handleRefund(order)}
+                                                onClick={() => handleRefundClick(order)}
                                                 className="opacity-0 group-hover:opacity-100 px-3 py-1.5 bg-white border border-rose-200 text-rose-500 hover:bg-rose-50 hover:border-rose-300 rounded-lg text-xs font-bold transition-all shadow-sm"
                                                 disabled={refundMutation.isPending}
                                             >
@@ -284,6 +315,21 @@ export const OrderManagement: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            <ConfirmDialog
+                isOpen={refundDialog.isOpen}
+                title="确认退款"
+                message="请输入退款原因，确认后将原路返回款项，此操作不可撤销。"
+                type="danger"
+                confirmText="确认退款"
+                cancelText="如果不取消"
+                showInput={true}
+                inputPlaceholder="例如：用户申请退款 / 订单异常 / 重复支付"
+                inputValue={refundDialog.reason}
+                onInputChange={(val) => setRefundDialog(prev => ({ ...prev, reason: val }))}
+                onConfirm={handleConfirmRefund}
+                onCancel={() => setRefundDialog(prev => ({ ...prev, isOpen: false }))}
+            />
         </div>
     );
 };
