@@ -2781,12 +2781,19 @@ const App: React.FC = () => {
           return slide;
         });
 
+        // ✅ 关键修复：将生成的图片 URL 同步到数据库，确保持久化
+        syncSlidesMutation.mutate({
+          projectId: currentProjectId,
+          slides: slidesToSync
+        });
+        console.log('[handleGenerateBatch] Synced slides to database:', slidesToSync.length);
 
         return slidesToSync;
       });
     } else {
       console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
+
 
     // 检查是否所有幻灯片都已完成并更新项目状态
     // 如果所有现有项都已成功 (且至少有一个项),则标记为已完成
