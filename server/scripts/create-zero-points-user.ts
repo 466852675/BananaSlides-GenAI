@@ -22,7 +22,7 @@ async function createZeroPointsUser() {
                 email,
                 username: 'ZeroPointsUser',
                 nickname: '零分测试用户',
-                password: hashedPassword,
+                passwordHash: hashedPassword,
                 role: UserRole.USER,
                 status: UserStatus.ACTIVE,
                 points: 0

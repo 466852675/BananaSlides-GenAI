@@ -14,14 +14,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   onCreate,
 }) => {
   const [title, setTitle] = useState('');
-  const [scenarioType, setScenarioType] = useState<ScenarioType>('BUSINESS');
+  // const [scenarioType, setScenarioType] = useState<ScenarioType>('BUSINESS'); // Removed per user request
   const [error, setError] = useState('');
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setTitle('');
-      setScenarioType('BUSINESS');
+      // setScenarioType('BUSINESS');
       setError('');
     }
   }, [isOpen]);
@@ -39,13 +39,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       setError('项目名称不能超过200个字符');
       return;
     }
-    onCreate(trimmedTitle, scenarioType);
+    onCreate(trimmedTitle, 'BUSINESS'); // Defaulting to BUSINESS invisible to user
     onClose();
   };
 
   return (
     <div onClick={onClose} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div 
+      <div
         role="dialog"
         aria-modal="true"
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
@@ -56,14 +56,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             <Sparkles className="w-5 h-5 text-blue-500" />
             创建新项目
           </h3>
-          <button 
+          <button
             onClick={onClose}
             className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors"
           >
             <X size={20} />
           </button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="space-y-2">
             <label htmlFor="projectTitle" className="block text-sm font-medium text-slate-700">
@@ -78,28 +78,11 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 if (error) setError('');
               }}
               placeholder="请输入项目名称..."
-              className={`w-full px-4 py-2.5 rounded-xl border ${
-                error ? 'border-rose-300 focus:ring-rose-200' : 'border-slate-200 focus:ring-blue-200'
-              } focus:border-blue-500 focus:ring-4 transition-all outline-none text-slate-700`}
+              className={`w-full px-4 py-2.5 rounded-xl border ${error ? 'border-rose-300 focus:ring-rose-200' : 'border-slate-200 focus:ring-blue-200'
+                } focus:border-blue-500 focus:ring-4 transition-all outline-none text-slate-700`}
               autoFocus
             />
             {error && <p className="text-xs text-rose-500 font-medium">{error}</p>}
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="scenarioType" className="block text-sm font-medium text-slate-700">
-              场景类型
-            </label>
-            <select
-              id="scenarioType"
-              value={scenarioType}
-              onChange={(e) => setScenarioType(e.target.value as ScenarioType)}
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-blue-200 focus:border-blue-500 focus:ring-4 transition-all outline-none text-slate-700 bg-white"
-            >
-              <option value="BUSINESS">商务汇报</option>
-              <option value="ACADEMIC">学术演示</option>
-              <option value="CREATIVE">创意展示</option>
-            </select>
           </div>
 
           <div className="pt-2 flex gap-3">

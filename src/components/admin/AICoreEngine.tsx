@@ -4,6 +4,8 @@ import { useAppSettingsMasked, useUpdateAppSettings } from '../../api/settings';
 import { GlobalSettingsModal } from '../GlobalSettingsModal';
 import { AppSettings } from '../../types';
 
+import toast from 'react-hot-toast';
+
 export const AICoreEngine: React.FC = () => {
     const { data: currentSettings, isLoading } = useAppSettingsMasked();
     const updateSettingsMutation = useUpdateAppSettings();
@@ -12,7 +14,11 @@ export const AICoreEngine: React.FC = () => {
     const handleSaveAISettings = (newSettings: AppSettings) => {
         updateSettingsMutation.mutate(newSettings, {
             onSuccess: () => {
-                // Settings updated
+                toast.success('配置保存成功！');
+                setIsSettingsModalOpen(false); // Optionally close modal on success
+            },
+            onError: (error: any) => {
+                toast.error(`保存失败: ${error.message}`);
             }
         });
     };
