@@ -313,19 +313,16 @@ export class ProjectService {
     }
 
     async softDelete(id: string, userId: string, isAdmin: boolean = false) {
-        // Soft delete not supported in current schema, performing hard delete or no-op?
-        // For now, implementing as check ownership then no-op or throw, since deletedAt doesn't exist.
-        // Or actually, user might expect delete. Let's do nothing for now to avoid errors, 
-        // or actually implement hard delete if that's what "Trash" implies?
-        // "List Trash" implies soft delete exists. 
-        // Given schema limitations, I will just return null to indicate "not found" or "failed" if tried.
-        // But to pass type check, I will just fetch and return.
-
         const project = await prisma.project.findUnique({ where: { id } });
-        if (!isAdmin && (!project || project.userId !== userId)) return null;
 
-        // Cannot soft delete without deletedAt.
-        // Assuming we rely on hard delete via some other method, or this feature is disabled.
+        // Ownership / Permission Check
+        if (!project) return null;
+        if (!isAdmin && project.userId !== userId) return null;
+
+        // Hard delete since schema doesn't support soft delete (deletedAt)
+        // This solves "Project not deleted" issue reported by user.
+        await prisma.project.delete({ where: { id } });
+
         return project;
     }
 

@@ -78,11 +78,16 @@ export const createProject = async (req: Request, res: Response) => {
             return;
         }
 
-        const limit = quotaService.getDefaultLimit('project_count', isPro);
-        const currentCount = await projectService.countActive(ownerId);
-        if (limit > 0 && currentCount >= limit) {
-            res.status(403).json({ error: 'QUOTA_PROJECT_LIMIT', limit, currentCount });
-            return;
+        // Check Quota (Skip for Admins)
+        const isAdmin = isAdminRole(req);
+
+        if (!isAdmin) {
+            const limit = quotaService.getDefaultLimit('project_count', isPro);
+            const currentCount = await projectService.countActive(ownerId);
+            if (limit > 0 && currentCount >= limit) {
+                res.status(403).json({ error: 'QUOTA_PROJECT_LIMIT', limit, currentCount });
+                return;
+            }
         }
 
         // Transform Input -> Prisma Format
