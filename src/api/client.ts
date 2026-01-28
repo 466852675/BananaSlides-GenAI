@@ -6,7 +6,7 @@ export const TOKEN_KEY = 'bananaslides_token';
 // Base API client
 export const client = axios.create({
     baseURL: '/api', // Proxy handles forwarding to localhost:1111
-    timeout: 300000, // 5 minutes (for slow AI generations)
+    timeout: 600000, // 10 minutes (for 4K AI image generations)
     headers: {
         'Content-Type': 'application/json',
     },
