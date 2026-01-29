@@ -8,22 +8,31 @@ import { ReferralConfig } from './ReferralConfig';
 type GrowthTab = 'overview' | 'products' | 'settings';
 
 export const GrowthCenter: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<GrowthTab>('overview');
+    const [activeTab, setActiveTab] = useState<GrowthTab>('products');
 
     const tabs = [
-        { id: 'overview', label: '增长概览', icon: TrendingUp },
         { id: 'products', label: '商品管理', icon: ShoppingBag },
         { id: 'settings', label: '邀请配置', icon: Settings2 },
     ];
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-1">
-                <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-                    <Gift className="text-violet-500" size={24} />
-                    增长中心
-                </h2>
-                <p className="text-sm text-slate-500 font-medium">管理会员、积分商品，监控用户增长趋势。</p>
+            {/* Hero Section - Standardized V8.0 */}
+            <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-violet-600 to-indigo-600 p-6 shadow-xl shadow-violet-500/20">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
+                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-6">
+                        <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
+                            <ShoppingBag size={24} />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-black text-white tracking-tight mb-1">产品管理</h1>
+                            <p className="text-violet-100 font-medium opacity-90 whitespace-nowrap">
+                                管理会员等级、积分商品及自动化增长配置。
+                            </p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* Tab Navigation */}

@@ -2,7 +2,6 @@
 import React, { useState } from 'react';
 import { Share2, Copy, Check, Users, Gift, ArrowRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useToast } from './Toast';
 import { motion } from 'framer-motion';
 
 interface ReferralCardProps {
@@ -11,17 +10,21 @@ interface ReferralCardProps {
 
 export const ReferralCard: React.FC<ReferralCardProps> = ({ className = '' }) => {
     const { user } = useAuth();
-    const { addToast } = useToast();
     const [copied, setCopied] = useState(false);
+    const [copiedType, setCopiedType] = useState<'link' | 'code' | null>(null);
 
-    const referralCode = user?.referralCode || '------';
+    const referralCode = user?.inviteCode || '------';
     const referralLink = `${window.location.origin}/register?ref=${referralCode}`;
 
     const handleCopy = (text: string, type: 'link' | 'code') => {
         navigator.clipboard.writeText(text).then(() => {
             setCopied(true);
-            addToast(type === 'link' ? '邀请链接已复制' : '邀请码已复制', 'success');
-            setTimeout(() => setCopied(false), 2000);
+            setCopiedType(type);
+            // 使用原生方式显示复制成功反馈
+            setTimeout(() => {
+                setCopied(false);
+                setCopiedType(null);
+            }, 2000);
         });
     };
 

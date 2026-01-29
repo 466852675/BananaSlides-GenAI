@@ -222,15 +222,15 @@ export const PointsRuleEditor: React.FC = () => {
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header / Intro - Standardized Hero */}
-            <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-violet-600 to-indigo-600 p-8 shadow-xl shadow-violet-500/20">
+            <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-violet-600 to-indigo-600 p-6 shadow-xl shadow-violet-500/20">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
                 <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                     <div className="flex items-center gap-6">
-                        <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
-                            <Coins size={32} />
+                        <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
+                            <Coins size={24} />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-black text-white tracking-tight mb-2">积分规则配置</h1>
+                            <h1 className="text-2xl font-black text-white tracking-tight mb-1">积分规则配置</h1>
                             <p className="text-violet-100 font-medium opacity-90 whitespace-nowrap">
                                 管理系统各项 AI 能力的消耗定价与开关。
                             </p>

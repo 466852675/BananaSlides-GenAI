@@ -10,11 +10,16 @@ import {
     Zap,
     AlertCircle,
     LayoutDashboard,
-    ArrowUpRight
+    ArrowUpRight,
+    Calendar,
+    Gift,
+    ShoppingBag
 } from 'lucide-react';
 import {
     AreaChart,
     Area,
+    LineChart,
+    Line,
     PieChart,
     Pie,
     Cell,
@@ -25,14 +30,22 @@ import {
     Legend,
     ResponsiveContainer
 } from 'recharts';
-import { getSystemStats } from '../../api/admin';
+import { getSystemStats, getGrowthStats } from '../../api/admin';
 
 export const SystemStats: React.FC = () => {
     const [mounted, setMounted] = React.useState(false);
-    const { data: stats, isLoading, error } = useQuery({
+    const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
         queryKey: ['admin', 'system-stats'],
         queryFn: getSystemStats
     });
+
+    const { data: growthStats, isLoading: growthLoading } = useQuery({
+        queryKey: ['admin', 'growth-stats'],
+        queryFn: getGrowthStats
+    });
+
+    const isLoading = statsLoading || growthLoading;
+    const error = statsError;
 
     React.useEffect(() => {
         setMounted(true);
@@ -88,17 +101,19 @@ export const SystemStats: React.FC = () => {
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Hero Section - Dashboard Upgrade */}
-            <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-fuchsia-600 to-purple-600 p-8 shadow-xl shadow-purple-500/20">
+            <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-fuchsia-600 to-purple-600 p-6 shadow-xl shadow-purple-500/20">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
-                <div className="relative z-10 flex items-center gap-6">
-                    <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
-                        <LayoutDashboard size={32} />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-black text-white tracking-tight mb-2">控制台</h1>
-                        <p className="text-purple-100 font-medium opacity-90 whitespace-nowrap">
-                            系统概览，实时监控用户增长与订单数据。
-                        </p>
+                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-6">
+                        <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
+                            <LayoutDashboard size={24} />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-black text-white tracking-tight mb-1">控制台</h1>
+                            <p className="text-fuchsia-100 font-medium opacity-90 whitespace-nowrap">
+                                实时监控系统运行状态、业务增长与运营指标。
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -143,112 +158,215 @@ export const SystemStats: React.FC = () => {
                 />
             </div>
 
-            {/* Charts Section */}
+            {/* Trends Section - Combined System & Growth */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Growth Trend */}
-                <div className="lg:col-span-2 bg-white/80 backdrop-blur-xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60">
-                    <div className="flex justify-between items-center mb-8">
-                        <div>
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <TrendingUp size={20} className="text-violet-600" />
-                                数据增长趋势
-                            </h3>
-                            <p className="text-sm text-slate-500 mt-1">用户与订单最近7天走势</p>
+                {/* Growth Trend / Check-in Trend Toggle */}
+                <div className="lg:col-span-2 space-y-6">
+                    {/* User & Order Trend */}
+                    <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60">
+                        <div className="flex justify-between items-center mb-8">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                    <TrendingUp size={20} className="text-violet-600" />
+                                    业务增长走势
+                                </h3>
+                                <p className="text-sm text-slate-500 mt-1">用户总量与订单总量最近7天走势</p>
+                            </div>
+                            <div className="flex gap-4">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full bg-violet-500" /> <span className="text-xs font-bold text-slate-500">用户总量</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full bg-emerald-500" /> <span className="text-xs font-bold text-slate-500">订单总量</span>
+                                </div>
+                            </div>
                         </div>
-                        <div className="flex gap-2">
-                            <span className="w-3 h-3 rounded-full bg-violet-500 inline-block" /> <span className="text-xs text-slate-500">用户</span>
-                            <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block ml-2" /> <span className="text-xs text-slate-500">订单</span>
+
+                        <div style={{ width: '100%', height: 260 }}>
+                            {mounted && (
+                                <ResponsiveContainer width="100%" height="100%" debounce={50}>
+                                    <AreaChart data={trendData}>
+                                        <defs>
+                                            <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                                                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                                            </linearGradient>
+                                            <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                                        <Tooltip
+                                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)', padding: '12px' }}
+                                            cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                        />
+                                        <Area type="monotone" dataKey="users" name="用户总量" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorUsers)" />
+                                        <Area type="monotone" dataKey="orders" name="订单总量" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorOrders)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            )}
                         </div>
                     </div>
 
-                    <div style={{ width: '100%', height: 320 }}>
-                        {mounted && (
-                            <ResponsiveContainer width="100%" height="100%" debounce={50}>
-                                <AreaChart data={trendData}>
-                                    <defs>
-                                        <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                                            <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                                        </linearGradient>
-                                        <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                                    <Tooltip
-                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 40px rgba(0,0,0,0.1)', padding: '12px' }}
-                                        cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }}
-                                    />
-                                    <Area type="monotone" dataKey="users" name="用户总量" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorUsers)" />
-                                    <Area type="monotone" dataKey="orders" name="订单总量" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorOrders)" />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        )}
+                    {/* Check-in & Referral Stats - From Growth Center */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white/80 backdrop-blur-xl p-6 rounded-3xl border border-white/60 shadow-sm flex items-center justify-between group">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-fuchsia-50 text-fuchsia-600 rounded-2xl group-hover:scale-110 transition-transform">
+                                    <Calendar size={24} />
+                                </div>
+                                <div>
+                                    <div className="text-2xl font-black text-slate-800 tracking-tight">{growthStats?.checkIn.today || 0}</div>
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">今日签到人数</div>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-[10px] font-bold text-slate-400 uppercase">累计签到</div>
+                                <div className="text-sm font-black text-slate-700">{growthStats?.checkIn.total || 0}</div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white/80 backdrop-blur-xl p-6 rounded-3xl border border-white/60 shadow-sm flex items-center justify-between group">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-amber-50 text-amber-500 rounded-2xl group-hover:scale-110 transition-transform">
+                                    <Gift size={24} />
+                                </div>
+                                <div>
+                                    <div className="text-2xl font-black text-slate-800 tracking-tight">{growthStats?.referral.today || 0}</div>
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">今日成功拉新</div>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-[10px] font-bold text-slate-400 uppercase">累计发放奖励</div>
+                                <div className="text-sm font-black text-slate-700">{growthStats?.checkIn.totalRewards || 0}</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                {/* User Distribution */}
-                <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 flex flex-col justify-between">
-                    <div>
-                        <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
-                            <UserPlus size={20} className="text-violet-600" />
-                            用户状态分布
-                        </h3>
-                        <p className="text-sm text-slate-500 mb-6">活跃 vs 禁用账户占比</p>
-                    </div>
+                {/* Right Column: User Distribution & Status */}
+                <div className="space-y-6">
+                    <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 flex flex-col h-full">
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                <UserPlus size={20} className="text-violet-600" />
+                                用户状态分布
+                            </h3>
+                            <p className="text-sm text-slate-500 mb-6 font-medium">活跃 vs 禁用账户占比</p>
+                        </div>
 
-                    <div className="relative flex-1 min-h-[220px]">
-                        {mounted && (
-                            <ResponsiveContainer width="100%" height="100%" debounce={50}>
-                                <PieChart>
-                                    <Pie
-                                        data={userStatusData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={60}
-                                        outerRadius={80}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                        startAngle={90}
-                                        endAngle={-270}
-                                    >
-                                        {userStatusData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        )}
-                        {/* Center Text */}
-                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-                            <div className="text-3xl font-black text-slate-800 tracking-tight">{stats.totalUsers}</div>
-                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Users</div>
+                        <div className="relative flex-1 min-h-[180px] flex items-center justify-center">
+                            {mounted && (
+                                <ResponsiveContainer width="100%" height={200} debounce={50}>
+                                    <PieChart>
+                                        <Pie
+                                            data={userStatusData}
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={60}
+                                            outerRadius={80}
+                                            paddingAngle={5}
+                                            dataKey="value"
+                                            startAngle={90}
+                                            endAngle={-270}
+                                        >
+                                            {userStatusData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            )}
+                            {/* Center Text */}
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+                                <div className="text-3xl font-black text-slate-800 tracking-tight">{stats.totalUsers}</div>
+                                <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total<br />Users</div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 mt-4">
+                            <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-violet-500"></div>
+                                    <span className="text-xs font-bold text-slate-600">活跃用户</span>
+                                </div>
+                                <span className="font-black text-slate-800 text-sm">
+                                    {stats.totalUsers > 0 ? ((stats.activeUsers / stats.totalUsers) * 100).toFixed(1) : '0.0'}%
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center p-3 bg-red-50 rounded-xl border border-red-100">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                                    <span className="text-xs font-bold text-slate-600">禁用用户</span>
+                                </div>
+                                <span className="font-black text-slate-800 text-sm">
+                                    {stats.totalUsers > 0 ? ((stats.disabledUsers / stats.totalUsers) * 100).toFixed(1) : '0.0'}%
+                                </span>
+                            </div>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <div className="space-y-3 mt-4">
-                        <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                            <div className="flex items-center gap-2">
-                                <div className="w-2.5 h-2.5 rounded-full bg-violet-500"></div>
-                                <span className="text-xs font-bold text-slate-600">活跃用户</span>
-                            </div>
-                            <span className="font-bold text-slate-800">
-                                {stats.totalUsers > 0 ? ((stats.activeUsers / stats.totalUsers) * 100).toFixed(1) : '0.0'}%
-                            </span>
+            {/* Growth Trends - Full Width Integration */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl border border-white/60 shadow-sm relative overflow-hidden group">
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 className="text-lg font-black text-slate-800">运营签到走势</h3>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Daily Check-in Volume</p>
                         </div>
-                        <div className="flex justify-between items-center p-3 bg-red-50 rounded-xl border border-red-100">
-                            <div className="flex items-center gap-2">
-                                <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-                                <span className="text-xs font-bold text-slate-600">禁用用户</span>
-                            </div>
-                            <span className="font-bold text-slate-800">
-                                {stats.totalUsers > 0 ? ((stats.disabledUsers / stats.totalUsers) * 100).toFixed(1) : '0.0'}%
-                            </span>
+                        <div className="p-2.5 bg-fuchsia-100 text-fuchsia-600 rounded-xl">
+                            <Calendar size={18} />
                         </div>
+                    </div>
+                    <div className="h-48 w-full mt-2">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={growthStats?.trend || []}>
+                                <defs>
+                                    <linearGradient id="colorCheck" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#d946ef" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#d946ef" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <XAxis dataKey="date" hide />
+                                <YAxis hide />
+                                <Tooltip
+                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '11px', fontWeight: 'bold' }}
+                                />
+                                <Area type="monotone" dataKey="count" name="签到数" stroke="#d946ef" strokeWidth={3} fillOpacity={1} fill="url(#colorCheck)" />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl border border-white/60 shadow-sm relative overflow-hidden group">
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 className="text-lg font-black text-slate-800">邀请拉新趋势</h3>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">New Referral Conversion</p>
+                        </div>
+                        <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-xl">
+                            <UserPlus size={18} />
+                        </div>
+                    </div>
+                    <div className="h-48 w-full mt-2">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={growthStats?.trend || []}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <XAxis dataKey="date" hide />
+                                <YAxis hide />
+                                <Tooltip
+                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '11px', fontWeight: 'bold' }}
+                                />
+                                <Line type="monotone" dataKey="count" name="邀请数" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} />
+                            </LineChart>
+                        </ResponsiveContainer>
                     </div>
                 </div>
             </div>

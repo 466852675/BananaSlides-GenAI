@@ -20,6 +20,11 @@ export interface User {
     pointsUsed: number;
     vipLevel: number;
     vipExpiresAt: string | null;
+    // V8.0 增长体系字段
+    inviteCode?: string | null;
+    invitedById?: string | null;
+    checkInDate?: string | null;
+    checkInStreak?: number;
     createdAt: string;
 }
 

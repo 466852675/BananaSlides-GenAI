@@ -13,7 +13,8 @@ import {
     History,
     CreditCard,
     Maximize2,
-    Minimize
+    Minimize,
+    CalendarCheck
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -29,6 +30,8 @@ interface UserWidgetProps {
     onProfileClick?: () => void;
     /** 点击"积分明细"的回调 */
     onPointsClick?: () => void;
+    /** 点击"每日签到"的回调 */
+    onCheckInClick?: () => void;
     /** 组件模式：'app' 为普通应用模式，'admin' 为管理后台模式 */
     mode?: 'app' | 'admin';
     /** 是否处于滚动状态（灵动岛模式） */
@@ -37,7 +40,7 @@ interface UserWidgetProps {
     toggleFullscreen?: () => void;
 }
 
-export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 'app', isScrolled = false, isFullscreen = false, toggleFullscreen, onEnterApp, onAdminClick, onProfileClick, onPointsClick }) => {
+export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 'app', isScrolled = false, isFullscreen = false, toggleFullscreen, onEnterApp, onAdminClick, onProfileClick, onPointsClick, onCheckInClick }) => {
     const { user, isAuthenticated, logout, setShowLoginModal, isAdmin, isSuperAdmin } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -179,6 +182,7 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
                                 <div className="text-[10px] font-bold text-slate-400 px-3 py-1.5 uppercase tracking-wider">个人中心</div>
                                 <MenuButton icon={<User size={16} />} label="系统资料设置" onClick={() => { setIsOpen(false); onProfileClick?.(); }} />
                                 <MenuButton icon={<History size={16} />} label="查看积分明细" onClick={() => { setIsOpen(false); onPointsClick?.(); }} />
+                                <MenuButton icon={<CalendarCheck size={16} />} label="每日签到" onClick={() => { setIsOpen(false); onCheckInClick?.(); }} highlight />
 
                                 {isAdmin && (
                                     <>

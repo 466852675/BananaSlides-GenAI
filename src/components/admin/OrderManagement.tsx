@@ -129,17 +129,19 @@ export const OrderManagement: React.FC = () => {
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header / Intro */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-8 text-white shadow-xl shadow-blue-500/20 relative overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-500/20 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
-                <div className="relative z-10 flex items-center gap-6">
-                    <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
-                        <ShoppingBag size={32} />
-                    </div>
-                    <div>
-                        <h2 className="text-2xl font-black tracking-tight mb-2">订单管理</h2>
-                        <p className="text-blue-100 font-medium opacity-90 whitespace-nowrap">
-                            查看所有充值与订阅记录，处理退款申请。
-                        </p>
+                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-6">
+                        <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
+                            <ShoppingBag size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black tracking-tight mb-1">订单管理</h2>
+                            <p className="text-blue-100 font-medium opacity-90 whitespace-nowrap">
+                                追踪全站订单流水，处理退款申请与财务对账。
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>

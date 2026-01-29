@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo, ClipboardEvent } from "react";
+﻿import React, { useState, useRef, useEffect, useCallback, useMemo, ClipboardEvent } from "react";
 import { PointsBadge } from './components/PointsBadge';
 import { createPortal } from 'react-dom';
 import {
@@ -107,6 +107,7 @@ import { LandingPage } from "./components/LandingPageComp";
 import { UserWidget, LoginPage } from "./components/auth";
 import { ProfileCenter } from './components/user/ProfileCenter';
 import { PointsHistory } from './components/user/PointsHistory';
+import { CheckInModal } from './components/CheckInModal';
 import { AdminLayout } from "./components/admin";
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from './api/projects';
 import { useTemplates, useSaveTemplate } from './api/templates';
@@ -820,6 +821,7 @@ const App: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showPointsHistory, setShowPointsHistory] = useState(false);
+  const [showCheckIn, setShowCheckIn] = useState(false);
 
   // Scrolled State for Header Animation
   const [isScrolled, setIsScrolled] = useState(false);
@@ -2781,19 +2783,12 @@ const App: React.FC = () => {
           return slide;
         });
 
-        // ✅ 关键修复：将生成的图片 URL 同步到数据库，确保持久化
-        syncSlidesMutation.mutate({
-          projectId: currentProjectId,
-          slides: slidesToSync
-        });
-        console.log('[handleGenerateBatch] Synced slides to database:', slidesToSync.length);
 
         return slidesToSync;
       });
     } else {
       console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
-
 
     // 检查是否所有幻灯片都已完成并更新项目状态
     // 如果所有现有项都已成功 (且至少有一个项),则标记为已完成
@@ -4199,6 +4194,7 @@ const App: React.FC = () => {
                       onAdminClick={() => setViewMode('admin')}
                       onProfileClick={() => setShowProfile(true)}
                       onPointsClick={() => setShowPointsHistory(true)}
+                      onCheckInClick={() => setShowCheckIn(true)}
                       isScrolled={isScrolled}
                       isFullscreen={isFullscreen}
                       toggleFullscreen={toggleFullscreen}
@@ -5142,6 +5138,14 @@ const App: React.FC = () => {
         {/* User Modals */}
         <ProfileCenter isOpen={showProfile} onClose={() => setShowProfile(false)} />
         <PointsHistory isOpen={showPointsHistory} onClose={() => setShowPointsHistory(false)} />
+        <CheckInModal
+          isOpen={showCheckIn}
+          onClose={() => setShowCheckIn(false)}
+          onSuccess={() => {
+            setShowCheckIn(false);
+            setToast({ id: Date.now().toString(), type: 'success', message: '签到成功！积分已到账' });
+          }}
+        />
 
         <StartProjectModal
           isOpen={startProjectModalData.isOpen}

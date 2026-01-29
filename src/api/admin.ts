@@ -384,3 +384,165 @@ export async function getSystemStats(): Promise<SystemStats> {
     }
     throw new Error(result.error?.message || '获取系统统计失败');
 }
+
+// ============================================================
+// 增长运营 API
+// ============================================================
+
+export interface GrowthStats {
+    checkIn: {
+        total: number;
+        today: number;
+        weekly: number;
+        totalRewards: number;
+        activeStreakUsers: number;
+    };
+    referral: {
+        total: number;
+        today: number;
+    };
+    trend: Array<{
+        date: string;
+        count: number;
+    }>;
+}
+
+/**
+ * 获取增长运营统计
+ */
+export async function getGrowthStats(): Promise<GrowthStats> {
+    const result = await client.get('/admin/growth/stats') as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取增长统计失败');
+}
+
+// ============================================================
+// 全局配置 API
+// ============================================================
+
+export interface GlobalSettings {
+    [key: string]: string | number | boolean | object;
+}
+
+export interface SystemConfig {
+    SYSTEM_STATUS: 'NORMAL' | 'MAINTENANCE';
+    REG_MODE: 'OPEN' | 'INVITE_ONLY' | 'CLOSED';
+}
+
+/**
+ * 获取系统运行配置 (Status/RegMode)
+ */
+export async function getSystemConfig(): Promise<SystemConfig> {
+    const result = await client.get('/admin/config') as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取系统配置失败');
+}
+
+/**
+ * 更新系统运行配置
+ */
+export async function updateSystemConfig(config: SystemConfig): Promise<void> {
+    const result = await client.put('/admin/config', config) as any;
+    if (!result.success) {
+        throw new Error(result.error?.message || '更新系统配置失败');
+    }
+}
+
+/**
+ * 获取全局配置
+ */
+export async function getSettings(): Promise<GlobalSettings> {
+    const result = await client.get('/settings') as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取配置失败');
+}
+
+/**
+ * 更新全局配置
+ */
+export async function updateSettings(settings: GlobalSettings): Promise<void> {
+    const result = await client.post('/settings', settings) as any;
+    if (!result.success) {
+        throw new Error(result.error?.message || '更新配置失败');
+    }
+}
+
+// ============================================================
+// 商品管理 API
+// ============================================================
+
+export interface Product {
+    id: string;
+    type: string;
+    name: string;
+    price: number;
+    originalPrice?: number | null;
+    points: number;
+    tags?: string[] | null;
+    features?: string[] | null;
+    discountEnd?: string | null;
+    sortOrder: number;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
+/**
+ * 获取所有商品 (活跃状态)
+ */
+export async function getProducts(): Promise<Product[]> {
+    const result = await client.get('/products') as any;
+    // 后端直接返回数组，不包装在 { success, data } 中
+    if (Array.isArray(result)) {
+        return result;
+    }
+    throw new Error('获取商品列表失败');
+}
+
+/**
+ * 创建商品
+ */
+export async function createProduct(data: {
+    type: string;
+    name: string;
+    price: number;
+    originalPrice?: number;
+    points: number;
+    tags?: string[];
+    features?: string[];
+    discountEnd?: Date;
+    sortOrder?: number;
+}): Promise<Product> {
+    const result = await client.post('/admin/products', data) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '创建商品失败');
+}
+
+/**
+ * 更新商品
+ */
+export async function updateProduct(id: string, data: Partial<Product>): Promise<Product> {
+    const result = await client.put(`/admin/products/${id}`, data) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '更新商品失败');
+}
+
+/**
+ * 删除商品
+ */
+export async function deleteProduct(id: string): Promise<void> {
+    const result = await client.delete(`/admin/products/${id}`) as any;
+    if (!result.success) {
+        throw new Error(result.error?.message || '删除商品失败');
+    }
+}

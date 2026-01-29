@@ -151,24 +151,26 @@ export const UserManagement: React.FC = () => {
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header / Intro */}
-            <div className="bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-3xl p-8 text-white shadow-xl shadow-violet-500/20 relative overflow-hidden">
+            <div className="bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-3xl p-6 text-white shadow-xl shadow-violet-500/20 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
-                <div className="relative z-10 flex items-center gap-6">
-                    <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
-                        <UserIcon size={32} />
-                    </div>
-                    <div>
-                        <h2 className="text-2xl font-black tracking-tight mb-2">用户中心</h2>
-                        <p className="text-violet-100 font-medium opacity-90 whitespace-nowrap">
-                            全平台用户账号核心枢纽，集成搜索筛选、状态管控、权限变更、密码重置及账号销毁功能。
-                        </p>
+                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div className="flex items-center gap-6">
+                        <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
+                            <UserIcon size={24} />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black tracking-tight mb-1">用户中心</h2>
+                            <p className="text-violet-100 font-medium opacity-90 whitespace-nowrap">
+                                监控全平台用户活跃度，管理用户权限与账户状态。
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Filter Bar */}
-            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-white/60 shadow-sm flex flex-wrap items-center gap-4">
-                <div className="relative flex-1 min-w-[240px]">
+            {/* Filter Bar - Standardized Outside Hero */}
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-white/60 shadow-sm flex flex-col lg:flex-row items-center gap-4">
+                <div className="relative flex-1 w-full group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
                     <input
                         type="text"
@@ -179,13 +181,13 @@ export const UserManagement: React.FC = () => {
                     />
                 </div>
 
-                <div className="flex gap-3">
-                    <div className="relative">
+                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                    <div className="relative flex-1 lg:flex-none min-w-[140px]">
                         <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                         <select
                             value={roleFilter}
                             onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
-                            className="pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[140px]"
+                            className="w-full pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all"
                         >
                             <option value="">全部角色</option>
                             <option value="USER">普通用户</option>
@@ -199,12 +201,12 @@ export const UserManagement: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="relative">
+                    <div className="relative flex-1 lg:flex-none min-w-[140px]">
                         <CheckCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                         <select
                             value={statusFilter}
                             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                            className="pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[140px]"
+                            className="w-full pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all"
                         >
                             <option value="">全部状态</option>
                             <option value="ACTIVE">正常</option>
@@ -216,12 +218,12 @@ export const UserManagement: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="relative">
+                    <div className="relative flex-1 lg:flex-none min-w-[150px]">
                         <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                         <select
                             value={vipFilter}
                             onChange={(e) => { setVipFilter(e.target.value === '' ? '' : Number(e.target.value)); setPage(1); }}
-                            className="pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[140px]"
+                            className="w-full pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all"
                         >
                             <option value="">全部VIP等级</option>
                             <option value="0">VIP 0 (普通)</option>

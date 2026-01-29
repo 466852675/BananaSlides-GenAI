@@ -19,6 +19,10 @@ interface User {
     points: number;
     vipLevel: number;
     bio: string | null;
+    // V8.0 增长体系字段
+    inviteCode?: string | null;
+    checkInDate?: string | null;
+    checkInStreak?: number;
 }
 
 interface AuthContextType {

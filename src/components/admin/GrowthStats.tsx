@@ -47,46 +47,102 @@ export const GrowthStats: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Quick Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <MetricCard
-                    label="今日签到"
-                    value={stats?.todayCheckIns || 0}
-                    subValue={`累计 ${stats?.totalCheckIns || 0}`}
-                    icon={<Calendar className="text-blue-500" size={20} />}
-                />
-                <MetricCard
-                    label="今日拉新"
-                    value={stats?.todayReferrals || 0}
-                    subValue={`转化率 12.5%`}
-                    icon={<UserPlus className="text-emerald-500" size={20} />}
-                />
-                <MetricCard
-                    label="分发积分"
-                    value="2.4k"
-                    subValue="+15% vs yesterday"
-                    icon={<TrendingUp className="text-violet-500" size={20} />}
-                />
-                <MetricCard
-                    label="活跃系数"
-                    value="0.84"
-                    subValue="Very Healthy"
-                    icon={<Users className="text-amber-500" size={20} />}
-                />
+                {/* 签到总览 */}
+                <div className="bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-3xl p-6 text-white shadow-xl shadow-violet-500/20 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform duration-500">
+                        <Calendar size={80} />
+                    </div>
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/10">
+                                <Calendar size={20} className="text-white" />
+                            </div>
+                            <span className="font-bold text-white/90">今日签到</span>
+                        </div>
+                        <div className="text-4xl font-black mb-2 tracking-tight">{stats?.checkIn.today || 0}</div>
+                        <div className="flex items-center gap-2 text-white/70 text-sm font-medium">
+                            <span>累计: {stats?.checkIn.total || 0}</span>
+                            <span className="w-1 h-1 rounded-full bg-white/50" />
+                            <span>本周: {stats?.checkIn.weekly || 0}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 活跃用户 */}
+                <div className="bg-white rounded-3xl p-6 border border-slate-200/60 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500">
+                        <Users size={80} className="text-blue-600" />
+                    </div>
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                                <TrendingUp size={20} />
+                            </div>
+                            <span className="font-bold text-slate-600">连续签到</span>
+                        </div>
+                        <div className="text-4xl font-black text-slate-800 mb-2 tracking-tight">
+                            {stats?.checkIn.activeStreakUsers || 0}
+                        </div>
+                        <div className="flex items-center gap-1 text-emerald-500 text-sm font-bold bg-emerald-50 w-fit px-2 py-1 rounded-lg">
+                            <ArrowUpRight size={14} />
+                            <span>活跃用户</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 拉新数据 */}
+                <div className="bg-white rounded-3xl p-6 border border-slate-200/60 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500">
+                        <UserPlus size={80} className="text-indigo-600" />
+                    </div>
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+                                <UserPlus size={20} />
+                            </div>
+                            <span className="font-bold text-slate-600">今日拉新</span>
+                        </div>
+                        <div className="text-4xl font-black text-slate-800 mb-2 tracking-tight">
+                            {stats?.referral.today || 0}
+                        </div>
+                        <div className="text-sm font-bold text-slate-400">
+                            累计邀请: {stats?.referral.total || 0} 人
+                        </div>
+                    </div>
+                </div>
+
+                {/* 发放奖励 */}
+                <div className="bg-white rounded-3xl p-6 border border-slate-200/60 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform duration-500">
+                        <Gift size={80} className="text-amber-500" />
+                    </div>
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500">
+                                <Gift size={20} />
+                            </div>
+                            <span className="font-bold text-slate-600">累计奖励</span>
+                        </div>
+                        <div className="text-4xl font-black text-slate-800 mb-2 tracking-tight">
+                            {stats?.checkIn.totalRewards || 0}
+                        </div>
+                        <div className="text-sm font-bold text-slate-400 uppercase tracking-wider">Points Distributed</div>
+                    </div>
+                </div>
             </div>
 
-            {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 border border-white/60 shadow-sm">
+                <div className="bg-white rounded-3xl p-8 border border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-300">
                     <div className="flex items-center justify-between mb-8">
                         <div>
-                            <h3 className="text-lg font-black text-slate-800">签到与活跃趋势</h3>
+                            <h3 className="text-lg font-black text-slate-800">签到趋势</h3>
                             <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Daily Check-in Activity</p>
                         </div>
                     </div>
                     <div className="h-64 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={stats?.timeline || []}>
+                            <AreaChart data={stats?.trend || []}>
                                 <defs>
                                     <linearGradient id="colorCheck" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
@@ -101,16 +157,18 @@ export const GrowthStats: React.FC = () => {
                                         borderRadius: '16px',
                                         border: 'none',
                                         boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                                        background: 'rgba(255,255,255,0.9)'
+                                        background: 'rgba(255,255,255,0.9)',
+                                        fontSize: '12px',
+                                        fontWeight: 'bold'
                                     }}
                                 />
-                                <Area type="monotone" dataKey="checkIns" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorCheck)" />
+                                <Area type="monotone" dataKey="count" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorCheck)" />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
 
-                <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 border border-white/60 shadow-sm">
+                <div className="bg-white rounded-3xl p-8 border border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-300">
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <h3 className="text-lg font-black text-slate-800">拉新趋势</h3>
@@ -119,7 +177,7 @@ export const GrowthStats: React.FC = () => {
                     </div>
                     <div className="h-64 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={stats?.timeline || []}>
+                            <LineChart data={stats?.trend || []}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                 <XAxis dataKey="date" hide />
                                 <YAxis hide />
@@ -128,42 +186,17 @@ export const GrowthStats: React.FC = () => {
                                         borderRadius: '16px',
                                         border: 'none',
                                         boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                                        background: 'rgba(255,255,255,0.9)'
+                                        background: 'rgba(255,255,255,0.9)',
+                                        fontSize: '12px',
+                                        fontWeight: 'bold'
                                     }}
                                 />
-                                <Line type="monotone" dataKey="newUsers" stroke="#10b981" strokeWidth={3} dot={false} />
-                                <Line type="monotone" dataKey="referrals" stroke="#3b82f6" strokeWidth={3} dot={false} strokeDasharray="5 5" />
+                                <Line type="monotone" dataKey="count" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} />
                             </LineChart>
                         </ResponsiveContainer>
-                    </div>
-                    <div className="flex items-center gap-4 mt-4">
-                        <div className="flex items-center gap-1.5">
-                            <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                            <span className="text-[10px] font-bold text-slate-500">新注册</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <div className="w-3 h-3 rounded-full bg-blue-500" />
-                            <span className="text-[10px] font-bold text-slate-500">邀请成功</span>
-                        </div>
                     </div>
                 </div>
             </div>
         </div>
     );
-}
-
-const MetricCard: React.FC<{ label: string; value: string | number; subValue: string; icon: React.ReactNode }> = ({ label, value, subValue, icon }) => (
-    <div className="bg-white/70 backdrop-blur-md rounded-2xl p-5 border border-white/60 shadow-sm group hover:shadow-md transition-all">
-        <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{label}</span>
-            <div className="p-2 bg-slate-50 rounded-xl group-hover:bg-violet-50 transition-colors">
-                {icon}
-            </div>
-        </div>
-        <div className="text-2xl font-black text-slate-800">{value}</div>
-        <div className="text-[10px] font-bold text-slate-400 mt-2 flex items-center gap-1">
-            <ArrowUpRight size={10} className="text-emerald-500" />
-            {subValue}
-        </div>
-    </div>
-);
+};

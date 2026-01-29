@@ -1,7 +1,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { addPoints, getActionCost } from './points.service';
-import * as AdminService from './admin.service';
+import { SettingService } from './setting.service';
 
 const prisma = new PrismaClient();
 
@@ -168,8 +168,8 @@ export const growthService = {
                 data: { invitedById: referrer.id }
             });
 
-            // 2. Grant reward to referrer (Read from GlobalConfig or default 200)
-            const settings = await AdminService.getAllSettings();
+            // 2. Grant reward to referrer (Read from DB Settings or default 200)
+            const settings = await SettingService.getSettings();
             const referralReward = parseInt(settings.REFERRAL_POINTS || '200', 10);
 
             await tx.user.update({
@@ -191,5 +191,90 @@ export const growthService = {
         });
 
         return { success: true };
+    },
+
+    /**
+     * getGrowthStats
+     * 获取增长运营统计数据 (管理后台)
+     */
+    async getGrowthStats() {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - 7);
+
+        // 并行获取统计数据
+        const [
+            totalCheckIns,
+            todayCheckIns,
+            weeklyCheckIns,
+            totalReferrals,
+            todayReferrals,
+            totalRewardsResult,
+            activeStreakUsers
+        ] = await Promise.all([
+            // 总签到次数
+            prisma.checkInLog.count(),
+            // 今日签到次数
+            prisma.checkInLog.count({
+                where: { date: today.toISOString().split('T')[0] }
+            }),
+            // 本周签到次数
+            prisma.checkInLog.count({
+                where: { createdAt: { gte: startOfWeek } }
+            }),
+            // 总邀请数
+            prisma.user.count({
+                where: { invitedById: { not: null } }
+            }),
+            // 今日邀请数
+            prisma.user.count({
+                where: {
+                    invitedById: { not: null },
+                    createdAt: { gte: today }
+                }
+            }),
+            // 总发放积分 (签到)
+            prisma.checkInLog.aggregate({
+                _sum: { points: true }
+            }),
+            // 活跃连签用户 (streak >= 3)
+            prisma.user.count({
+                where: { checkInStreak: { gte: 3 } }
+            })
+        ]);
+
+        // 构建每日签到趋势 (最近7天)
+        const checkInTrend = [];
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date(today);
+            date.setDate(today.getDate() - i);
+            const dateStr = date.toISOString().split('T')[0];
+
+            const count = await prisma.checkInLog.count({
+                where: { date: dateStr }
+            });
+
+            checkInTrend.push({
+                date: dateStr,
+                count
+            });
+        }
+
+        return {
+            checkIn: {
+                total: totalCheckIns,
+                today: todayCheckIns,
+                weekly: weeklyCheckIns,
+                totalRewards: totalRewardsResult._sum.points || 0,
+                activeStreakUsers
+            },
+            referral: {
+                total: totalReferrals,
+                today: todayReferrals
+            },
+            trend: checkInTrend
+        };
     }
 };

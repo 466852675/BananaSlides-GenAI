@@ -12,6 +12,7 @@ import { RoleManagement } from './RoleManagement';
 import { SystemStats } from './SystemStats';
 import { AICoreEngine } from './AICoreEngine';
 import { SystemSettings } from './SystemSettings';
+import { GrowthCenter } from './GrowthCenter';
 import { ProfileCenter } from '../user/ProfileCenter';
 import { PointsHistory } from '../user/PointsHistory';
 import { useAuth } from '../../contexts/AuthContext';
@@ -26,8 +27,9 @@ const pageTitles: Record<AdminPage, { title: string; subtitle?: string }> = {
     'users': { title: '用户管理', subtitle: '管理所有用户账户' },
     'orders': { title: '订单管理', subtitle: '查看和管理订单' },
     'points-rules': { title: '积分规则', subtitle: '配置积分消耗规则' },
+    'growth': { title: '产品管理', subtitle: '管理会员、积分商品与邀请配置' },
     'roles': { title: '角色权限', subtitle: '管理角色和权限分配' },
-    'ai-engine': { title: 'AI 核心引擎', subtitle: '全局模型路由与参数配置' },
+    'ai-engine': { title: '模型引擎', subtitle: '全局模型路由与参数配置' },
     'settings': { title: '系统设置', subtitle: '系统配置项' },
 };
 
@@ -78,6 +80,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
                 return <OrderManagement />;
             case 'points-rules':
                 return <PointsRuleEditor />;
+            case 'growth':
+                return <GrowthCenter />;
             case 'roles':
                 return <RoleManagement />;
             case 'ai-engine':
@@ -112,7 +116,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
                 />
 
                 {/* 内容区 */}
-                <main className="flex-1 overflow-y-auto p-6">
+                <main className="flex-1 overflow-y-auto p-4 md:p-8">
                     {renderPageContent()}
                 </main>
             </div>

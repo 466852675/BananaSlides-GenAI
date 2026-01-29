@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String          @id @default(uuid())
+  email              String?         @unique
+  phone              String?         @unique
+  username           String?         @unique
+  passwordHash       String?
+  nickname           String?
+  avatar             String?
+  bio                String?
+  role               UserRole        @default(USER)
+  status             UserStatus      @default(ACTIVE)
+  points             Int             @default(30)
+  pointsUsed         Int             @default(0)
+  vipLevel           Int             @default(0)
+  vipExpiresAt       DateTime?
+  lastLoginAt        DateTime?
+  lastLoginIp        String?
+  loginFailCount     Int             @default(0)
+  lockedUntil        DateTime?
+  resetCode          String?
+  resetCodeExp       DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  favorites          Favorite[]
+  orders             Order[]
+  createdPointsRules PointsRule[]    @relation("RuleCreator")
+  projects           Project[]
+  socialAccounts     SocialAccount[]
+  styleTemplates     StyleTemplate[]
+  transactions       Transaction[]
+
+  @@index([role])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SocialAccount {
+  id          String   @id @default(uuid())
+  userId      String
+  provider    String
+  providerId  String
+  accessToken String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
+model PointsRule {
+  id                String   @id @default(uuid())
+  code              String   @unique
+  name              String
+  description       String?
+  module            String?
+  category          String?
+  costPoints        Int
+  costType          String   @default("fixed")
+  calculationMethod String?
+  deductionLogic    String?
+  isActive          Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  effectiveAt       DateTime @default(now())
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         User?    @relation("RuleCreator", fields: [createdById], references: [id])
+}
+
+model Transaction {
+  id          String    @id @default(uuid())
+  userId      String
+  type        String
+  amount      Int
+  balance     Int
+  ruleCode    String?
+  projectId   String?
+  templateId  String?
+  orderId     String?
+  operatorId  String?
+  module      String?
+  category    String?
+  subcategory String?
+  description String?
+  triggerTime DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  orderNo       String      @unique
+  userId        String
+  productType   String
+  productName   String
+  productDesc   String?
+  quantity      Int         @default(1)
+  originalPrice Float
+  discountPrice Float?
+  finalPrice    Float
+  status        OrderStatus @default(PENDING)
+  paymentMethod String?
+  paymentNo     String?
+  paidAt        DateTime?
+  refundReason  String?
+  refundedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Permission {
+  id              String           @id @default(uuid())
+  code            String           @unique
+  name            String
+  module          String
+  description     String?
+  sortOrder       Int              @default(0)
+  createdAt       DateTime         @default(now())
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  role         UserRole
+  permissionId String
+  createdAt    DateTime   @default(now())
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+}
+
+model Project {
+  id           String            @id @default(uuid())
+  title        String
+  displayId    String?
+  status       String            @default("idle")
+  isPinned     Boolean           @default(false)
+  scenarioType String            @default("BUSINESS")
+  globalConfig String
+  styleMap     String?
+  thumbnailUrl String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @default(now())
+  completedAt  DateTime?
+  userId       String?
+  user         User?             @relation(fields: [userId], references: [id])
+  snapshots    ProjectSnapshot[]
+  items        Slide[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model ProjectSnapshot {
+  id        String   @id @default(uuid())
+  projectId String
+  version   Int
+  summary   String?
+  data      String
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Slide {
+  id              String   @id @default(uuid())
+  projectId       String
+  index           Int
+  pageType        String
+  contentType     String
+  title           String
+  content         String
+  brief           String?
+  variants        String   @default("[]")
+  variantCount    Int      @default(2)
+  previewUrl      String?
+  originalFileRef String?
+  status          String   @default("idle")
+  createdAt       DateTime @default(now())
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model StyleTemplate {
+  id             String     @id @default(uuid())
+  name           String
+  config         String
+  styleMap       String?
+  isCustom       Boolean    @default(true)
+  isOfficial     Boolean    @default(false)
+  isRecommended  Boolean    @default(false)
+  usageCount     Int        @default(0)
+  favoriteCount  Int        @default(0)
+  recommendCount Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  userId         String?
+  favorites      Favorite[]
+  user           User?      @relation(fields: [userId], references: [id])
+}
+
+model Favorite {
+  id           String         @id @default(uuid())
+  templateId   String?
+  name         String
+  config       String
+  styleMap     String?
+  sampleImages String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  userId       String?
+  user         User?          @relation(fields: [userId], references: [id])
+  template     StyleTemplate? @relation(fields: [templateId], references: [id])
+}
+
+model AppSettings {
+  id        String   @id @default("global")
+  config    String
+  updatedAt DateTime @updatedAt
+}
+
+enum UserRole {
+  USER
+  PROFESSIONAL
+  ENTERPRISE
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  PENDING
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}

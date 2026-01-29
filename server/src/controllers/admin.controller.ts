@@ -482,3 +482,26 @@ export async function getSystemStats(req: Request, res: Response): Promise<void>
         });
     }
 }
+
+// ============================================================
+// 增长运营统计
+// ============================================================
+
+import { growthService } from '../services/growth.service';
+
+/**
+ * 获取增长运营统计
+ * GET /api/admin/growth/stats
+ */
+export async function getGrowthStats(req: Request, res: Response): Promise<void> {
+    try {
+        const stats = await growthService.getGrowthStats();
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        console.error('[Admin] 获取增长统计失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取增长统计失败' }
+        });
+    }
+}

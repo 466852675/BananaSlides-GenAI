@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar, Gift, Trophy, CheckCircle2, Coins } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getCheckInStatus, performCheckIn, CheckInStatus } from '../api/growth';
-import { useToast } from './Toast';
 
 interface CheckInModalProps {
     isOpen: boolean;
@@ -17,7 +16,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ isOpen, onClose, onS
     const [checkingIn, setCheckingIn] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [gainedPoints, setGainedPoints] = useState(0);
-    const { addToast } = useToast();
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         if (isOpen) {
@@ -31,7 +30,8 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ isOpen, onClose, onS
             const data = await getCheckInStatus();
             setStatus(data);
         } catch (err) {
-            addToast('获取签到状态失败', 'error');
+            console.error('获取签到状态失败:', err);
+            setError('获取签到状态失败');
         } finally {
             setLoading(false);
         }
@@ -51,7 +51,8 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ isOpen, onClose, onS
 
             if (onSuccess) onSuccess(res.points);
         } catch (err: any) {
-            addToast(err.message || '签到失败', 'error');
+            console.error('签到失败:', err);
+            setError(err.message || '签到失败');
         } finally {
             setCheckingIn(false);
         }

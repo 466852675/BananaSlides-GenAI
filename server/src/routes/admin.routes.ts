@@ -48,4 +48,9 @@ router.put('/roles/:role/permissions', requireSuperAdmin, AdminController.update
 // ============================================================
 router.get('/system/stats', AdminController.getSystemStats);
 
+// ============================================================
+// 增长运营统计
+// ============================================================
+router.get('/growth/stats', AdminController.getGrowthStats);
+
 export default router;

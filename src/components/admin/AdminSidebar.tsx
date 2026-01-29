@@ -11,10 +11,12 @@ import {
     Settings,
     ArrowLeft,
     Sparkles,
-    Bot
+    Bot,
+    TrendingUp,
+    Sliders
 } from 'lucide-react';
 
-export type AdminPage = 'dashboard' | 'users' | 'orders' | 'points-rules' | 'roles' | 'ai-engine' | 'settings';
+export type AdminPage = 'dashboard' | 'users' | 'orders' | 'points-rules' | 'roles' | 'ai-engine' | 'growth' | 'settings';
 
 interface AdminSidebarProps {
     currentPage: AdminPage;
@@ -27,8 +29,9 @@ const menuItems: { id: AdminPage; label: string; icon: React.ReactNode }[] = [
     { id: 'users', label: '用户管理', icon: <Users size={18} /> },
     { id: 'orders', label: '订单管理', icon: <Receipt size={18} /> },
     { id: 'points-rules', label: '积分规则', icon: <Coins size={18} /> },
+    { id: 'growth', label: '产品管理', icon: <TrendingUp size={18} /> },
     { id: 'roles', label: '角色权限', icon: <Shield size={18} /> },
-    { id: 'ai-engine', label: 'AI 核心引擎', icon: <Bot size={18} /> },
+    { id: 'ai-engine', label: '模型引擎', icon: <Bot size={18} /> },
     { id: 'settings', label: '系统设置', icon: <Settings size={18} /> },
 ];
 
@@ -88,18 +91,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentPage, onPageC
 
             {/* Bottom Actions */}
             <div className="p-4 relative z-10">
-                <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-white/5 backdrop-blur-md mb-4 bg-white/5">
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 flex items-center justify-center text-xs font-bold shadow-md shadow-rose-900/20">
-                            A
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-white truncate">Administrator</div>
-                            <div className="text-[10px] text-slate-400 truncate">admin@bananaslides.com</div>
-                        </div>
-                    </div>
-                </div>
-
                 <button
                     onClick={onBack}
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-white/10 hover:border-violet-500/50 bg-white/5 hover:bg-violet-600/10 text-slate-300 hover:text-white transition-all text-sm font-medium group"
