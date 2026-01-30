@@ -2,19 +2,28 @@ import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as AuthApi from '../../api/auth';
 import { useAuth } from '../../contexts/AuthContext';
-import { Loader2, Camera, Shield, User, Lock, Save, X, AlertCircle, Gift } from 'lucide-react';
+import { Loader2, Camera, Shield, User, Lock, Save, X, AlertCircle } from 'lucide-react';
 import { ImageUploader } from '../ImageUploader';
 import { uploadFile } from '../../api/client';
-import { ReferralCard } from '../ReferralCard';
 
 interface ProfileCenterProps {
     isOpen: boolean;
     onClose: () => void;
+    onToast?: (message: string, type: 'success' | 'error') => void;
 }
 
-export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose }) => {
+export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose, onToast }) => {
     const { user, refreshUser } = useAuth();
     const [activeTab, setActiveTab] = useState<'info' | 'security' | 'invite'>('info');
+
+    // Toast 工具函数
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        if (onToast) {
+            onToast(message, type);
+        } else {
+            console.log(`[ProfileCenter] ${type}: ${message}`);
+        }
+    };
 
     // Info Form
     const [formData, setFormData] = useState({
@@ -36,18 +45,18 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose })
         mutationFn: AuthApi.updateProfile,
         onSuccess: () => {
             refreshUser();
-            alert('资料更新成功');
+            showToast('资料更新成功', 'success');
         },
-        onError: (err: any) => alert(err.message)
+        onError: (err: any) => showToast(err.message || '更新失败', 'error')
     });
 
     const updatePasswordMutation = useMutation({
         mutationFn: ({ oldP, newP }: any) => AuthApi.changePassword(oldP, newP),
         onSuccess: () => {
             setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
-            alert('密码修改成功');
+            showToast('密码修改成功', 'success');
         },
-        onError: (err: any) => alert(err.message)
+        onError: (err: any) => showToast(err.message || '修改失败', 'error')
     });
 
     const handleAvatarUpload = async (file: File) => {
@@ -57,7 +66,7 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose })
             // Auto save avatar
             updateProfileMutation.mutate({ ...formData, avatar: url });
         } catch (error) {
-            alert('上传头像失败');
+            showToast('上传头像失败', 'error');
         }
     };
 
@@ -69,7 +78,7 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose })
     const handlePasswordSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (passwordData.newPassword !== passwordData.confirmPassword) {
-            alert('两次输入的密码不一致');
+            showToast('两次输入的密码不一致', 'error');
             return;
         }
         updatePasswordMutation.mutate({
@@ -106,13 +115,6 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose })
                                 }`}
                         >
                             <Shield size={18} /> 账号安全
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('invite')}
-                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'invite' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:bg-gray-100'
-                                }`}
-                        >
-                            <Gift size={18} /> 邀请有礼
                         </button>
                     </div>
 
@@ -171,17 +173,6 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose })
                                     </button>
                                 </div>
                             </form>
-                        ) : activeTab === 'invite' ? (
-                            <div className="space-y-6">
-                                <div className="p-4 bg-purple-50 text-purple-900 rounded-xl text-sm">
-                                    <h3 className="font-bold flex items-center gap-2 mb-2">
-                                        <Gift size={16} />
-                                        邀请好友得积分
-                                    </h3>
-                                    <p>每邀请一位好友注册，双方都将获得额外积分奖励！奖励可用于生成更多 PPT 和高级功能。</p>
-                                </div>
-                                <ReferralCard />
-                            </div>
                         ) : (
                             <form onSubmit={handlePasswordSubmit} className="space-y-6 max-w-md">
                                 <div className="p-4 bg-amber-50 text-amber-800 text-sm rounded-lg flex items-start gap-2">

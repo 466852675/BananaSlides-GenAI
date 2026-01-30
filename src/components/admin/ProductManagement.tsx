@@ -28,7 +28,8 @@ export const ProductManagement: React.FC = () => {
         points: '',
         tags: '',
         features: '',
-        sortOrder: '0'
+        sortOrder: '0',
+        roleToGrant: ''  // 新增: 授权角色
     });
 
     const queryClient = useQueryClient();
@@ -59,7 +60,8 @@ export const ProductManagement: React.FC = () => {
                 points: Number(newProduct.points),
                 tags: newProduct.tags.split(',').map(s => s.trim()).filter(Boolean),
                 features: newProduct.features.split('\n').map(s => s.trim()).filter(Boolean),
-                sortOrder: Number(newProduct.sortOrder)
+                sortOrder: Number(newProduct.sortOrder),
+                roleToGrant: newProduct.roleToGrant || undefined  // 新增: 授权角色
             };
             await AdminAPI.createProduct(payload);
         },
@@ -73,7 +75,8 @@ export const ProductManagement: React.FC = () => {
                 points: '',
                 tags: '',
                 features: '',
-                sortOrder: '0'
+                sortOrder: '0',
+                roleToGrant: ''  // 新增
             });
             loadProducts();
             alert('商品创建成功');
@@ -147,8 +150,8 @@ export const ProductManagement: React.FC = () => {
 
                         <div className="flex items-start justify-between mb-6 relative z-10">
                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg shadow-black/5 ${product.type === 'VIP_MONTHLY'
-                                    ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white'
-                                    : 'bg-gradient-to-br from-blue-400 to-indigo-500 text-white'
+                                ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white'
+                                : 'bg-gradient-to-br from-blue-400 to-indigo-500 text-white'
                                 }`}>
                                 {product.type === 'VIP_MONTHLY' ? <Crown size={28} /> : <Coins size={28} />}
                             </div>
@@ -169,8 +172,8 @@ export const ProductManagement: React.FC = () => {
                             <div className="text-xl font-black text-slate-800 tracking-tight line-clamp-1">{product.name}</div>
                             <div className="flex items-center gap-2">
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${product.type === 'VIP_MONTHLY'
-                                        ? 'bg-amber-50 text-amber-600 border-amber-100'
-                                        : 'bg-blue-50 text-blue-600 border-blue-100'
+                                    ? 'bg-amber-50 text-amber-600 border-amber-100'
+                                    : 'bg-blue-50 text-blue-600 border-blue-100'
                                     } uppercase tracking-widest`}>
                                     {product.type === 'VIP_MONTHLY' ? 'VIP Membership' : 'Points Package'}
                                 </span>
@@ -235,8 +238,8 @@ export const ProductManagement: React.FC = () => {
                             {/* Type Selection */}
                             <div className="grid grid-cols-2 gap-4">
                                 <label className={`cursor-pointer p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${newProduct.type === 'POINTS_PACKAGE'
-                                        ? 'border-blue-500 bg-blue-50/50 text-blue-700'
-                                        : 'border-slate-100 hover:border-slate-200'
+                                    ? 'border-blue-500 bg-blue-50/50 text-blue-700'
+                                    : 'border-slate-100 hover:border-slate-200'
                                     }`}>
                                     <input
                                         type="radio"
@@ -249,8 +252,8 @@ export const ProductManagement: React.FC = () => {
                                     <span className="font-bold text-sm">积分加油包</span>
                                 </label>
                                 <label className={`cursor-pointer p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${newProduct.type === 'VIP_MONTHLY'
-                                        ? 'border-amber-500 bg-amber-50/50 text-amber-700'
-                                        : 'border-slate-100 hover:border-slate-200'
+                                    ? 'border-amber-500 bg-amber-50/50 text-amber-700'
+                                    : 'border-slate-100 hover:border-slate-200'
                                     }`}>
                                     <input
                                         type="radio"
@@ -342,6 +345,23 @@ export const ProductManagement: React.FC = () => {
                                     />
                                 </div>
                             </div>
+
+                            {/* 授权角色选择 (仅 VIP 商品显示) */}
+                            {newProduct.type === 'VIP_MONTHLY' && (
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">购买后授权角色</label>
+                                    <select
+                                        value={newProduct.roleToGrant}
+                                        onChange={e => setNewProduct({ ...newProduct, roleToGrant: e.target.value })}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold focus:border-violet-500 outline-none appearance-none cursor-pointer"
+                                    >
+                                        <option value="">不授权角色</option>
+                                        <option value="PROFESSIONAL">专业版 (PROFESSIONAL)</option>
+                                        <option value="ENTERPRISE">企业版 (ENTERPRISE)</option>
+                                    </select>
+                                    <p className="text-xs text-slate-400">购买成功后自动提升用户角色</p>
+                                </div>
+                            )}
 
                             <div className="bg-amber-50 p-4 rounded-xl flex items-start gap-3 border border-amber-100">
                                 <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={18} />

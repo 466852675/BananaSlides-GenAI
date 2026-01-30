@@ -5,6 +5,7 @@ import { Request, Response } from 'express';
 import * as AdminService from '../services/admin.service';
 import * as OrderService from '../services/order.service';
 import * as PointsService from '../services/points.service';
+import { productService } from '../services/product.service';
 import { UserRole, UserStatus, OrderStatus } from '@prisma/client';
 
 // ============================================================
@@ -502,6 +503,111 @@ export async function getGrowthStats(req: Request, res: Response): Promise<void>
         res.status(500).json({
             success: false,
             error: { code: 'INTERNAL_ERROR', message: '获取增长统计失败' }
+        });
+    }
+}
+
+// ============================================================
+// 商品管理
+// ============================================================
+
+/**
+ * 获取商品列表
+ * GET /api/admin/products
+ */
+export async function listProducts(req: Request, res: Response): Promise<void> {
+    try {
+        const products = await productService.listActiveProducts();
+        res.json({ success: true, data: products });
+    } catch (error) {
+        console.error('[Admin] 获取商品列表失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取商品列表失败' }
+        });
+    }
+}
+
+/**
+ * 创建商品
+ * POST /api/admin/products
+ */
+export async function createProduct(req: Request, res: Response): Promise<void> {
+    try {
+        const { type, name, price, originalPrice, points, tags, features, roleToGrant, discountEnd, sortOrder } = req.body;
+
+        if (!type || !name || price === undefined || points === undefined) {
+            res.status(400).json({
+                success: false,
+                error: { code: 'INVALID_PARAMS', message: '缺少必要参数: type, name, price, points' }
+            });
+            return;
+        }
+
+        const product = await productService.createProduct({
+            type,
+            name,
+            price: Number(price),
+            originalPrice: originalPrice ? Number(originalPrice) : undefined,
+            points: Number(points),
+            tags,
+            features,
+            roleToGrant,
+            discountEnd: discountEnd ? new Date(discountEnd) : undefined,
+            sortOrder: sortOrder ? Number(sortOrder) : undefined
+        });
+
+        res.json({ success: true, data: product });
+    } catch (error) {
+        console.error('[Admin] 创建商品失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '创建商品失败' }
+        });
+    }
+}
+
+/**
+ * 更新商品
+ * PUT /api/admin/products/:id
+ */
+export async function updateProduct(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const updateData = req.body;
+
+        // 转换数值类型
+        if (updateData.price !== undefined) updateData.price = Number(updateData.price);
+        if (updateData.originalPrice !== undefined) updateData.originalPrice = Number(updateData.originalPrice);
+        if (updateData.points !== undefined) updateData.points = Number(updateData.points);
+        if (updateData.sortOrder !== undefined) updateData.sortOrder = Number(updateData.sortOrder);
+        if (updateData.discountEnd) updateData.discountEnd = new Date(updateData.discountEnd);
+
+        const product = await productService.updateProduct(id, updateData);
+        res.json({ success: true, data: product });
+    } catch (error) {
+        console.error('[Admin] 更新商品失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '更新商品失败' }
+        });
+    }
+}
+
+/**
+ * 删除商品
+ * DELETE /api/admin/products/:id
+ */
+export async function deleteProduct(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        await productService.deleteProduct(id);
+        res.json({ success: true, message: '商品已删除' });
+    } catch (error) {
+        console.error('[Admin] 删除商品失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '删除商品失败' }
         });
     }
 }

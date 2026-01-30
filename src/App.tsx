@@ -108,6 +108,9 @@ import { UserWidget, LoginPage } from "./components/auth";
 import { ProfileCenter } from './components/user/ProfileCenter';
 import { PointsHistory } from './components/user/PointsHistory';
 import { CheckInModal } from './components/CheckInModal';
+import { InviteModal } from './components/InviteModal';
+import { PointsGuard } from './components/PointsGuard';
+import { PurchaseSuccessModal } from './components/PurchaseSuccessModal';
 import { AdminLayout } from "./components/admin";
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from './api/projects';
 import { useTemplates, useSaveTemplate } from './api/templates';
@@ -122,6 +125,9 @@ import { resolveResourceUrl } from "./utils/resource";
 import { StartProjectModal } from "./components/StartProjectModal";
 import { getActionCost, getBalance } from "./api/points";
 import { useAuth } from "./contexts/AuthContext";
+import { MyOrdersModal } from './components/user/MyOrdersModal';
+import { PurchaseModal } from './components/PurchaseModal';
+import { TopUpModal } from './components/TopUpModal';
 
 import { generateId } from "./utils";
 
@@ -820,8 +826,15 @@ const App: React.FC = () => {
   const handleCloseToast = useCallback(() => setToast(null), []);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showMyOrders, setShowMyOrders] = useState(false);
   const [showPointsHistory, setShowPointsHistory] = useState(false);
   const [showCheckIn, setShowCheckIn] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [showTopUp, setShowTopUp] = useState(false);
+  const [purchaseProduct, setPurchaseProduct] = useState<any | null>(null);
+  const [purchaseSuccess, setPurchaseSuccess] = useState<{ show: boolean; productName?: string; points?: number }>({
+    show: false, productName: '', points: 0
+  });
 
   // Scrolled State for Header Animation
   const [isScrolled, setIsScrolled] = useState(false);
@@ -4194,7 +4207,9 @@ const App: React.FC = () => {
                       onAdminClick={() => setViewMode('admin')}
                       onProfileClick={() => setShowProfile(true)}
                       onPointsClick={() => setShowPointsHistory(true)}
+                      onOrdersClick={() => setShowMyOrders(true)}
                       onCheckInClick={() => setShowCheckIn(true)}
+                      onInviteClick={() => setShowInvite(true)}
                       isScrolled={isScrolled}
                       isFullscreen={isFullscreen}
                       toggleFullscreen={toggleFullscreen}
@@ -4444,7 +4459,7 @@ const App: React.FC = () => {
                                   onClick={openStyleModal}
                                   className="w-full h-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:bg-rose-50/30 transition-all rounded-lg cursor-pointer flex flex-col items-center justify-center text-center bg-slate-50"
                                 >
-                                  <div className="bg-white p-4 rounded-full mb-4 shadow-sm text-rose-500 border border-slate-100">
+                                  <div className="bg-white p-4 rounded-full mb-6 shadow-sm border border-slate-100">
                                     <Upload size={24} />
                                   </div>
                                   <h4 className="font-bold text-slate-700 mb-1">
@@ -4863,48 +4878,27 @@ const App: React.FC = () => {
 
                         <div className="h-8 w-px bg-slate-100 mx-1 hidden xl:block"></div>
 
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={historySortBy}
-                            onChange={(e) => setHistorySortBy(e.target.value as any)}
-                            className="text-[11px] font-bold border border-slate-200 bg-white text-slate-700 rounded-md py-1.5 px-2 focus:ring-2 focus:ring-indigo-100 outline-none"
-                          >
-                            <option value="lastModified">按完成时间</option>
-                            <option value="createdAt">按创建时间</option>
-                            <option value="pages">按页数</option>
-                          </select>
-                          <button
-                            onClick={() => setHistorySortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-                            className="p-1.5 bg-white border border-slate-200 rounded-md hover:bg-slate-50 hover:border-indigo-200 transition-all shadow-sm"
-                            title={historySortOrder === 'desc' ? "倒序(新在前)" : "正序(旧在前)"}
-                          >
-                            {historySortOrder === 'desc' ? <ArrowDownNarrowWide size={14} className="text-indigo-500" /> : <ArrowUpNarrowWide size={14} className="text-indigo-500" />}
-                          </button>
-
-                          <div className="w-px h-6 bg-slate-100 mx-0.5"></div>
-
-                          <button
-                            onClick={() => {
-                              setHistorySearchTerm("");
-                              setHistoryFilterStyle("");
-                              setHistoryFilterRatio("");
-                              setHistoryFilterPalette("");
-                              setHistoryFilterPageType("target");
-                              setHistoryFilterMinPages("");
-                              setHistoryFilterMaxPages("");
-                              setHistoryFilterTimeType("lastModified");
-                              setHistoryFilterStartDate("");
-                              setHistoryFilterEndDate("");
-                              setHistoryFilterTime("");
-                              setHistorySortBy("lastModified");
-                              setHistorySortOrder("desc");
-                            }}
-                            className="p-1.5 bg-slate-100 text-slate-500 rounded-md hover:bg-slate-200 hover:text-slate-700 transition-all"
-                            title="重置所有筛选"
-                          >
-                            <RotateCcw size={14} />
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => {
+                            setHistorySearchTerm("");
+                            setHistoryFilterStyle("");
+                            setHistoryFilterRatio("");
+                            setHistoryFilterPalette("");
+                            setHistoryFilterPageType("target");
+                            setHistoryFilterMinPages("");
+                            setHistoryFilterMaxPages("");
+                            setHistoryFilterTimeType("lastModified");
+                            setHistoryFilterStartDate("");
+                            setHistoryFilterEndDate("");
+                            setHistoryFilterTime("");
+                            setHistorySortBy("lastModified");
+                            setHistorySortOrder("desc");
+                          }}
+                          className="p-1.5 bg-slate-100 text-slate-500 rounded-md hover:bg-slate-200 hover:text-slate-700 transition-all"
+                          title="重置所有筛选"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
                       </div>
                     </div>
 
@@ -5137,6 +5131,11 @@ const App: React.FC = () => {
 
         {/* User Modals */}
         <ProfileCenter isOpen={showProfile} onClose={() => setShowProfile(false)} />
+        <MyOrdersModal
+          isOpen={showMyOrders}
+          onClose={() => setShowMyOrders(false)}
+          onTopUp={() => setShowTopUp(true)}
+        />
         <PointsHistory isOpen={showPointsHistory} onClose={() => setShowPointsHistory(false)} />
         <CheckInModal
           isOpen={showCheckIn}
@@ -5144,6 +5143,42 @@ const App: React.FC = () => {
           onSuccess={() => {
             setShowCheckIn(false);
             setToast({ id: Date.now().toString(), type: 'success', message: '签到成功！积分已到账' });
+          }}
+        />
+        <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} />
+        <PointsGuard
+          warnThreshold={50}
+          onPurchase={() => setShowTopUp(true)}
+        />
+
+        {/* 全局充值与支付弹窗 */}
+        <TopUpModal
+          isOpen={showTopUp}
+          onClose={() => setShowTopUp(false)}
+          onSelectProduct={(product) => {
+            setShowTopUp(false);
+            setPurchaseProduct(product);
+          }}
+        />
+        <PurchaseModal
+          isOpen={!!purchaseProduct}
+          onClose={() => setPurchaseProduct(null)}
+          product={purchaseProduct}
+          onSuccess={() => {
+            setPurchaseProduct(null);
+            refreshUser(); // 刷新余额
+            setToast({ id: Date.now().toString(), message: '充值成功', type: 'success' });
+          }}
+        />
+
+        <PurchaseSuccessModal
+          isOpen={purchaseSuccess.show}
+          onClose={() => setPurchaseSuccess({ show: false, productName: '', points: 0 })}
+          productName={purchaseSuccess.productName}
+          pointsGranted={purchaseSuccess.points}
+          onContinue={() => {
+            setPurchaseSuccess({ show: false, productName: '', points: 0 });
+            setViewMode('dashboard');
           }}
         />
 

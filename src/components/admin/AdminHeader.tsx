@@ -11,9 +11,10 @@ interface AdminHeaderProps {
     onBack: () => void;
     onProfileClick: () => void;
     onPointsClick: () => void;
+    onInviteClick?: () => void;
 }
 
-export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle, onBack, onProfileClick, onPointsClick }) => {
+export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle, onBack, onProfileClick, onPointsClick, onInviteClick }) => {
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     const toggleFullscreen = () => {
@@ -71,6 +72,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle, onBac
                     compact={false}
                     onProfileClick={onProfileClick}
                     onPointsClick={onPointsClick}
+                    onInviteClick={onInviteClick}
                     isFullscreen={isFullscreen}
                     toggleFullscreen={toggleFullscreen}
                 />

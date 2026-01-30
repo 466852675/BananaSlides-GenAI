@@ -216,6 +216,7 @@ model Order {
   productType   String               // 商品类型: "vip" | "points"
   productName   String               // 商品名称 (如 "专业版月卡")
   productDesc   String?              // 商品描述
+  productId     String?              // 关联商品 ID (用于履约逻辑)
   quantity      Int         @default(1) // 数量
   
   // ========== 金额信息 ==========
@@ -228,6 +229,9 @@ model Order {
   paymentMethod String?              // 支付方式: alipay | wechat | stripe
   paymentNo     String?              // 第三方支付单号
   paidAt        DateTime?            // 支付时间
+  
+  // ========== 履约信息 ==========
+  fulfillmentAt DateTime?            // 履约完成时间 (幂等保护)
   
   // ========== 退款信息 ==========
   refundReason  String?              // 退款原因
@@ -423,6 +427,7 @@ model Product {
   points        Int                      // 包含/赠送积分
   tags          String?                  // JSON: ["HOT", "LIMITED"]
   features      String?                  // JSON: ["解除限制", "专属客服"]
+  roleToGrant   String?                  // 购买后授权角色 (如 PROFESSIONAL)
   desc          String?                  // 商品描述
   discountEnd   DateTime?                // 优惠截止时间
   isActive      Boolean   @default(true) // 是否上架

@@ -95,20 +95,43 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ isOpen, onClose, onS
                         </div>
                     ) : (
                         <div className="space-y-6">
-                            {/* Streak Info */}
-                            <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <div className="flex items-center gap-3">
-                                    <Trophy className="w-5 h-5 text-amber-500" />
+                            {/* Streak Info - 连签高亮增强 */}
+                            <div className="flex justify-between items-center bg-gradient-to-r from-slate-50 to-blue-50/50 p-4 rounded-2xl border border-slate-100 relative overflow-hidden">
+                                {/* 连签进度背景条 */}
+                                <div
+                                    className="absolute inset-0 bg-gradient-to-r from-blue-100 to-indigo-100 opacity-50"
+                                    style={{ width: `${Math.min(((status?.streak || 0) / 7) * 100, 100)}%` }}
+                                />
+
+                                <div className="flex items-center gap-3 relative z-10">
+                                    <div className={`p-2 rounded-xl ${(status?.streak || 0) >= 3 ? 'bg-gradient-to-br from-amber-400 to-orange-500 animate-pulse' : 'bg-amber-100'}`}>
+                                        <Trophy className={`w-5 h-5 ${(status?.streak || 0) >= 3 ? 'text-white' : 'text-amber-500'}`} />
+                                    </div>
                                     <div>
                                         <p className="text-xs text-slate-500 font-medium">连续签到</p>
-                                        <p className="text-lg font-bold text-slate-800">{status?.streak || 0} 天</p>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-2xl font-black ${(status?.streak || 0) >= 7 ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600' : (status?.streak || 0) >= 3 ? 'text-blue-600' : 'text-slate-800'}`}>
+                                                {status?.streak || 0}
+                                            </span>
+                                            <span className="text-slate-500 text-sm font-medium">天</span>
+                                            {(status?.streak || 0) >= 7 && (
+                                                <span className="px-2 py-0.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-[10px] font-bold rounded-full animate-bounce">
+                                                    🎉 满签
+                                                </span>
+                                            )}
+                                            {(status?.streak || 0) >= 3 && (status?.streak || 0) < 7 && (
+                                                <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-[10px] font-bold rounded-full">
+                                                    火热连签中
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="text-right">
+                                <div className="text-right relative z-10">
                                     <p className="text-xs text-slate-500 font-medium">今日可领</p>
                                     <div className="flex items-center gap-1 text-blue-600 font-bold justify-end">
                                         <Coins size={14} />
-                                        <span>{status?.rewardToday || 0}</span>
+                                        <span className="text-lg">{status?.rewardToday || 0}</span>
                                     </div>
                                 </div>
                             </div>

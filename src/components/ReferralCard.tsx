@@ -12,6 +12,7 @@ export const ReferralCard: React.FC<ReferralCardProps> = ({ className = '' }) =>
     const { user } = useAuth();
     const [copied, setCopied] = useState(false);
     const [copiedType, setCopiedType] = useState<'link' | 'code' | null>(null);
+    const [showConfetti, setShowConfetti] = useState(false);
 
     const referralCode = user?.inviteCode || '------';
     const referralLink = `${window.location.origin}/register?ref=${referralCode}`;
@@ -20,12 +21,43 @@ export const ReferralCard: React.FC<ReferralCardProps> = ({ className = '' }) =>
         navigator.clipboard.writeText(text).then(() => {
             setCopied(true);
             setCopiedType(type);
-            // 使用原生方式显示复制成功反馈
+            setShowConfetti(true);
+
+            // 2秒后重置状态
             setTimeout(() => {
                 setCopied(false);
                 setCopiedType(null);
+                setShowConfetti(false);
             }, 2000);
         });
+    };
+
+    // 生成迷你彩纸动画
+    const renderMiniConfetti = () => {
+        if (!showConfetti) return null;
+        return (
+            <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
+                {[...Array(12)].map((_, i) => (
+                    <motion.div
+                        key={i}
+                        initial={{
+                            opacity: 1,
+                            y: '50%',
+                            x: `${20 + Math.random() * 60}%`,
+                            scale: 0.4 + Math.random() * 0.4,
+                            rotate: 0
+                        }}
+                        animate={{
+                            opacity: 0,
+                            y: '-100%',
+                            rotate: Math.random() * 360 - 180
+                        }}
+                        transition={{ duration: 1.2, delay: i * 0.05, ease: 'easeOut' }}
+                        className={`absolute w-2 h-2 rounded-sm ${['bg-pink-400', 'bg-yellow-300', 'bg-green-400', 'bg-blue-400', 'bg-purple-400'][i % 5]}`}
+                    />
+                ))}
+            </div>
+        );
     };
 
     return (
@@ -33,6 +65,9 @@ export const ReferralCard: React.FC<ReferralCardProps> = ({ className = '' }) =>
             {/* Background Decoration */}
             <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/4 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-32 h-32 bg-indigo-400/20 rounded-full blur-2xl pointer-events-none" />
+
+            {/* 复制成功彩纸动画 */}
+            {renderMiniConfetti()}
 
             <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-6">

@@ -14,7 +14,9 @@ import {
     CreditCard,
     Maximize2,
     Minimize,
-    CalendarCheck
+    CalendarCheck,
+    Gift,
+    ShoppingBag
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -30,8 +32,12 @@ interface UserWidgetProps {
     onProfileClick?: () => void;
     /** 点击"积分明细"的回调 */
     onPointsClick?: () => void;
+    /** 点击"我的订单"的回调 */
+    onOrdersClick?: () => void;
     /** 点击"每日签到"的回调 */
     onCheckInClick?: () => void;
+    /** 点击"邀请有礼"的回调 */
+    onInviteClick?: () => void;
     /** 组件模式：'app' 为普通应用模式，'admin' 为管理后台模式 */
     mode?: 'app' | 'admin';
     /** 是否处于滚动状态（灵动岛模式） */
@@ -40,7 +46,7 @@ interface UserWidgetProps {
     toggleFullscreen?: () => void;
 }
 
-export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 'app', isScrolled = false, isFullscreen = false, toggleFullscreen, onEnterApp, onAdminClick, onProfileClick, onPointsClick, onCheckInClick }) => {
+export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 'app', isScrolled = false, isFullscreen = false, toggleFullscreen, onEnterApp, onAdminClick, onProfileClick, onPointsClick, onOrdersClick, onCheckInClick, onInviteClick }) => {
     const { user, isAuthenticated, logout, setShowLoginModal, isAdmin, isSuperAdmin } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -100,14 +106,23 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
             )}
 
             {/* 2. 剩余积分标签 (Points Label) - 点击可查看明细 */}
+            {/* 低积分预警：≤50 红色闪烁 / ≤100 橙色 / >100 正常 */}
             <button
                 onClick={onPointsClick}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-100/50 hover:bg-amber-100 hover:border-amber-200 transition-all group"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all group ${user.points <= 50
+                    ? 'bg-gradient-to-r from-red-100 to-orange-100 border border-red-200/50 hover:from-red-200 hover:to-orange-200 animate-pulse'
+                    : user.points <= 100
+                        ? 'bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/50 hover:bg-orange-100'
+                        : 'bg-amber-50 border border-amber-100/50 hover:bg-amber-100 hover:border-amber-200'
+                    }`}
                 title="点击查看积分明细"
             >
-                <Coins size={14} className="text-amber-500 group-hover:scale-110 transition-transform" />
-                <span className="text-xs font-bold text-amber-700">{user.points}</span>
-                {!isScrolled && <span className="text-[10px] text-amber-600/70 font-medium">积分</span>}
+                <Coins size={14} className={`group-hover:scale-110 transition-transform ${user.points <= 50 ? 'text-red-500' : user.points <= 100 ? 'text-orange-500' : 'text-amber-500'
+                    }`} />
+                <span className={`text-xs font-bold ${user.points <= 50 ? 'text-red-700' : user.points <= 100 ? 'text-orange-700' : 'text-amber-700'
+                    }`}>{user.points}</span>
+                {!isScrolled && <span className={`text-[10px] font-medium ${user.points <= 50 ? 'text-red-600/70' : user.points <= 100 ? 'text-orange-600/70' : 'text-amber-600/70'
+                    }`}>积分</span>}
             </button>
 
             {/* 3. 用户信息下拉菜单 (User Info & Dropdown) */}
@@ -182,7 +197,9 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
                                 <div className="text-[10px] font-bold text-slate-400 px-3 py-1.5 uppercase tracking-wider">个人中心</div>
                                 <MenuButton icon={<User size={16} />} label="系统资料设置" onClick={() => { setIsOpen(false); onProfileClick?.(); }} />
                                 <MenuButton icon={<History size={16} />} label="查看积分明细" onClick={() => { setIsOpen(false); onPointsClick?.(); }} />
+                                <MenuButton icon={<ShoppingBag size={16} />} label="我的订单" onClick={() => { setIsOpen(false); onOrdersClick?.(); }} />
                                 <MenuButton icon={<CalendarCheck size={16} />} label="每日签到" onClick={() => { setIsOpen(false); onCheckInClick?.(); }} highlight />
+                                <MenuButton icon={<Gift size={16} />} label="邀请有礼" onClick={() => { setIsOpen(false); onInviteClick?.(); }} />
 
                                 {isAdmin && (
                                     <>

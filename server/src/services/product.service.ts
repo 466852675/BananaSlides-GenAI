@@ -26,6 +26,7 @@ export const productService = {
         points: number;
         tags?: string[]; // JSON array
         features?: string[]; // JSON array
+        roleToGrant?: string; // 购买后授权角色
         discountEnd?: Date;
         sortOrder?: number;
     }) {
@@ -50,6 +51,7 @@ export const productService = {
         sortOrder: number;
         tags: string[];
         features: string[];
+        roleToGrant: string; // 购买后授权角色
         discountEnd: Date;
     }>) {
         return await prisma.product.update({

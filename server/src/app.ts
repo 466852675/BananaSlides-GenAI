@@ -15,6 +15,9 @@ import settingRoutes from './routes/setting.routes';
 import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
 import pointsRoutes from './routes/points.routes';
+import orderRoutes from './routes/order.routes';
+import productRoutes from './routes/product.routes';
+import growthRoutes from './routes/growth.routes';
 
 
 // Load env from server directory
@@ -53,6 +56,9 @@ app.use('/api/favorites', favoriteRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/points', pointsRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/growth', growthRoutes);
 
 import { SettingService } from './services/setting.service';
 

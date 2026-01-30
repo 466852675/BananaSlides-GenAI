@@ -15,6 +15,7 @@ import { SystemSettings } from './SystemSettings';
 import { GrowthCenter } from './GrowthCenter';
 import { ProfileCenter } from '../user/ProfileCenter';
 import { PointsHistory } from '../user/PointsHistory';
+import { InviteModal } from '../InviteModal';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface AdminLayoutProps {
@@ -40,6 +41,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
     // 用户模态框状态
     const [showProfile, setShowProfile] = useState(false);
     const [showPointsHistory, setShowPointsHistory] = useState(false);
+    const [showInvite, setShowInvite] = useState(false);
 
     // 权限检查
     if (isLoading) {
@@ -113,6 +115,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
                     onBack={onBack}
                     onProfileClick={() => setShowProfile(true)}
                     onPointsClick={() => setShowPointsHistory(true)}
+                    onInviteClick={() => setShowInvite(true)}
                 />
 
                 {/* 内容区 */}
@@ -124,6 +127,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
             {/* 用户模态框 */}
             <ProfileCenter isOpen={showProfile} onClose={() => setShowProfile(false)} />
             <PointsHistory isOpen={showPointsHistory} onClose={() => setShowPointsHistory(false)} />
+            <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} />
         </div>
     );
 };

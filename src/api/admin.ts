@@ -486,6 +486,7 @@ export interface Product {
     points: number;
     tags?: string[] | null;
     features?: string[] | null;
+    roleToGrant?: string | null;    // 购买后授权角色
     discountEnd?: string | null;
     sortOrder: number;
     isActive: boolean;
@@ -516,6 +517,7 @@ export async function createProduct(data: {
     points: number;
     tags?: string[];
     features?: string[];
+    roleToGrant?: string;  // 新增: 授权角色
     discountEnd?: Date;
     sortOrder?: number;
 }): Promise<Product> {

@@ -24,6 +24,7 @@ import {
     Maximize2,
 } from 'lucide-react';
 import { motion, useScroll, useSpring, AnimatePresence, Variants } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
 import '../styles/landing.css';
 import { ShowcaseTabs } from './ShowcaseTabs'; // Import new component
 import { DeliveryShowcase } from './DeliveryShowcase';
@@ -31,6 +32,8 @@ import { MagneticButton } from './MagneticButton';
 import { MacWindowHeader } from './MacWindowHeader';
 import { UserWidget } from './auth';
 import { useAuth } from '../contexts/AuthContext';
+import { getProducts, Product } from '../api/admin';
+import { PurchaseModal } from './PurchaseModal';
 
 const TESTIMONIALS = [
     { name: "Alex Chen", role: "科技博主", comment: "BananaSlides 是我见过的最懂'结构'的 PPT 工具。它不是在堆砌素材，而是在帮你梳理逻辑。Router-Adapter 架构让我在不同模型间切换自如。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" },
@@ -54,6 +57,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
     const [heroInput, setHeroInput] = useState("");
     const [isPrimePreviewActive, setIsPrimePreviewActive] = useState(false); // Prime 预览状态
     const [isScanComplete, setIsScanComplete] = useState(false);
+    const [purchaseProduct, setPurchaseProduct] = useState<any | null>(null);
+
+    // 处理购买点击
+    const handlePurchase = (product: Product | any) => {
+        if (!user) {
+            onEnter(); // 未登录则进入登录
+            return;
+        }
+        setPurchaseProduct(product);
+    };
+
+    // 动态获取产品列表 (用于 Pricing 区域)
+    const { data: dynamicProducts = [] } = useQuery<Product[]>({
+        queryKey: ['landing-products'],
+        queryFn: getProducts,
+        staleTime: 60000,
+        retry: 1,
+    });
 
     useEffect(() => {
         // Scanline Persistence Logic
@@ -716,32 +737,92 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-                        <PricingCard
-                            title="基础版"
-                            price={billingCycle === 'yearly' ? '0' : '0'}
-                            description="适合个人初次体验 AI 创作"
-                            features={["赠送 30 积分/月", "使用标准版 AI 模型", "支持 .pptx / PDF 导出", "基础社区技术支持"]}
-                            cta="免费开始"
-                            onCta={handleStart}
-                        />
-                        <PricingCard
-                            title="专业版"
-                            price={billingCycle === 'yearly' ? '39' : '49'}
-                            description="高频创作，解锁旗舰级 AI 能力"
-                            features={["赠送 600 积分/月", "优先使用旗舰级 AI 模型", "更精准的逻辑生成与美化", "支持全量格式高清导出", "1对1 专家技术支持"]}
-                            popular
-                            cta="立即升级"
-                            onCta={handleStart}
-                        />
-                        <PricingCard
-                            title="团队版"
-                            price={billingCycle === 'yearly' ? '99' : '129'}
-                            description="为规模化演示生产量身定制"
-                            features={["赠送 2000 积分/月 (共享)", "全员享用旗舰级 AI 模型", "团队协作空间与权限管理", "专属品牌风格模版定制", "API 访问与自动化支持"]}
-                            cta="联系销售"
-                            onCta={handleStart}
-                        />
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 max-w-7xl mx-auto">
+                        {dynamicProducts.length > 0 ? (
+                            // 动态渲染: 从后台产品库加载
+                            dynamicProducts.map((product, index) => {
+                                // 解析 JSON 字段
+                                const features = product.features ?
+                                    (typeof product.features === 'string' ? JSON.parse(product.features) : product.features)
+                                    : [];
+                                const tags = product.tags ?
+                                    (typeof product.tags === 'string' ? JSON.parse(product.tags) : product.tags)
+                                    : [];
+
+                                return (
+                                    <PricingCard
+                                        key={product.id}
+                                        title={product.name}
+                                        price={billingCycle === 'yearly'
+                                            ? String(Math.round(product.price * 0.75))
+                                            : String(product.price)}
+                                        description={features[0] || `赠送 ${product.points} 积分`}
+                                        features={features}
+                                        popular={tags.includes('推荐') || tags.includes('HOT') || index === 1}
+                                        cta={product.type === 'VIP_MONTHLY' ? '立即升级' : '购买加油包'}
+                                        onCta={() => handlePurchase(product)}
+                                    />
+                                );
+                            })
+                        ) : (
+                            // 兆底: 当 API 返回空时使用静态卡片
+                            <>
+                                <PricingCard
+                                    title="免费版"
+                                    price="0"
+                                    description="适合个人初次体验 AI 创作"
+                                    features={["赠送 30 积分/月", "使用标准版 AI 模型", "支持 .pdf 导出", "带品牌水印", "基础社区支持"]}
+                                    cta="免费开始"
+                                    onCta={handleStart}
+                                />
+                                <PricingCard
+                                    title="基础版"
+                                    price={billingCycle === 'yearly' ? '59' : '69'}
+                                    description="个人进阶，解锁无水印导出"
+                                    features={["赠送 1000 积分/月", "使用标准版 AI 模型", "支持 .pptx 全格式导出", "去除品牌水印", "优先邮件支持"]}
+                                    cta="立即升级"
+                                    onCta={() => handlePurchase({
+                                        id: 'static-basic',
+                                        type: 'VIP_MONTHLY',
+                                        name: '基础版',
+                                        price: billingCycle === 'yearly' ? 59 : 69,
+                                        points: 1000,
+                                        originalPrice: billingCycle === 'yearly' ? 69 : 89
+                                    })}
+                                />
+                                <PricingCard
+                                    title="专业版"
+                                    price={billingCycle === 'yearly' ? '109' : '129'}
+                                    description="高频创作，解锁旗舰级 AI 能力"
+                                    features={["赠送 3000 积分/月", "优先使用旗舰级 AI 模型", "更精准的逻辑生成与美化", "极速生成通道", "1对1 专家支持"]}
+                                    popular
+                                    cta="立即升级"
+                                    onCta={() => handlePurchase({
+                                        id: 'static-pro',
+                                        type: 'VIP_MONTHLY',
+                                        name: '专业版',
+                                        price: billingCycle === 'yearly' ? 109 : 129,
+                                        points: 3000,
+                                        originalPrice: billingCycle === 'yearly' ? 129 : 159
+                                    })}
+                                />
+                                <PricingCard
+                                    title="企业版"
+                                    price={billingCycle === 'yearly' ? '259' : '299'}
+                                    description="为规模化演示生产量身定制"
+                                    features={["赠送 8000 积分/月", "全员享用旗舰级 AI 模型", "团队协作空间与权限管理", "API 访问与自动化支持", "专属客户经理"]}
+                                    cta="联系销售"
+                                    onCta={() => handlePurchase({
+                                        id: 'static-enterprise',
+                                        type: 'VIP_MONTHLY',
+                                        name: '企业版',
+                                        price: billingCycle === 'yearly' ? 259 : 299,
+                                        points: 8000,
+                                        originalPrice: billingCycle === 'yearly' ? 299 : 359
+                                    })}
+                                />
+                            </>
+                        )}
                     </div>
                 </div>
             </section>
@@ -873,6 +954,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                     </div>
                 </div>
             </footer>
+            {/* Purchase Modal */}
+            <PurchaseModal
+                isOpen={!!purchaseProduct}
+                onClose={() => setPurchaseProduct(null)}
+                product={purchaseProduct}
+                onSuccess={() => {
+                    setPurchaseProduct(null);
+                    onEnter(); // 支付成功后进入应用
+                }}
+            />
         </div>
     );
 };
@@ -883,8 +974,12 @@ const PricingCard = ({ title, price, description, features, cta, onCta, popular 
         : 'bg-white border-slate-100 text-slate-900 group hover:border-slate-200'
         }`}>
         {popular && (
-            <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest text-white shadow-xl">
-                最受欢迎
+            <div className="absolute -top-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-orange-500 via-pink-500 to-purple-600 rounded-full text-[10px] font-black uppercase tracking-widest text-white shadow-xl animate-pulse">
+                <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                </span>
+                🔥 最受欢迎
             </div>
         )}
         <h3 className="text-xl font-bold mb-2">{title}</h3>

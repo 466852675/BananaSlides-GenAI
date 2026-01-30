@@ -36,6 +36,14 @@ router.put('/points-rules/:id', requireSuperAdmin, AdminController.updatePointsR
 router.delete('/points-rules/:id', requireSuperAdmin, AdminController.deletePointsRule);
 
 // ============================================================
+// 商品管理
+// ============================================================
+router.get('/products', AdminController.listProducts);
+router.post('/products', requireSuperAdmin, AdminController.createProduct);
+router.put('/products/:id', requireSuperAdmin, AdminController.updateProduct);
+router.delete('/products/:id', requireSuperAdmin, AdminController.deleteProduct);
+
+// ============================================================
 // 角色权限管理
 // ============================================================
 router.get('/roles', AdminController.listRoles);
