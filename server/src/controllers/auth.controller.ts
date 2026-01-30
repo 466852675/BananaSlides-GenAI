@@ -11,7 +11,7 @@ import { getClientIp } from '../middlewares/auth.middleware';
  */
 export async function register(req: Request, res: Response): Promise<void> {
     try {
-        const { email, password, nickname } = req.body;
+        const { email, password, nickname, inviteCode } = req.body;
 
         if (!email || !password) {
             res.status(400).json({
@@ -21,7 +21,7 @@ export async function register(req: Request, res: Response): Promise<void> {
             return;
         }
 
-        const result = await AuthService.register({ email, password, nickname });
+        const result = await AuthService.register({ email, password, nickname, inviteCode });
 
         res.status(201).json({
             success: true,

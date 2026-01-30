@@ -45,6 +45,7 @@ export interface RegisterData {
     email: string;
     password: string;
     nickname?: string;
+    inviteCode?: string;
 }
 
 export interface LoginData {

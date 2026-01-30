@@ -7,6 +7,7 @@ import { AdminHeader } from './AdminHeader';
 import { AdminDashboard } from './AdminDashboard';
 import { UserManagement } from './UserManagement';
 import { OrderManagement } from './OrderManagement';
+import { LeadManagement } from './LeadManagement';
 import { PointsRuleEditor } from './PointsRuleEditor';
 import { RoleManagement } from './RoleManagement';
 import { SystemStats } from './SystemStats';
@@ -27,6 +28,7 @@ const pageTitles: Record<AdminPage, { title: string; subtitle?: string }> = {
     'dashboard': { title: '控制台', subtitle: '系统概览与快捷操作' },
     'users': { title: '用户管理', subtitle: '管理所有用户账户' },
     'orders': { title: '订单管理', subtitle: '查看和管理订单' },
+    'leads': { title: '销售线索', subtitle: '企业版咨询与客户跟进' },
     'points-rules': { title: '积分规则', subtitle: '配置积分消耗规则' },
     'growth': { title: '产品管理', subtitle: '管理会员、积分商品与邀请配置' },
     'roles': { title: '角色权限', subtitle: '管理角色和权限分配' },
@@ -80,6 +82,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
                 return <UserManagement />;
             case 'orders':
                 return <OrderManagement />;
+            case 'leads':
+                return <LeadManagement />;
             case 'points-rules':
                 return <PointsRuleEditor />;
             case 'growth':

@@ -55,7 +55,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose }) => 
 
                             {/* 内容 */}
                             <div className="p-6">
-                                <ReferralCard />
+                                <ReferralCard onViewDetails={() => alert('邀请记录功能开发中，敬请期待！')} />
                             </div>
                         </div>
                     </motion.div>

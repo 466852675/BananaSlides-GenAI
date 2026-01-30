@@ -1,6 +1,3 @@
-// src/api/admin.ts
-// 管理后台 API 模块
-
 import { client } from './client';
 
 // ============================================================
@@ -14,14 +11,16 @@ export interface AdminUser {
     nickname: string | null;
     phone: string | null;
     avatar: string | null;
-    role: 'USER' | 'PROFESSIONAL' | 'ENTERPRISE' | 'ADMIN' | 'SUPER_ADMIN';
+    role: 'USER' | 'BASIC' | 'PROFESSIONAL' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' | 'SUPER_ADMIN';
     status: 'ACTIVE' | 'DISABLED' | 'PENDING';
     points: number;
     pointsUsed: number;
     vipLevel: number;
+    vipExpiresAt?: string | null;  // V8.5 Added
     lastLoginAt: string | null;
     createdAt: string;
     projectCount: number;
+    totalSpent: number;
 }
 
 export interface UserListFilters {
@@ -31,6 +30,11 @@ export interface UserListFilters {
     vipLevel?: number;
     page?: number;
     pageSize?: number;
+    startDate?: string;
+    endDate?: string;
+    amountType?: 'points' | 'spent';
+    minAmount?: number;
+    maxAmount?: number;
 }
 
 export interface UserListResult {
@@ -70,12 +74,14 @@ export interface PointsRule {
     code: string;
     name: string;
     costPoints: number;
+    vipCostPoints?: number | null; // V8.5
     description: string | null;
     module: string | null;
     category: string | null;
     calculationMethod: string | null;
     deductionLogic: string | null;
     isActive: boolean;
+    sortOrder: number; // V8.5
     effectiveAt: string;
     createdAt: string;
     createdBy?: {
@@ -118,6 +124,11 @@ export async function getUsers(filters: UserListFilters = {}): Promise<UserListR
     if (filters.vipLevel !== undefined && (filters.vipLevel as any) !== '') params.append('vip', String(filters.vipLevel));
     if (filters.page) params.append('page', String(filters.page));
     if (filters.pageSize) params.append('limit', String(filters.pageSize));  // 后端用 limit
+    if (filters.startDate) params.append('startDate', filters.startDate);
+    if (filters.endDate) params.append('endDate', filters.endDate);
+    if (filters.amountType) params.append('amountType', filters.amountType);
+    if (filters.minAmount !== undefined) params.append('minAmount', String(filters.minAmount));
+    if (filters.maxAmount !== undefined) params.append('maxAmount', String(filters.maxAmount));
 
     const result = await client.get(`/admin/users?${params.toString()}`) as any;
     if (result.success) {
@@ -133,6 +144,17 @@ export async function getUsers(filters: UserListFilters = {}): Promise<UserListR
         };
     }
     throw new Error(result.error?.message || '获取用户列表失败');
+}
+
+/**
+ * 创建用户
+ */
+export async function createUser(data: any): Promise<AdminUser> {
+    const result = await client.post('/admin/users', data) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '创建用户失败');
 }
 
 /**
@@ -155,6 +177,7 @@ export async function updateUser(id: string, data: {
     status?: string;
     points?: number;
     vipLevel?: number;
+    vipExpiresAt?: string | null;
 }): Promise<AdminUser> {
     const result = await client.put(`/admin/users/${id}`, data) as any;
     if (result.success) {
@@ -193,16 +216,28 @@ export async function deleteUser(id: string): Promise<void> {
 export async function getOrders(filters: {
     status?: string;
     type?: string;
+    productName?: string;
+    cycle?: string;
     page?: number;
     pageSize?: number;
     keyword?: string; // Search by Order ID or User info
+    startDate?: string;
+    endDate?: string;
+    minAmount?: number;
+    maxAmount?: number;
 } = {}): Promise<{ orders: Order[]; pagination: any }> {
     const params = new URLSearchParams();
     if (filters.status) params.append('status', filters.status);
     if (filters.type) params.append('type', filters.type);
+    if (filters.productName) params.append('productName', filters.productName);
+    if (filters.cycle) params.append('cycle', filters.cycle);
     if (filters.page) params.append('page', String(filters.page));
-    if (filters.pageSize) params.append('pageSize', String(filters.pageSize));
-    if (filters.keyword) params.append('search', filters.keyword);
+    if (filters.pageSize) params.append('limit', String(filters.pageSize));
+    if (filters.keyword) params.append('keyword', filters.keyword);
+    if (filters.startDate) params.append('startDate', filters.startDate);
+    if (filters.endDate) params.append('endDate', filters.endDate);
+    if (filters.minAmount !== undefined) params.append('minAmount', String(filters.minAmount));
+    if (filters.maxAmount !== undefined) params.append('maxAmount', String(filters.maxAmount));
 
     const result = await client.get(`/admin/orders?${params.toString()}`) as any;
     if (result.success) {
@@ -484,22 +519,33 @@ export interface Product {
     price: number;
     originalPrice?: number | null;
     points: number;
-    tags?: string[] | null;
-    features?: string[] | null;
+    tags?: string | string[] | null;
+    features?: string | string[] | null;
     roleToGrant?: string | null;    // 购买后授权角色
+    displayType?: string;           // public | hidden | contact_sales (V8.5)
+    period: 'month' | 'year' | 'once'; // V8.5
     discountEnd?: string | null;
     sortOrder: number;
     isActive: boolean;
+    effectiveAt: string;
     createdAt: string;
     updatedAt: string;
+    createdBy?: {
+        nickname: string;
+        avatar?: string;
+    };
 }
 
 /**
  * 获取所有商品 (活跃状态)
  */
 export async function getProducts(): Promise<Product[]> {
-    const result = await client.get('/products') as any;
-    // 后端直接返回数组，不包装在 { success, data } 中
+    const result = await client.get('/admin/products') as any;
+    // 优先处理后端的 { success, data } 包装格式
+    if (result && result.success && Array.isArray(result.data)) {
+        return result.data;
+    }
+    // 兼容可能存在的直接返回数组的情况
     if (Array.isArray(result)) {
         return result;
     }
@@ -546,5 +592,82 @@ export async function deleteProduct(id: string): Promise<void> {
     const result = await client.delete(`/admin/products/${id}`) as any;
     if (!result.success) {
         throw new Error(result.error?.message || '删除商品失败');
+    }
+}
+
+// ============================================================
+// 销售线索 API
+// ============================================================
+
+export interface Lead {
+    id: string;
+    name: string;
+    phone: string;
+    company: string | null;
+    position: string | null;
+    email: string | null;
+    teamSize: string | null;
+    industry: string | null;
+    needs: string | null;
+    status: 'PENDING' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'CLOSED';
+    notes: string | null;
+    source: string | null;
+    userId: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface LeadListFilters {
+    status?: string;
+    keyword?: string;
+    page?: number;
+    pageSize?: number;
+}
+
+export interface LeadListResult {
+    items: Lead[];
+    pagination: {
+        page: number;
+        pageSize: number;
+        total: number;
+        totalPages: number;
+    };
+}
+
+/**
+ * 获取销售线索列表
+ */
+export async function getLeads(filters: LeadListFilters = {}): Promise<LeadListResult> {
+    const params = new URLSearchParams();
+    if (filters.status) params.append('status', filters.status);
+    if (filters.keyword) params.append('search', filters.keyword);
+    if (filters.page) params.append('page', String(filters.page));
+    if (filters.pageSize) params.append('limit', String(filters.pageSize));
+
+    const result = await client.get(`/leads?${params.toString()}`) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取线索列表失败');
+}
+
+/**
+ * 更新线索状态
+ */
+export async function updateLeadStatus(id: string, status: string, notes?: string): Promise<Lead> {
+    const result = await client.put(`/leads/${id}/status`, { status, notes }) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '更新线索状态失败');
+}
+
+/**
+ * 删除线索
+ */
+export async function deleteLead(id: string): Promise<void> {
+    const result = await client.delete(`/leads/${id}`) as any;
+    if (!result.success) {
+        throw new Error(result.error?.message || '删除线索失败');
     }
 }

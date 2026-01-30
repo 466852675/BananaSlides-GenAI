@@ -17,6 +17,7 @@ export interface PointsRule {
     calculationMethod?: string;
     deductionLogic?: string;
     costPoints: number;
+    vipCostPoints?: number | null; // V8.5
     isActive: boolean;
     sortOrder: number;
     effectiveAt: string;
@@ -61,7 +62,13 @@ export type PointsActionCode =
     | 'style_apply'
     | 'export_pptx'
     | 'vision_analyze'
-    | 'smart_refine';
+    | 'smart_refine'
+    | 'style_image'
+    | 'full_content_generation'
+    | 'theme_refine'
+    | 'content_refine'
+    | 'template_refine'
+    | 'template_doc_parse';
 
 // ============================================================
 // Fallback 规则（API 不可用时使用）
@@ -77,6 +84,12 @@ const FALLBACK_RULES: PointsRule[] = [
     { id: 'f6', code: 'export_pptx', name: '导出 PPTX', description: '', costPoints: 5, isActive: true, sortOrder: 6, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
     { id: 'f7', code: 'vision_analyze', name: '视觉分析', description: '', costPoints: 8, isActive: true, sortOrder: 7, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
     { id: 'f8', code: 'smart_refine', name: '智能修饰', description: '', costPoints: 1, isActive: true, sortOrder: 8, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f9', code: 'style_image', name: '模版图片生成', description: '', costPoints: 50, isActive: true, sortOrder: 9, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f10', code: 'full_content_generation', name: '正文全量生成', description: '', costPoints: 10, isActive: true, sortOrder: 10, module: null, category: null, calculationMethod: null, deductionLogic: null, effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f11', code: 'theme_refine', name: '主题创意润色', description: '', costPoints: 1, isActive: true, sortOrder: 0, module: '创作室', category: '文本生成', calculationMethod: '按次扣费', deductionLogic: '润色 PPT 主题消耗 1 积分', effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f12', code: 'content_refine', name: '正文二次修饰', description: '', costPoints: 1, isActive: true, sortOrder: 6, module: '创作室', category: '文本生成', calculationMethod: '按页扣费', deductionLogic: '改写正文内容消耗 1 积分', effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f13', code: 'template_refine', name: '模版需求润色', description: '', costPoints: 1, isActive: true, sortOrder: 20, module: '模版间', category: '文本生成', calculationMethod: '按次扣费', deductionLogic: '润色模版需求消耗 1 积分', effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
+    { id: 'f14', code: 'template_doc_parse', name: '模版文档解析', description: '', costPoints: 3, isActive: true, sortOrder: 19, module: '模版间', category: '文档解析', calculationMethod: '按项扣费', deductionLogic: '解析模版素材文档消耗 3 积分', effectiveAt: '2026-01-01', createdAt: '2026-01-01' },
 ];
 
 // ============================================================

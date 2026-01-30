@@ -13,10 +13,11 @@ import {
     Sparkles,
     Bot,
     TrendingUp,
-    Sliders
+    Sliders,
+    MessageSquare
 } from 'lucide-react';
 
-export type AdminPage = 'dashboard' | 'users' | 'orders' | 'points-rules' | 'roles' | 'ai-engine' | 'growth' | 'settings';
+export type AdminPage = 'dashboard' | 'users' | 'orders' | 'leads' | 'points-rules' | 'roles' | 'ai-engine' | 'growth' | 'settings';
 
 interface AdminSidebarProps {
     currentPage: AdminPage;
@@ -28,6 +29,7 @@ const menuItems: { id: AdminPage; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: '控制台', icon: <LayoutDashboard size={18} /> },
     { id: 'users', label: '用户管理', icon: <Users size={18} /> },
     { id: 'orders', label: '订单管理', icon: <Receipt size={18} /> },
+    { id: 'leads', label: '销售线索', icon: <MessageSquare size={18} /> },
     { id: 'points-rules', label: '积分规则', icon: <Coins size={18} /> },
     { id: 'growth', label: '产品管理', icon: <TrendingUp size={18} /> },
     { id: 'roles', label: '角色权限', icon: <Shield size={18} /> },

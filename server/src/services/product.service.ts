@@ -9,10 +9,15 @@ export const productService = {
      * Public API: Get all active products for landing page
      */
     async listActiveProducts() {
-        return await prisma.product.findMany({
+        return (await prisma.product.findMany({
             where: { isActive: true },
-            orderBy: { sortOrder: 'asc' }
-        });
+            orderBy: { sortOrder: 'asc' },
+            include: {
+                createdBy: {
+                    select: { nickname: true, avatar: true }
+                }
+            }
+        } as any));
     },
 
     /**
@@ -29,13 +34,20 @@ export const productService = {
         roleToGrant?: string; // 购买后授权角色
         discountEnd?: Date;
         sortOrder?: number;
+        createdById?: string; // V8.5
+        effectiveAt?: Date; // V8.5
+        period?: string; // V8.5
     }) {
+        const { createdById, effectiveAt, period, ...rest } = data;
         return await prisma.product.create({
             data: {
-                ...data,
+                ...rest,
                 tags: data.tags ? JSON.stringify(data.tags) : undefined,
-                features: data.features ? JSON.stringify(data.features) : undefined
-            }
+                features: data.features ? JSON.stringify(data.features) : undefined,
+                createdById,
+                effectiveAt: effectiveAt || new Date(),
+                period: period || 'once'
+            } as any
         });
     },
 
@@ -53,6 +65,8 @@ export const productService = {
         features: string[];
         roleToGrant: string; // 购买后授权角色
         discountEnd: Date;
+        effectiveAt: Date; // V8.5
+        period: string; // V8.5
     }>) {
         return await prisma.product.update({
             where: { id },
@@ -62,6 +76,21 @@ export const productService = {
                 features: data.features ? JSON.stringify(data.features) : undefined
             }
         });
+    },
+
+    /**
+     * listAllProducts (Admin)
+     * Get all products including inactive ones
+     */
+    async listAllProducts() {
+        return (await prisma.product.findMany({
+            orderBy: { sortOrder: 'asc' },
+            include: {
+                createdBy: {
+                    select: { nickname: true, avatar: true }
+                }
+            }
+        } as any));
     },
 
     /**

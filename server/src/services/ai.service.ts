@@ -11,6 +11,7 @@ import { saveBase64Image } from '../utils/imageSaver';
 
 // --- Default Configuration ---
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || "";
+const DEFAULT_GEMINI_BASE_URL = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com";
 
 // --- AI Prompt Generation Helper Functions ---
 
@@ -321,22 +322,12 @@ const cleanBaseUrlForGoogle = (url: string): string => {
 };
 
 const createGoogleClient = (config: ModelConnection) => {
-    const cleanUrl = cleanBaseUrlForGoogle(config.baseUrl);
-    const isCustomProxy = !cleanUrl.includes('googleapis.com') && !cleanUrl.includes('generativelanguage');
+    // 强制使用 SDK 兼容的 baseUrl 格式，或者如果检测到是中转代理且不完全符合 SDK 要求，则通过 fetch/axios 注入 baseUrl
+    // 注意：@google/generative-ai SDK 在 constructor 中不直接支持 baseUrl 参数 (截至常用版本)
+    // 需要通过全局或特定配置注入，或者如果 SDK 不支持，则在调用处使用 callOpenAICompatible 模式或自定义传输层。
+    // 这里我们保持接口一致，但在实际调用处如果是 proxy 则回退到 OpenAICompatible 模式（如果在 shouldUseGeminiNative 中逻辑正确的话）
 
-    const options: any = {
-        apiKey: config.apiKey,
-        baseUrl: cleanUrl
-    };
-
-    if (isCustomProxy) {
-        options.customHeaders = {
-            'Authorization': `Bearer ${config.apiKey}`,
-            'X-Goog-Api-Key': config.apiKey
-        };
-    }
-
-    return new GoogleGenAI(options);
+    return new GoogleGenAI({ apiKey: config.apiKey });
 };
 
 const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image' | 'vision'): ModelConnection => {
@@ -346,7 +337,7 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
         // console.log(`[getTaskConfig] No settings provided, using defaults`);
         return {
             apiKey: DEFAULT_GEMINI_KEY,
-            baseUrl: 'https://generativelanguage.googleapis.com',
+            baseUrl: DEFAULT_GEMINI_BASE_URL,
             model: task === 'vision' ? 'gemini-3-flash' : 'gemini-3-pro-preview'
         };
     }
@@ -363,7 +354,7 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
     } else {
         // Priority 2: Use general settings
         let apiKey = settings.ai.apiKey;
-        const baseUrl = settings.ai.baseUrl;
+        const baseUrl = settings.ai.baseUrl || DEFAULT_GEMINI_BASE_URL;
 
         // 动态模型路由：优先尊重配置值，仅在缺失时提供自适应回退
         let model = settings.ai.models[task];

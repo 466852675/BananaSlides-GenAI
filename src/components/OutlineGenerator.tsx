@@ -695,13 +695,11 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
             setIsGeneratingDetails(true);
             // Fetch fresh balance and cost for warning (using slide_content rule)
             try {
-                const itemsToGenerate = outlineItems.filter(i => !i.fullContent).length;
                 const [rule, balance] = await Promise.all([
-                    getPointsRule('slide_content', true),
+                    getPointsRule('full_content_generation', true),
                     getBalance()
                 ]);
-                const unitCost = rule?.costPoints ?? 1;
-                const totalCost = unitCost * itemsToGenerate;
+                const totalCost = rule?.costPoints ?? 10;
                 setCurrentCost(totalCost);
                 setCurrentBalance(balance.points);
                 const logicTip = rule?.deductionLogic ? `(${rule.deductionLogic})` : '';
@@ -722,13 +720,11 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                     setIsGeneratingDetails(true);
                     // Fetch fresh balance and cost for warning (using slide_content rule)
                     try {
-                        const itemsToGenerate = outlineItems.length; // All items
                         const [rule, balance] = await Promise.all([
-                            getPointsRule('slide_content', true),
+                            getPointsRule('full_content_generation', true),
                             getBalance()
                         ]);
-                        const unitCost = rule?.costPoints ?? 1;
-                        const totalCost = unitCost * itemsToGenerate;
+                        const totalCost = rule?.costPoints ?? 10;
                         setCurrentCost(totalCost);
                         setCurrentBalance(balance.points);
                         const logicTip = rule?.deductionLogic ? `(${rule.deductionLogic})` : '';

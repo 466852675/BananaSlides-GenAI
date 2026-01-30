@@ -18,6 +18,7 @@ import pointsRoutes from './routes/points.routes';
 import orderRoutes from './routes/order.routes';
 import productRoutes from './routes/product.routes';
 import growthRoutes from './routes/growth.routes';
+import leadRoutes from './routes/lead.routes';
 
 
 // Load env from server directory
@@ -58,6 +59,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/leads', leadRoutes);
+app.use('/api/growth', growthRoutes);
 app.use('/api/growth', growthRoutes);
 
 import { SettingService } from './services/setting.service';

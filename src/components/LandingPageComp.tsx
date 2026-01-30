@@ -34,6 +34,7 @@ import { UserWidget } from './auth';
 import { useAuth } from '../contexts/AuthContext';
 import { getProducts, Product } from '../api/admin';
 import { PurchaseModal } from './PurchaseModal';
+import { LeadFormModal } from './LeadFormModal';
 
 const TESTIMONIALS = [
     { name: "Alex Chen", role: "科技博主", comment: "BananaSlides 是我见过的最懂'结构'的 PPT 工具。它不是在堆砌素材，而是在帮你梳理逻辑。Router-Adapter 架构让我在不同模型间切换自如。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" },
@@ -58,11 +59,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
     const [isPrimePreviewActive, setIsPrimePreviewActive] = useState(false); // Prime 预览状态
     const [isScanComplete, setIsScanComplete] = useState(false);
     const [purchaseProduct, setPurchaseProduct] = useState<any | null>(null);
+    const [showLeadForm, setShowLeadForm] = useState(false); // New state for LeadFormModal
 
     // 处理购买点击
     const handlePurchase = (product: Product | any) => {
         if (!user) {
             onEnter(); // 未登录则进入登录
+            return;
+        }
+        // 如果是企业版 (包含 API 返回的 type='ENTERPRISE' 或静态数据的 name='企业版')
+        if (product.type === 'ENTERPRISE' || product.name === '企业版') {
+            setShowLeadForm(true);
             return;
         }
         setPurchaseProduct(product);
@@ -737,33 +744,51 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 max-w-7xl mx-auto">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 max-w-7xl mx-auto">
+                        {/* 1. 定价矩阵渲染区域 */}
                         {dynamicProducts.length > 0 ? (
-                            // 动态渲染: 从后台产品库加载
-                            dynamicProducts.map((product, index) => {
-                                // 解析 JSON 字段
-                                const features = product.features ?
-                                    (typeof product.features === 'string' ? JSON.parse(product.features) : product.features)
-                                    : [];
-                                const tags = product.tags ?
-                                    (typeof product.tags === 'string' ? JSON.parse(product.tags) : product.tags)
-                                    : [];
+                            // A. 动态逻辑：渲染所有已发布产品 + 硬编码的企业版线索捕获
+                            <>
+                                {dynamicProducts
+                                    .filter(p => p.displayType !== 'hidden')
+                                    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                                    .map((product, index) => {
+                                        // 解析 JSON 字段
+                                        const features = product.features ?
+                                            (typeof product.features === 'string' ? JSON.parse(product.features) : product.features)
+                                            : [];
+                                        const tags = product.tags ?
+                                            (typeof product.tags === 'string' ? JSON.parse(product.tags) : product.tags)
+                                            : [];
 
-                                return (
+                                        return (
+                                            <PricingCard
+                                                key={product.id}
+                                                title={product.name}
+                                                price={billingCycle === 'yearly'
+                                                    ? (product.price === 0 ? "0" : String(Math.round(product.price * 0.75)))
+                                                    : String(product.price)}
+                                                description={features[0] || `赠送 ${product.points} 积分`}
+                                                features={features}
+                                                popular={tags.includes('推荐') || tags.includes('HOT') || product.name?.includes('专业')}
+                                                cta={product.displayType === 'contact_sales' ? '联系销售' : (product.type === 'VIP_MONTHLY' ? '立即升级' : '立即购买')}
+                                                onCta={() => handlePurchase(product)}
+                                            />
+                                        );
+                                    })}
+
+                                {/* 确保如果动态列表中没有企业版，则手动补齐（兜底）*/}
+                                {!dynamicProducts.some(p => p.displayType === 'contact_sales' || p.name === '企业版') && (
                                     <PricingCard
-                                        key={product.id}
-                                        title={product.name}
-                                        price={billingCycle === 'yearly'
-                                            ? String(Math.round(product.price * 0.75))
-                                            : String(product.price)}
-                                        description={features[0] || `赠送 ${product.points} 积分`}
-                                        features={features}
-                                        popular={tags.includes('推荐') || tags.includes('HOT') || index === 1}
-                                        cta={product.type === 'VIP_MONTHLY' ? '立即升级' : '购买加油包'}
-                                        onCta={() => handlePurchase(product)}
+                                        title="企业版"
+                                        price="定制"
+                                        description="为规模化演示生产量身定制"
+                                        features={["赠送 50000 团队积分", "20个账号席位", "企业管理后台", "API 访问支持"]}
+                                        cta="联系销售"
+                                        onCta={() => setShowLeadForm(true)}
                                     />
-                                );
-                            })
+                                )}
+                            </>
                         ) : (
                             // 兆底: 当 API 返回空时使用静态卡片
                             <>
@@ -807,19 +832,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                                     })}
                                 />
                                 <PricingCard
-                                    title="企业版"
+                                    title="尊享版"
                                     price={billingCycle === 'yearly' ? '259' : '299'}
-                                    description="为规模化演示生产量身定制"
-                                    features={["赠送 8000 积分/月", "全员享用旗舰级 AI 模型", "团队协作空间与权限管理", "API 访问与自动化支持", "专属客户经理"]}
-                                    cta="联系销售"
+                                    description="原企业版，大V与工作室首选"
+                                    features={["赠送 8000 积分/月", "极速生成通道", "1对1 专家支持", "旗舰级 AI 模型"]}
+                                    cta="立即升级"
                                     onCta={() => handlePurchase({
-                                        id: 'static-enterprise',
+                                        id: 'static-exclusive',
                                         type: 'VIP_MONTHLY',
-                                        name: '企业版',
+                                        name: '尊享版',
                                         price: billingCycle === 'yearly' ? 259 : 299,
                                         points: 8000,
                                         originalPrice: billingCycle === 'yearly' ? 299 : 359
                                     })}
+                                />
+                                <PricingCard
+                                    title="企业版"
+                                    price="定制"
+                                    description="为规模化演示生产量身定制"
+                                    features={["赠送 50000 团队积分", "20个账号席位", "企业管理后台", "API 访问支持"]}
+                                    cta="联系销售"
+                                    onCta={() => setShowLeadForm(true)}
                                 />
                             </>
                         )}
@@ -963,6 +996,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                     setPurchaseProduct(null);
                     onEnter(); // 支付成功后进入应用
                 }}
+            />
+            {/* Sales Lead Form Modal */}
+            <LeadFormModal
+                isOpen={showLeadForm}
+                onClose={() => setShowLeadForm(false)}
             />
         </div>
     );

@@ -26,10 +26,21 @@ export const growthService = {
             select: { checkInStreak: true, checkInDate: true }
         });
 
+        // 计算今日奖励 (基础 30)
+        const streak = user?.checkInStreak || 0;
+        let rewardToday = 30; // 默认基础30积分
+        const nextStreak = streak + 1;
+        if (nextStreak % 7 === 3) {
+            rewardToday += 50; // 连签3天额外奖励
+        } else if (nextStreak % 7 === 0) {
+            rewardToday += 200; // 连签7天额外奖励
+        }
+
         return {
-            checkedIn: !!lastLog,
-            streak: user?.checkInStreak || 0,
-            today: todayStr
+            lastCheckIn: user?.checkInDate?.toISOString() || null,
+            streak: streak,
+            canCheckIn: !lastLog,
+            rewardToday: rewardToday
         };
     },
 
@@ -84,7 +95,7 @@ export const growthService = {
             getActionCost('checkin_bonus_7' as any)
         ]);
 
-        let reward = baseRuleCost || 50; // Base (default 50)
+        let reward = baseRuleCost || 30; // Base (default 30)
         let description = '每日签到';
 
         // Add bonus based on streak

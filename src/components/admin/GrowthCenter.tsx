@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
-import { Gift, TrendingUp, ShoppingBag, Settings2 } from 'lucide-react';
-import { ProductManagement } from './ProductManagement';
+import React, { useState, useRef } from 'react';
+import { Plus, ShoppingBag, Settings2 } from 'lucide-react';
+import { ProductManagement, ProductManagementHandle } from './ProductManagement';
 import { GrowthStats } from './GrowthStats';
 import { ReferralConfig } from './ReferralConfig';
 
@@ -9,6 +9,7 @@ type GrowthTab = 'overview' | 'products' | 'settings';
 
 export const GrowthCenter: React.FC = () => {
     const [activeTab, setActiveTab] = useState<GrowthTab>('products');
+    const productRef = useRef<ProductManagementHandle>(null);
 
     const tabs = [
         { id: 'products', label: '商品管理', icon: ShoppingBag },
@@ -17,7 +18,7 @@ export const GrowthCenter: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Hero Section - Standardized V8.0 */}
+            {/* Hero Header - Standardized V8.0 */}
             <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-violet-600 to-indigo-600 p-6 shadow-xl shadow-violet-500/20">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
                 <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -32,6 +33,14 @@ export const GrowthCenter: React.FC = () => {
                             </p>
                         </div>
                     </div>
+                    {activeTab === 'products' && (
+                        <button
+                            onClick={() => productRef.current?.openCreateModal()}
+                            className="px-5 py-2.5 bg-white text-violet-600 rounded-xl shadow-lg shadow-black/10 font-bold text-sm hover:scale-105 active:scale-95 transition-all border border-white/50 flex items-center gap-2"
+                        >
+                            <Plus size={18} /> 添加新商品
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -59,7 +68,7 @@ export const GrowthCenter: React.FC = () => {
             {/* Content Area */}
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {activeTab === 'overview' && <GrowthStats />}
-                {activeTab === 'products' && <ProductManagement />}
+                {activeTab === 'products' && <ProductManagement ref={productRef} />}
                 {activeTab === 'settings' && <ReferralConfig />}
             </div>
         </div>

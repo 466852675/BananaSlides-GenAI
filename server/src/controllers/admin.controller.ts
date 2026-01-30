@@ -13,6 +13,37 @@ import { UserRole, UserStatus, OrderStatus } from '@prisma/client';
 // ============================================================
 
 /**
+ * 创建新用户
+ * POST /api/admin/users
+ */
+export async function createUser(req: Request, res: Response): Promise<void> {
+    try {
+        const { email, password, nickname, role, vipLevel, points } = req.body;
+
+        if (!email || !password) {
+            res.status(400).json({
+                success: false,
+                error: { code: 'MISSING_FIELDS', message: '邮箱和密码为必填项' }
+            });
+            return;
+        }
+
+        const user = await AdminService.createUser(
+            { email, password, nickname, role, vipLevel, points },
+            req.user!.id
+        );
+
+        res.json({ success: true, data: user });
+    } catch (error: any) {
+        console.error('[Admin] 创建用户失败:', error);
+        res.status(400).json({
+            success: false,
+            error: { code: 'CREATE_FAILED', message: error.message || '创建用户失败' }
+        });
+    }
+}
+
+/**
  * 获取用户列表
  * GET /api/admin/users
  */
@@ -24,6 +55,7 @@ export async function listUsers(req: Request, res: Response): Promise<void> {
             search,
             role,
             status,
+            vip,
             sortBy,
             sortOrder,
         } = req.query;
@@ -33,6 +65,7 @@ export async function listUsers(req: Request, res: Response): Promise<void> {
                 search: search as string,
                 role: role as UserRole,
                 status: status as UserStatus,
+                vipLevel: vip ? parseInt(vip as string, 10) : undefined,
                 sortBy: sortBy as 'createdAt' | 'points' | 'lastLoginAt',
                 sortOrder: sortOrder as 'asc' | 'desc',
             },
@@ -212,12 +245,16 @@ export async function batchUserAction(req: Request, res: Response): Promise<void
  */
 export async function listOrders(req: Request, res: Response): Promise<void> {
     try {
-        const { page = '1', limit = '20', userId, status, sortBy, sortOrder } = req.query;
+        const { page = '1', limit = '20', userId, status, type, productName, cycle, search, sortBy, sortOrder } = req.query;
 
         const result = await OrderService.listOrders(
             {
                 userId: userId as string,
                 status: status as OrderStatus,
+                type: type as string,
+                productName: productName as string,
+                cycle: cycle as string,
+                keyword: search as string,
                 sortBy: sortBy as 'createdAt' | 'finalPrice',
                 sortOrder: sortOrder as 'asc' | 'desc',
             },
@@ -512,12 +549,12 @@ export async function getGrowthStats(req: Request, res: Response): Promise<void>
 // ============================================================
 
 /**
- * 获取商品列表
+ * 获取商品列表 (管理端返回全量)
  * GET /api/admin/products
  */
 export async function listProducts(req: Request, res: Response): Promise<void> {
     try {
-        const products = await productService.listActiveProducts();
+        const products = await productService.listAllProducts();
         res.json({ success: true, data: products });
     } catch (error) {
         console.error('[Admin] 获取商品列表失败:', error);
@@ -534,7 +571,7 @@ export async function listProducts(req: Request, res: Response): Promise<void> {
  */
 export async function createProduct(req: Request, res: Response): Promise<void> {
     try {
-        const { type, name, price, originalPrice, points, tags, features, roleToGrant, discountEnd, sortOrder } = req.body;
+        const { type, name, price, originalPrice, points, tags, features, roleToGrant, discountEnd, sortOrder, effectiveAt, period } = req.body;
 
         if (!type || !name || price === undefined || points === undefined) {
             res.status(400).json({
@@ -554,7 +591,10 @@ export async function createProduct(req: Request, res: Response): Promise<void> 
             features,
             roleToGrant,
             discountEnd: discountEnd ? new Date(discountEnd) : undefined,
-            sortOrder: sortOrder ? Number(sortOrder) : undefined
+            sortOrder: sortOrder ? Number(sortOrder) : undefined,
+            createdById: req.user?.id,
+            effectiveAt: effectiveAt ? new Date(effectiveAt) : undefined,
+            period
         });
 
         res.json({ success: true, data: product });
@@ -582,6 +622,7 @@ export async function updateProduct(req: Request, res: Response): Promise<void> 
         if (updateData.points !== undefined) updateData.points = Number(updateData.points);
         if (updateData.sortOrder !== undefined) updateData.sortOrder = Number(updateData.sortOrder);
         if (updateData.discountEnd) updateData.discountEnd = new Date(updateData.discountEnd);
+        if (updateData.effectiveAt) updateData.effectiveAt = new Date(updateData.effectiveAt);
 
         const product = await productService.updateProduct(id, updateData);
         res.json({ success: true, data: product });

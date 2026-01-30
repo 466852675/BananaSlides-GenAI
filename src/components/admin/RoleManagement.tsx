@@ -9,7 +9,9 @@ import {
     Lock,
     Briefcase,
     Gem,
-    User
+    User,
+    LayoutGrid,
+    Settings
 } from 'lucide-react';
 import {
     getRoles,
@@ -22,11 +24,33 @@ import {
 
 // Defines the frontend view of roles, ensuring new roles are visible
 
+// 模块中文名称映射
+const MODULE_NAMES: Record<string, string> = {
+    // 用户侧
+    HISTORY: '项目管理 (History)',
+    CREATION: '创作室 (Creation)',
+    TEMPLATE: '模版间 (Template)',
+    // 管理侧
+    ADMIN: '系统访问',
+    DASHBOARD: '控制台',
+    USERS: '用户管理',
+    ORDERS: '订单管理',
+    PRODUCTS: '产品管理',
+    LEADS: '销售线索',
+    POINTS: '积分规则',
+    ROLES: '角色权限',
+    AI: '模型引擎',
+    SETTINGS: '系统设置'
+};
+
+const USER_SIDE_MODULES = ['HISTORY', 'CREATION', 'TEMPLATE'];
+
 export const RoleManagement: React.FC = () => {
     const queryClient = useQueryClient();
     const [selectedRole, setSelectedRole] = useState<ApiRole | null>(null);
     const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
     const [isDirty, setIsDirty] = useState(false);
+    const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user');
 
     // 1. 获取角色列表
     const { data: roles = [], isLoading: isLoadingRoles } = useQuery({
@@ -36,11 +60,13 @@ export const RoleManagement: React.FC = () => {
 
     // Merge backend roles with frontend definitions to ensure consistent UI for new roles
     const displayRoles = [
-        { id: 'SUPER_ADMIN', name: '超级管理员', description: '拥有系统所有权限及其最高管理权', icon: <Lock className="text-amber-500" size={24} />, color: 'amber' },
-        { id: 'ADMIN', name: '管理员', description: '负责日常业务运营与用户管理', icon: <Shield className="text-blue-500" size={24} />, color: 'blue' },
-        { id: 'ENTERPRISE', name: '企业用户', description: '享有企业级权益与高级功能', icon: <Briefcase className="text-indigo-500" size={24} />, color: 'indigo' },
-        { id: 'PROFESSIONAL', name: '专业用户', description: '高级订阅用户，解锁进阶能力', icon: <Gem className="text-violet-500" size={24} />, color: 'violet' },
-        { id: 'USER', name: '普通用户', description: '基础功能使用权', icon: <User className="text-slate-500" size={24} />, color: 'slate' },
+        { id: 'SUPER_ADMIN', name: '系统管理员', description: '拥有系统所有权限及其最高管理权', icon: <Lock className="text-amber-500" size={24} />, color: 'amber' },
+        { id: 'ADMIN', name: '业务管理员', description: '负责日常业务运营与用户管理', icon: <Shield className="text-blue-500" size={24} />, color: 'blue' },
+        { id: 'ENTERPRISE', name: '企业用户 (Lv4)', description: '享有企业级权益与高级功能', icon: <Briefcase className="text-indigo-500" size={24} />, color: 'indigo' },
+        { id: 'PREMIUM', name: '尊享用户 (Lv3)', description: '高级订阅用户，解锁顶配 AI 能力', icon: <Gem className="text-amber-500" size={24} />, color: 'amber' },
+        { id: 'PROFESSIONAL', name: '专业用户 (Lv2)', description: '解锁高级排版与高清输出能力', icon: <Gem className="text-violet-500" size={24} />, color: 'violet' },
+        { id: 'BASIC', name: '基础用户 (Lv1)', description: '解锁基础 AI 生成与文档导出', icon: <User className="text-blue-500" size={24} />, color: 'blue' },
+        { id: 'USER', name: '免费用户 (Lv0)', description: '基础功能限额使用权', icon: <User className="text-slate-500" size={24} />, color: 'slate' },
     ];
 
     // 2. 获取所有权限定义
@@ -114,12 +140,18 @@ export const RoleManagement: React.FC = () => {
     const permissionsByModule = React.useMemo(() => {
         if (!permissions) return {};
         const groups: Record<string, Permission[]> = {};
+
         permissions.forEach(p => {
+            // 根据当前 Tab 过滤模块
+            const isUserSide = USER_SIDE_MODULES.includes(p.module);
+            if (activeTab === 'user' && !isUserSide) return;
+            if (activeTab === 'admin' && isUserSide) return;
+
             if (!groups[p.module]) groups[p.module] = [];
             groups[p.module].push(p);
         });
         return groups;
-    }, [permissions]);
+    }, [permissions, activeTab]);
 
     if (isLoadingRoles || isLoadingPermissions) {
         return (
@@ -192,8 +224,25 @@ export const RoleManagement: React.FC = () => {
                                 <div>
                                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                         <UserCog className="text-violet-600" size={20} />
-                                        权限配置 <span className="text-slate-300 mx-2">/</span> {selectedRole.name}
                                     </h3>
+                                    <div className="flex gap-2 mt-2">
+                                        <button
+                                            onClick={() => setActiveTab('user')}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'user'
+                                                ? 'bg-violet-600 text-white shadow-md'
+                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                        >
+                                            <LayoutGrid size={14} /> 用户侧功能
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('admin')}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'admin'
+                                                ? 'bg-violet-600 text-white shadow-md'
+                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                        >
+                                            <Settings size={14} /> 管理后台
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {selectedRole.id !== 'SUPER_ADMIN' ? (
@@ -238,7 +287,7 @@ export const RoleManagement: React.FC = () => {
                                         <div className="flex items-center gap-2 mb-4">
                                             <div className="h-4 w-1 bg-violet-500 rounded-full" />
                                             <h4 className="text-sm font-black text-slate-600 uppercase tracking-wide">
-                                                {module} 模块
+                                                {MODULE_NAMES[module] || `${module} 模块`}
                                             </h4>
                                         </div>
 

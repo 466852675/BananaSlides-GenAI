@@ -8,8 +8,16 @@ const prisma = new PrismaClient();
 export interface OrderListFilters {
     userId?: string;
     status?: OrderStatus;
+    type?: string;
+    productName?: string;
+    cycle?: string;
+    keyword?: string;
     sortBy?: 'createdAt' | 'finalPrice';
     sortOrder?: 'asc' | 'desc';
+    startDate?: string;
+    endDate?: string;
+    minAmount?: number;
+    maxAmount?: number;
 }
 
 export interface Pagination {
@@ -21,12 +29,121 @@ export interface Pagination {
  * 获取订单列表
  */
 export async function listOrders(filters: OrderListFilters, pagination: Pagination) {
-    const { userId, status, sortBy = 'createdAt', sortOrder = 'desc' } = filters;
+    const {
+        userId, status, type, productName, cycle, keyword,
+        sortBy = 'createdAt', sortOrder = 'desc',
+        startDate, endDate,
+        minAmount, maxAmount
+    } = filters;
     const { page, limit } = pagination;
 
-    const where: any = {};
-    if (userId) where.userId = userId;
-    if (status) where.status = status;
+    const andConditions: any[] = [];
+
+    if (userId) andConditions.push({ userId });
+    if (status) andConditions.push({ status });
+
+    // 1. 周期的智能识别 (支持中英同义词)
+    if (cycle) {
+        if (cycle === '年度') {
+            andConditions.push({
+                OR: [
+                    { productName: { contains: '年度' } },
+                    { productName: { contains: 'Annual' } },
+                    { productName: { contains: 'Yearly' } }
+                ]
+            });
+        } else if (cycle === '月度') {
+            andConditions.push({
+                OR: [
+                    { productName: { contains: '月度' } },
+                    { productName: { contains: 'Monthly' } }
+                ]
+            });
+        } else if (cycle === '一次性' || cycle === '加油包') {
+            // “一次性”即为非年度、非月度的所有订单
+            andConditions.push({
+                AND: [
+                    { productName: { not: { contains: '年度' } } },
+                    { productName: { not: { contains: '月度' } } },
+                    { productName: { not: { contains: 'Annual' } } },
+                    { productName: { not: { contains: 'Yearly' } } },
+                    { productName: { not: { contains: 'Monthly' } } }
+                ]
+            });
+        } else {
+            andConditions.push({ productName: { contains: cycle } });
+        }
+    }
+
+    // 2. 产品名的模糊匹配 (支持中英同义词映射)
+    if (productName) {
+        const nameMap: Record<string, string[]> = {
+            '专业版': ['专业版', 'Pro'],
+            '基础版': ['基础版', 'Basic'],
+            '企业版': ['企业版', 'Enterprise'],
+            '尊享版': ['尊享版', 'Premium', 'ProPlus'],
+            '标准版': ['标准版', 'Standard']
+        };
+
+        const searchTerms = nameMap[productName] || [productName];
+
+        andConditions.push({
+            OR: searchTerms.map(term => ({
+                productName: { contains: term }
+            }))
+        });
+    }
+
+    // 3. 按类型筛选 (模糊匹配 productType 或 productName)
+    // 如果已经选择了具体的产品名，则不再叠加宽泛的类型 OR 逻辑，以防干扰包含匹配
+    if (type && !productName) {
+        if (type === 'POINTS') {
+            andConditions.push({
+                OR: [
+                    { productType: 'POINTS' },
+                    { productType: 'points' },
+                    { productName: { contains: '积分' } },
+                    { productName: { contains: '包' } },
+                    { productName: { contains: '加油' } }
+                ]
+            });
+        } else if (type === 'VIP') {
+            andConditions.push({
+                OR: [
+                    { productType: 'VIP' },
+                    { productType: 'vip' },
+                    { productName: { contains: '会员' } },
+                    { productName: { contains: 'Pro' } },
+                    { productName: { contains: '月度' } },
+                    { productName: { contains: '年度' } }
+                ]
+            });
+        } else {
+            andConditions.push({ productType: type });
+        }
+    }
+
+    // 按关键词搜索 (订单号、产品名、用户邮箱/昵称)
+    if (keyword) {
+        andConditions.push({
+            OR: [
+                { orderNo: { contains: keyword } },
+                { productName: { contains: keyword } },
+                { user: { email: { contains: keyword } } },
+                { user: { nickname: { contains: keyword } } }
+            ]
+        });
+    }
+
+    // 4. 金额范围筛选 (finalPrice)
+    if (minAmount !== undefined || maxAmount !== undefined) {
+        const amountFilter: any = {};
+        if (minAmount !== undefined) amountFilter.gte = Number(minAmount);
+        if (maxAmount !== undefined) amountFilter.lte = Number(maxAmount);
+        andConditions.push({ finalPrice: amountFilter });
+    }
+
+    const where = andConditions.length > 0 ? { AND: andConditions } : {};
 
     const [items, total] = await Promise.all([
         prisma.order.findMany({
@@ -204,13 +321,35 @@ export async function fulfillOrder(orderId: string) {
             },
         });
 
-        // 3. 如果商品定义了角色授权，更新用户角色
+        // 3. 如果商品定义了角色授权，更新用户角色及 VIP 等级 (V8.5 对齐)
         if (product?.roleToGrant) {
+            const roleToGrantStr = product.roleToGrant.toUpperCase();
+            let newVipLevel = user.vipLevel;
+
+            // 完整映射关系
+            const roleMap: Record<string, number> = {
+                'USER': 0,
+                'BASIC': 1,
+                'PROFESSIONAL': 2,
+                'PREMIUM': 3,
+                'ENTERPRISE': 4
+            };
+
+            if (roleMap[roleToGrantStr] !== undefined) {
+                newVipLevel = Math.max(newVipLevel, roleMap[roleToGrantStr]);
+            }
+
+            // 额外兼容性修正 (处理旧代码中的 VIP 字样)
+            if (roleToGrantStr === 'VIP') newVipLevel = Math.max(newVipLevel, 1);
+
             await tx.user.update({
                 where: { id: user.id },
-                data: { role: product.roleToGrant as any },
+                data: {
+                    role: product.roleToGrant as any,
+                    vipLevel: newVipLevel
+                },
             });
-            console.log(`[OrderService] 用户 ${user.id} 角色提升为 ${product.roleToGrant}`);
+            console.log(`[OrderService] 用户 ${user.id} 角色同步为 ${product.roleToGrant}, VIP等级: ${newVipLevel}`);
         }
 
         // 4. 如果是VIP商品，设置有效期 (+31天)

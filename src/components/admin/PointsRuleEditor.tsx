@@ -1,10 +1,11 @@
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as AdminApi from '../../api/admin';
 import { PointsRule } from '../../api/admin';
-import { Loader2, Plus, Edit2, Trash2, CheckCircle, XCircle, AlertCircle, Search, Coins, Folder, Layers, Sparkles, BookOpen } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, CheckCircle, XCircle, AlertCircle, Search, Coins, Folder, Layers, Sparkles, BookOpen, Crown, Copy } from 'lucide-react';
 
-// PointsRuleEditor.tsx - with Search & Filters
+// PointsRuleEditor.tsx - with Search & Filters & VIP Pricing
 
 export const PointsRuleEditor: React.FC = () => {
     const queryClient = useQueryClient();
@@ -21,12 +22,16 @@ export const PointsRuleEditor: React.FC = () => {
     // Filter State
     const [keyword, setKeyword] = useState('');
     const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+    const [moduleTab, setModuleTab] = useState<'ALL' | '创作室' | '模版间'>('ALL');
+    const [pointsRange, setPointsRange] = useState<'ALL' | 'FREE' | 'BASIC' | 'PREMIUM'>('ALL');
+    const [vipFilter, setVipFilter] = useState<'ALL' | 'CONFIGURED' | 'NOT_CONFIGURED'>('ALL');
 
     // Form state
     const [formData, setFormData] = useState({
         code: '',
         name: '',
         costPoints: 0,
+        vipCostPoints: 0, // Added VIP cost
         description: '',
         module: '创作室',
         category: '文本生成',
@@ -54,24 +59,38 @@ export const PointsRuleEditor: React.FC = () => {
             const matchesStatus = statusFilter === 'ALL'
                 ? true
                 : statusFilter === 'ACTIVE' ? r.isActive : !r.isActive;
-            return matchesKeyword && matchesStatus;
+
+            // Pts Range Filter
+            let matchesPoints = true;
+            if (pointsRange === 'FREE') matchesPoints = (r.costPoints === 0);
+            else if (pointsRange === 'BASIC') matchesPoints = (r.costPoints > 0 && r.costPoints <= 5);
+            else if (pointsRange === 'PREMIUM') matchesPoints = (r.costPoints > 5);
+
+            // VIP Strategy Filter
+            let matchesVip = true;
+            if (vipFilter === 'CONFIGURED') matchesVip = (r.vipCostPoints !== null && r.vipCostPoints !== undefined && r.vipCostPoints !== r.costPoints);
+            else if (vipFilter === 'NOT_CONFIGURED') matchesVip = (r.vipCostPoints === null || r.vipCostPoints === undefined || r.vipCostPoints === r.costPoints);
+
+            return matchesKeyword && matchesStatus && matchesPoints && matchesVip;
         });
 
-        // Group by Module -> Category
-        const groups: Record<string, Record<string, PointsRule[]>> = {};
+        // Group by Module only
+        const groups: Record<string, PointsRule[]> = {};
 
         filtered.forEach(rule => {
             const mod = rule.module || '未分类';
-            const cat = rule.category || '通用';
 
-            if (!groups[mod]) groups[mod] = {};
-            if (!groups[mod][cat]) groups[mod][cat] = [];
+            if (!groups[mod]) groups[mod] = [];
+            groups[mod].push(rule);
+        });
 
-            groups[mod][cat].push(rule);
+        // Sort rules within each module by sortOrder
+        Object.keys(groups).forEach(mod => {
+            groups[mod].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
         });
 
         return groups;
-    }, [rules, keyword, statusFilter]);
+    }, [rules, keyword, statusFilter, pointsRange, vipFilter]);
 
     const createMutation = useMutation({
         mutationFn: AdminApi.createPointsRule,
@@ -104,6 +123,7 @@ export const PointsRuleEditor: React.FC = () => {
             code: '',
             name: '',
             costPoints: 0,
+            vipCostPoints: 0,
             description: '',
             module: '创作室',
             category: '文本生成',
@@ -121,6 +141,7 @@ export const PointsRuleEditor: React.FC = () => {
             code: rule.code,
             name: rule.name,
             costPoints: rule.costPoints,
+            vipCostPoints: rule.vipCostPoints || 0,
             description: rule.description || '',
             module: rule.module || '创作室',
             category: rule.category || '文本生成',
@@ -137,34 +158,50 @@ export const PointsRuleEditor: React.FC = () => {
         setEditingRule(null);
     };
 
+    const handleCopyRule = (rule: PointsRule) => {
+        setEditingRule(null);
+        setFormData({
+            code: `${rule.code}_copy`,
+            name: `${rule.name} (副本)`,
+            costPoints: rule.costPoints,
+            vipCostPoints: rule.vipCostPoints || 0,
+            description: rule.description || '',
+            module: rule.module || '创作室',
+            category: rule.category || '文本生成',
+            calculationMethod: rule.calculationMethod || '按次扣费',
+            deductionLogic: rule.deductionLogic || '',
+            isActive: true, // 副本默认启用
+            effectiveAt: new Date().toISOString().split('T')[0]
+        });
+        setIsModalOpen(true);
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        const commonData = {
+            name: formData.name,
+            costPoints: Number(formData.costPoints),
+            vipCostPoints: formData.vipCostPoints ? Number(formData.vipCostPoints) : null,
+            description: formData.description,
+            module: formData.module,
+            category: formData.category,
+            calculationMethod: formData.calculationMethod,
+            deductionLogic: formData.deductionLogic,
+            effectiveAt: formData.effectiveAt
+        };
+
         if (editingRule) {
             updateMutation.mutate({
                 id: editingRule.id,
                 data: {
-                    name: formData.name,
-                    costPoints: Number(formData.costPoints),
-                    description: formData.description,
-                    module: formData.module,
-                    category: formData.category,
-                    calculationMethod: formData.calculationMethod,
-                    deductionLogic: formData.deductionLogic,
+                    ...commonData,
                     isActive: formData.isActive,
-                    effectiveAt: formData.effectiveAt
                 }
             });
         } else {
             createMutation.mutate({
                 code: formData.code,
-                name: formData.name,
-                costPoints: Number(formData.costPoints),
-                description: formData.description,
-                module: formData.module,
-                category: formData.category,
-                calculationMethod: formData.calculationMethod,
-                deductionLogic: formData.deductionLogic,
-                effectiveAt: formData.effectiveAt
+                ...commonData,
             });
         }
     };
@@ -263,359 +300,454 @@ export const PointsRuleEditor: React.FC = () => {
                         <button
                             key={status}
                             onClick={() => setStatusFilter(status)}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${statusFilter === status
+                            className={`px-3 py-2 rounded-lg text-[11px] font-black transition-all ${statusFilter === status
                                 ? 'bg-white text-slate-800 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700'
+                                : 'text-slate-400 hover:text-slate-600'
                                 }`}
                         >
-                            {status === 'ALL' ? '全部' : status === 'ACTIVE' ? '启用' : '禁用'}
+                            {status === 'ALL' ? '全部状态' : status === 'ACTIVE' ? '已启用' : '已禁用'}
+                        </button>
+                    ))}
+                </div>
+
+                {/* New: Pts Range Filter */}
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                    {(['ALL', 'FREE', 'BASIC', 'PREMIUM'] as const).map((rng) => (
+                        <button
+                            key={rng}
+                            onClick={() => setPointsRange(rng)}
+                            className={`px-3 py-2 rounded-lg text-[11px] font-black transition-all ${pointsRange === rng
+                                ? 'bg-white text-indigo-600 shadow-sm'
+                                : 'text-slate-400 hover:text-slate-600'
+                                }`}
+                        >
+                            {rng === 'ALL' ? '全额位' : rng === 'FREE' ? '免费' : rng === 'BASIC' ? '基础' : '高阶'}
+                        </button>
+                    ))}
+                </div>
+
+                {/* New: VIP Strategy Filter */}
+                <div className="flex bg-amber-50 p-1 rounded-xl border border-amber-100/50">
+                    {(['ALL', 'CONFIGURED', 'NOT_CONFIGURED'] as const).map((v) => (
+                        <button
+                            key={v}
+                            onClick={() => setVipFilter(v)}
+                            className={`px-3 py-2 rounded-lg text-[11px] font-black transition-all flex items-center gap-1 ${vipFilter === v
+                                ? 'bg-amber-500 text-white shadow-sm'
+                                : 'text-amber-400 hover:text-amber-600'
+                                }`}
+                        >
+                            {v === 'CONFIGURED' && <Crown size={10} />}
+                            {v === 'ALL' ? '全会员策略' : v === 'CONFIGURED' ? '专属价' : '未覆盖'}
                         </button>
                     ))}
                 </div>
             </div>
 
-            {/* Grouped Content */}
-            <div className="space-y-12">
+            {/* Module Tabs Navigation (Relocated to replace headers) */}
+            <div className="flex items-center gap-4 mb-8">
+                <div className="flex bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/50 shadow-sm">
+                    {(['ALL', '创作室', '模版间'] as const).map((mod) => (
+                        <button
+                            key={mod}
+                            onClick={() => setModuleTab(mod)}
+                            className={`px-6 py-2.5 rounded-xl text-[13px] font-black transition-all flex items-center gap-2 ${moduleTab === mod
+                                ? 'bg-white text-violet-600 shadow-md shadow-violet-100 border border-violet-100'
+                                : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
+                                }`}
+                        >
+                            {mod === 'ALL' ? <Layers size={16} /> : mod === '创作室' ? <Folder size={16} /> : <Sparkles size={16} />}
+                            {mod === 'ALL' ? '全业务流' : mod}
+                        </button>
+                    ))}
+                </div>
+                <div className="h-px flex-1 bg-gradient-to-r from-slate-200/60 to-transparent" />
+            </div>
+
+            {/* Tab-driven Content Area */}
+            <div className="space-y-6">
                 {Object.entries(groupedRules).length === 0 ? (
                     <div className="py-20 text-center bg-white/50 rounded-3xl border border-dashed border-slate-200">
                         <Coins size={48} className="mx-auto mb-4 opacity-20 text-slate-400" />
                         <p className="font-bold text-slate-400">暂无匹配的规则数据</p>
                     </div>
                 ) : (
-                    Object.entries(groupedRules).map(([moduleName, categories]) => (
-                        <div key={moduleName} className="space-y-6">
-                            {/* Module Header */}
-                            <div className="flex items-center gap-3 px-2">
-                                <div className="p-2 bg-violet-600 rounded-xl text-white shadow-lg shadow-violet-200">
-                                    <Folder size={20} />
-                                </div>
-                                <h2 className="text-xl font-black text-slate-800 tracking-tight">{moduleName} 板块</h2>
-                                <div className="h-px flex-1 bg-gradient-to-r from-slate-200 to-transparent ml-4" />
-                            </div>
+                    Object.entries(groupedRules)
+                        .filter(([moduleName]) => moduleTab === 'ALL' || moduleName === moduleTab)
+                        .map(([moduleName, moduleRules]) => (
+                            <div key={moduleName} className="space-y-6">
 
-                            {Object.entries(categories).map(([categoryName, categoryRules]) => (
-                                <div key={categoryName} className="space-y-4 pl-4">
-                                    {/* Category Subheader */}
-                                    <div className="flex items-center gap-2">
-                                        <Layers size={16} className="text-violet-400" />
-                                        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">{categoryName}</h3>
-                                    </div>
-
-                                    {/* Grid of Rules */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                        {categoryRules.map((rule) => {
-                                            const costStyle = getCostColor(rule.costPoints);
-                                            return (
-                                                <div
-                                                    key={rule.id}
-                                                    className={`group relative bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 ${!rule.isActive ? 'opacity-75 grayscale-[0.5]' : ''}`}
-                                                >
-                                                    {/* Status Badge (Static Display) */}
-                                                    <div className="absolute top-4 right-4 z-10">
-                                                        <div
-                                                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border pointer-events-none ${rule.isActive
-                                                                ? 'bg-emerald-50 text-emerald-600 border-emerald-500/10'
-                                                                : 'bg-slate-50 text-slate-400 border-slate-200'
-                                                                }`}
-                                                        >
-                                                            <div className={`w-1 h-1 rounded-full ${rule.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                                                            {rule.isActive ? "已启用" : "已禁用"}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Header: Name & Code */}
-                                                    <div className="mb-6 pr-20">
-                                                        <h3 className="text-lg font-bold text-slate-800 mb-1 line-clamp-1" title={rule.name}>{rule.name}</h3>
-                                                        <code className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono tracking-tight">
-                                                            {rule.code}
-                                                        </code>
-                                                        <div className="flex items-center gap-2 mt-2">
-                                                            <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                                                                <span className="opacity-60">创建:</span>
-                                                                <span className="font-bold">{new Date(rule.createdAt).toLocaleDateString()}</span>
-                                                            </div>
-                                                            <div className="w-1 h-1 rounded-full bg-slate-200" />
-                                                            <div className="flex items-center gap-1 text-[10px] text-indigo-500">
-                                                                <span className="opacity-60">生效:</span>
-                                                                <span className="font-bold">{new Date(rule.effectiveAt).toLocaleDateString()}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Main Info Box */}
-                                                    <div className="bg-slate-50/50 rounded-2xl p-4 mb-4 border border-slate-100">
-                                                        <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100">
-                                                            <div className="flex flex-col">
-                                                                <span className="text-[10px] font-bold text-slate-400 uppercase">消耗积分</span>
-                                                                <span className={`text-2xl font-black ${costStyle.split(' ')[0]}`}>{rule.costPoints} <span className="text-xs font-bold">PTS</span></span>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <span className="text-[10px] font-bold text-slate-400 uppercase">计算方式</span>
-                                                                <div className="text-xs font-bold text-slate-600 mt-1">{rule.calculationMethod || '按次扣费'}</div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <div className="flex items-start gap-2">
-                                                                <Sparkles size={12} className="text-amber-500 mt-0.5 shrink-0" />
-                                                                <p className="text-xs text-slate-600 leading-relaxed">
-                                                                    <span className="font-bold">扣费逻辑：</span>
-                                                                    {rule.deductionLogic || rule.description || "暂无详细描述"}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Action Footer */}
-                                                    <div className="flex items-center justify-between pt-4 border-t border-slate-100/60">
-                                                        <div className="flex items-center gap-2">
-                                                            {rule.createdBy && (
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <div className="w-4 h-4 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center overflow-hidden">
-                                                                        {rule.createdBy.avatar ? (
-                                                                            <img src={rule.createdBy.avatar} alt="" className="w-full h-full object-cover" />
-                                                                        ) : (
-                                                                            <span className="text-[8px] text-violet-500 font-bold">{rule.createdBy.nickname[0]}</span>
-                                                                        )}
-                                                                    </div>
-                                                                    <span className="text-[10px] font-bold text-slate-400">{rule.createdBy.nickname}</span>
-                                                                </div>
-                                                            )}
-                                                            <div className="text-[10px] font-bold text-slate-300 font-mono">
-                                                                REV: {rule.id.split('-')[0]}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button
-                                                                onClick={() => handleToggleActive(rule)}
-                                                                title={rule.isActive ? "禁用规则" : "启用规则"}
-                                                                className={`p-2 rounded-lg transition-all ${rule.isActive
-                                                                    ? 'text-amber-500 hover:bg-amber-50'
-                                                                    : 'text-emerald-500 hover:bg-emerald-50'
-                                                                    }`}
-                                                            >
-                                                                {rule.isActive ? <XCircle size={16} /> : <CheckCircle size={16} />}
-                                                            </button>
-                                                            <button
-                                                                onClick={() => openEditModal(rule)}
-                                                                title="编辑规则"
-                                                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                                                            >
-                                                                <Edit2 size={16} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleDelete(rule.id)}
-                                                                title="删除规则"
-                                                                className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        </div>
+                                {/* Grid of Rules (Flat & Sorted by path) */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+                                    {(moduleRules as PointsRule[]).map((rule) => {
+                                        const costStyle = getCostColor(rule.costPoints);
+                                        return (
+                                            <div
+                                                key={rule.id}
+                                                className={`group relative bg-white/80 backdrop-blur-xl rounded-2xl p-4 pb-3 border border-white/60 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1 flex flex-col h-full ${!rule.isActive ? 'opacity-75 grayscale-[0.5]' : ''}`}
+                                            >
+                                                {/* Status Badge */}
+                                                <div className="absolute top-4 right-4 z-10">
+                                                    <div
+                                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border pointer-events-none ${rule.isActive
+                                                            ? 'bg-emerald-50 text-emerald-600 border-emerald-500/10'
+                                                            : 'bg-slate-50 text-slate-400 border-slate-200'
+                                                            }`}
+                                                    >
+                                                        <div className={`w-1 h-1 rounded-full ${rule.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                                                        {rule.isActive ? "已启用" : "已禁用"}
                                                     </div>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ))
-                )}
 
-                {/* Always show Add New button at the very bottom */}
-                <div className="pt-8 flex justify-center">
-                    <button
-                        onClick={openCreateModal}
-                        className="group flex flex-col items-center justify-center gap-4 bg-white border-2 border-dashed border-slate-200 rounded-3xl p-8 hover:bg-violet-50 hover:border-violet-200 transition-all duration-300 w-full max-w-sm"
-                    >
-                        <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                            <Plus className="text-slate-400 group-hover:text-violet-500" size={24} />
-                        </div>
-                        <span className="text-sm font-bold text-slate-400 group-hover:text-violet-600">添加全局积分规则</span>
-                    </button>
-                </div>
+                                                {/* Header & Meta (Fixed height for grid alignment) */}
+                                                <div className="mb-4 h-[84px] flex flex-col justify-between">
+                                                    <div>
+                                                        <h3 className="text-[15px] font-black text-slate-800 mb-1.5 line-clamp-1 pr-16" title={rule.name}>
+                                                            {rule.name}
+                                                        </h3>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <code className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono tracking-tight grayscale-[0.5] max-w-[100px] truncate">
+                                                                {rule.code}
+                                                            </code>
+                                                            {rule.category && (
+                                                                <span className="text-[9px] font-black text-violet-500 bg-violet-50 px-1.5 py-0.5 rounded border border-violet-100 uppercase tracking-tighter whitespace-nowrap">
+                                                                    {rule.category}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 text-[9px] text-slate-400/80">
+                                                        <span className="opacity-60">生效日期:</span>
+                                                        <span className="font-bold">{new Date(rule.effectiveAt).toLocaleDateString()}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Pricing Info */}
+                                                <div className="bg-slate-50/50 rounded-xl py-3 px-3.5 mb-3 border border-slate-100 grid grid-cols-2 gap-4">
+                                                    <div className="flex flex-col border-r border-slate-200/50 pr-2">
+                                                        <span className="text-[9px] font-black text-slate-400 uppercase mb-0.5 tracking-tighter">标准消耗</span>
+                                                        <span className={`text-xl font-black truncate ${costStyle.split(' ')[0]}`}>{rule.costPoints}</span>
+                                                    </div>
+                                                    <div className="flex flex-col pl-1">
+                                                        <span className="text-[9px] font-black text-slate-400 uppercase mb-0.5 flex items-center gap-1 tracking-tighter">
+                                                            <Crown size={8} className="text-amber-500" /> VIP 消耗
+                                                        </span>
+                                                        {rule.vipCostPoints !== null && rule.vipCostPoints !== undefined ? (
+                                                            <span className="text-xl font-black text-amber-500 truncate">{rule.vipCostPoints}</span>
+                                                        ) : (
+                                                            <span className="text-[11px] font-bold text-slate-300 mt-1">未配置</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-slate-50/30 rounded-lg p-2 mb-3 text-[11px] font-bold text-slate-500 flex items-center justify-between">
+                                                    <span>计费方式</span>
+                                                    <span className="bg-white px-1.5 py-0.5 rounded border border-slate-100 text-slate-600 font-black">
+                                                        {rule.calculationMethod || '按次扣费'}
+                                                    </span>
+                                                </div>
+
+                                                {/* Logic Description (Constrained space for grid) */}
+                                                <div className="flex-grow space-y-1.5 mb-3 px-0.5 min-h-[34px]">
+                                                    <div className="flex items-start gap-1.5">
+                                                        <Sparkles size={10} className="text-indigo-400 mt-0.5 shrink-0 opacity-70" />
+                                                        <p className="text-[11px] text-slate-400 leading-normal line-clamp-2 font-medium">
+                                                            {rule.deductionLogic || rule.description || "暂无详细描述"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Footer Actions */}
+                                                <div className="flex items-center justify-between pt-3 border-t border-slate-100/60 mt-auto min-h-[40px] relative">
+                                                    <div className="flex items-center gap-2">
+                                                        {rule.createdBy ? (
+                                                            <div className="flex items-center gap-1.5 py-1">
+                                                                <div className="w-5 h-5 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center overflow-hidden shadow-sm">
+                                                                    {rule.createdBy.avatar ? (
+                                                                        <img src={rule.createdBy.avatar} alt="" className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <span className="text-[9px] text-violet-500 font-bold">{rule.createdBy.nickname?.[0] || 'A'}</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">创建人</span>
+                                                                    <span className="text-[10px] font-black text-slate-700 leading-none">{rule.createdBy.nickname}</span>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-1.5 py-1">
+                                                                <div className="w-5 h-5 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center grayscale">
+                                                                    <Loader2 size={10} className="text-slate-300 animate-spin" />
+                                                                </div>
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-[9px] font-black text-slate-300 uppercase tracking-tighter leading-none mb-0.5">管理员</span>
+                                                                    <span className="text-[10px] font-black text-slate-400 leading-none">系统预设</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Hover Actions - Absolute positioned to save space and show creator */}
+                                                    <div className="absolute inset-y-0 right-0 flex items-center gap-1 bg-white/95 backdrop-blur-sm pl-4 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0">
+                                                        <button
+                                                            onClick={() => handleToggleActive(rule)}
+                                                            title={rule.isActive ? "禁用规则" : "启用规则"}
+                                                            className={`p-2 rounded-lg transition-all ${rule.isActive
+                                                                ? 'text-amber-500 hover:bg-amber-50'
+                                                                : 'text-emerald-500 hover:bg-emerald-50'
+                                                                }`}
+                                                        >
+                                                            {rule.isActive ? <XCircle size={16} /> : <CheckCircle size={16} />}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => openEditModal(rule)}
+                                                            title="编辑规则"
+                                                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                                        >
+                                                            <Edit2 size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleCopyRule(rule)}
+                                                            title="复制规则"
+                                                            className="p-2 text-slate-400 hover:text-violet-500 hover:bg-violet-50 rounded-lg transition-all"
+                                                        >
+                                                            <Copy size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(rule.id)}
+                                                            title="删除规则"
+                                                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))
+                )}
+            </div>
+
+            {/* Always show Add New button at the very bottom */}
+            <div className="pt-6 flex justify-center">
+                <button
+                    onClick={openCreateModal}
+                    className="group flex flex-col items-center justify-center gap-3 bg-white border-2 border-dashed border-slate-200 rounded-2xl p-6 hover:bg-violet-50 hover:border-violet-200 transition-all duration-300 w-full max-w-[280px]"
+                >
+                    <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                        <Plus className="text-slate-400 group-hover:text-violet-500" size={20} />
+                    </div>
+                    <span className="text-[13px] font-bold text-slate-400 group-hover:text-violet-600">添加全局积分规则</span>
+                </button>
             </div>
 
             {/* Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-8 animate-in fade-in zoom-in-95 duration-200 border border-white/20">
-                        <div className="flex justify-between items-start mb-6">
-                            <div>
-                                <h3 className="text-2xl font-black text-slate-800 tracking-tight">
-                                    {editingRule ? '编辑规则' : '新增规则'}
-                                </h3>
-                                <p className="text-slate-500 text-sm mt-1">配置积分消耗逻辑</p>
-                            </div>
-                            <div className="p-2 bg-violet-50 rounded-xl text-violet-500">
-                                <CheckCircle size={24} />
-                            </div>
-                        </div>
-
-                        <form onSubmit={handleSubmit} className="space-y-5">
-                            {!editingRule && (
-                                <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">规则代码 (Code)</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-mono text-sm"
-                                        placeholder="例如: outline_generation"
-                                        value={formData.code}
-                                        onChange={e => setFormData({ ...formData, code: e.target.value })}
-                                    />
-                                    <p className="text-[10px] text-slate-400 font-medium">Unique identifier, cannot be changed once created.</p>
+            {
+                isModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md">
+                        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-8 animate-in fade-in zoom-in-95 duration-200 border border-white/20">
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-800 tracking-tight">
+                                        {editingRule ? '编辑规则' : '新增规则'}
+                                    </h3>
+                                    <p className="text-slate-500 text-sm mt-1">配置积分消耗逻辑</p>
                                 </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-5">
-                                <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">规则名称</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700"
-                                        placeholder="例如: 生成大纲"
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    />
+                                <div className="p-2 bg-violet-50 rounded-xl text-violet-500">
+                                    <CheckCircle size={24} />
                                 </div>
-                                <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">消耗积分</label>
-                                    <div className="relative">
+                            </div>
+
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                {!editingRule && (
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">规则代码 (Code)</label>
                                         <input
-                                            type="number"
+                                            type="text"
                                             required
-                                            min="0"
-                                            className="w-full pl-4 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-mono font-bold text-slate-700"
-                                            value={formData.costPoints}
-                                            onChange={e => setFormData({ ...formData, costPoints: Number(e.target.value) })}
+                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-mono text-sm"
+                                            placeholder="例如: outline_generation"
+                                            value={formData.code}
+                                            onChange={e => setFormData({ ...formData, code: e.target.value })}
                                         />
-                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">PTS</span>
+                                        <p className="text-[10px] text-slate-400 font-medium">唯一标识，创建后不可更改。</p>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-5">
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">规则名称</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700"
+                                            placeholder="例如: 生成大纲"
+                                            value={formData.name}
+                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">消耗积分 (Standard)</label>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                required
+                                                min="0"
+                                                className="w-full pl-4 pr-12 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-mono font-bold text-slate-700"
+                                                value={formData.costPoints}
+                                                onChange={e => setFormData({ ...formData, costPoints: Number(e.target.value) })}
+                                            />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">PTS</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="grid grid-cols-2 gap-5">
+                                <div className="grid grid-cols-2 gap-5">
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-amber-500 uppercase tracking-wider flex items-center gap-1">
+                                            <Crown size={12} /> VIP 消耗积分
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full pl-4 pr-12 py-2.5 bg-amber-50 border border-amber-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-mono font-bold text-amber-700 placeholder-amber-300"
+                                                placeholder="默认同上"
+                                                value={formData.vipCostPoints}
+                                                onChange={e => setFormData({ ...formData, vipCostPoints: Number(e.target.value) })}
+                                            />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-500">PTS</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">生效时间</label>
+                                        <input
+                                            type="date"
+                                            required
+                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700 font-mono"
+                                            value={formData.effectiveAt}
+                                            onChange={e => setFormData({ ...formData, effectiveAt: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-5">
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">一级板块 (Module)</label>
+                                        <select
+                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700"
+                                            value={formData.module}
+                                            onChange={e => setFormData({ ...formData, module: e.target.value })}
+                                        >
+                                            <option value="创作室">创作室</option>
+                                            <option value="模版间">模版间</option>
+                                            <option value="高级工具">高级工具</option>
+                                            <option value="系统配置">系统配置</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">二级分类 (Category)</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700"
+                                            placeholder="例如: 文本生成"
+                                            value={formData.category}
+                                            onChange={e => setFormData({ ...formData, category: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-5">
+                                    <div className="space-y-1.5">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">计算方式</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700"
+                                            placeholder="例如: 按次、按页"
+                                            value={formData.calculationMethod}
+                                            onChange={e => setFormData({ ...formData, calculationMethod: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
                                 <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">一级板块 (Module)</label>
-                                    <select
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700"
-                                        value={formData.module}
-                                        onChange={e => setFormData({ ...formData, module: e.target.value })}
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">详细扣费逻辑</label>
+                                    <textarea
+                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all resize-none text-sm leading-relaxed"
+                                        rows={2}
+                                        placeholder="描述详细的计算公式和扣费条件..."
+                                        value={formData.deductionLogic}
+                                        onChange={e => setFormData({ ...formData, deductionLogic: e.target.value })}
+                                    />
+                                    <p className="text-[10px] text-slate-400 font-medium">此内容将同步展示在创作室的功能操作提示中。</p>
+                                </div>
+
+                                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                                    <button
+                                        type="button"
+                                        onClick={closeModal}
+                                        className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
                                     >
-                                        <option value="创作室">创作室</option>
-                                        <option value="模版间">模版间</option>
-                                        <option value="高级工具">高级工具</option>
-                                        <option value="系统配置">系统配置</option>
-                                    </select>
+                                        取消
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={createMutation.isPending || updateMutation.isPending}
+                                        className="px-8 py-2.5 text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 shadow-lg shadow-violet-500/30 transition-all disabled:opacity-50 disabled:shadow-none"
+                                    >
+                                        {createMutation.isPending || updateMutation.isPending ? '保存中...' : '确认保存'}
+                                    </button>
                                 </div>
-                                <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">二级分类 (Category)</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700"
-                                        placeholder="例如: 文本生成"
-                                        value={formData.category}
-                                        onChange={e => setFormData({ ...formData, category: e.target.value })}
-                                    />
-                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )
+            }
+            {/* Confirmation Modal */}
+            {
+                confirmModal.isOpen && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-200 border border-white/20">
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 ${confirmModal.action === 'enable' ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-500'
+                                }`}>
+                                {confirmModal.action === 'enable' ? <CheckCircle size={28} /> : <AlertCircle size={28} />}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-5">
-                                <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">计算方式</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700"
-                                        placeholder="例如: 按次、按页"
-                                        value={formData.calculationMethod}
-                                        onChange={e => setFormData({ ...formData, calculationMethod: e.target.value })}
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">生效时间</label>
-                                    <input
-                                        type="date"
-                                        required
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all font-bold text-slate-700 font-mono"
-                                        value={formData.effectiveAt}
-                                        onChange={e => setFormData({ ...formData, effectiveAt: e.target.value })}
-                                    />
-                                </div>
-                            </div>
+                            <h3 className="text-xl font-black text-slate-800 tracking-tight mb-2">
+                                确认{confirmModal.action === 'enable' ? '启用' : '禁用'}规则？
+                            </h3>
+                            <p className="text-slate-500 text-sm leading-relaxed mb-6">
+                                您正在对 <span className="font-bold text-slate-700">[{confirmModal.rule?.name}]</span> 进行状态切换。
+                                {confirmModal.action === 'disable' ? '禁用后，用户执行相关操作时将不再产生扣费。' : '启用后，将立即恢复计费逻辑。'}
+                            </p>
 
-                            <div className="space-y-1.5">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">详细扣费逻辑</label>
-                                <textarea
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none transition-all resize-none text-sm leading-relaxed"
-                                    rows={3}
-                                    placeholder="描述详细的计算公式和扣费条件..."
-                                    value={formData.deductionLogic}
-                                    onChange={e => setFormData({ ...formData, deductionLogic: e.target.value })}
-                                />
-                                <p className="text-[10px] text-slate-400 font-medium">此内容将同步展示在创作室的功能操作提示中。</p>
-                            </div>
-
-                            <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
+                            <div className="flex gap-3">
                                 <button
-                                    type="button"
-                                    onClick={closeModal}
-                                    className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
+                                    onClick={() => setConfirmModal({ isOpen: false, rule: null, action: 'enable' })}
+                                    className="flex-1 py-3 text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
                                 >
                                     取消
                                 </button>
                                 <button
-                                    type="submit"
-                                    disabled={createMutation.isPending || updateMutation.isPending}
-                                    className="px-8 py-2.5 text-sm font-bold bg-violet-600 text-white rounded-xl hover:bg-violet-700 shadow-lg shadow-violet-500/30 transition-all disabled:opacity-50 disabled:shadow-none"
+                                    onClick={confirmToggleActive}
+                                    disabled={updateMutation.isPending}
+                                    className={`flex-[1.5] py-3 text-sm font-bold text-white rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 ${confirmModal.action === 'enable'
+                                        ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20'
+                                        : 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/20'
+                                        }`}
                                 >
-                                    {createMutation.isPending || updateMutation.isPending ? '保存中...' : '确认保存'}
+                                    {updateMutation.isPending ? '处理中...' : `确认${confirmModal.action === 'enable' ? '启用' : '禁用'}`}
                                 </button>
                             </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-            {/* Confirmation Modal */}
-            {confirmModal.isOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in zoom-in-95 duration-200 border border-white/20">
-                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 ${confirmModal.action === 'enable' ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-500'
-                            }`}>
-                            {confirmModal.action === 'enable' ? <CheckCircle size={28} /> : <AlertCircle size={28} />}
-                        </div>
-
-                        <h3 className="text-xl font-black text-slate-800 tracking-tight mb-2">
-                            确认{confirmModal.action === 'enable' ? '启用' : '禁用'}规则？
-                        </h3>
-                        <p className="text-slate-500 text-sm leading-relaxed mb-6">
-                            您正在对 <span className="font-bold text-slate-700">[{confirmModal.rule?.name}]</span> 进行状态切换。
-                            {confirmModal.action === 'disable' ? '禁用后，用户执行相关操作时将不再产生扣费。' : '启用后，将立即恢复计费逻辑。'}
-                        </p>
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setConfirmModal({ isOpen: false, rule: null, action: 'enable' })}
-                                className="flex-1 py-3 text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={confirmToggleActive}
-                                disabled={updateMutation.isPending}
-                                className={`flex-[1.5] py-3 text-sm font-bold text-white rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 ${confirmModal.action === 'enable'
-                                    ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20'
-                                    : 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/20'
-                                    }`}
-                            >
-                                {updateMutation.isPending ? '处理中...' : `确认${confirmModal.action === 'enable' ? '启用' : '禁用'}`}
-                            </button>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
         </div>
     );
 };

@@ -15,6 +15,7 @@ router.use(requireAdmin);
 // 用户管理
 // ============================================================
 router.get('/users', AdminController.listUsers);
+router.post('/users', AdminController.createUser); // 新增路由
 router.get('/users/:id', AdminController.getUser);
 router.put('/users/:id', AdminController.updateUser);
 router.post('/users/:id/reset-password', AdminController.resetUserPassword);

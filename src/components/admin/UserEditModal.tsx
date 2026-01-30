@@ -1,6 +1,7 @@
+
 // src/components/admin/UserEditModal.tsx
 import React, { useState, useEffect } from 'react';
-import { X, User as UserIcon, Mail, Shield, Coins, Star, Calendar } from 'lucide-react';
+import { X, User as UserIcon, Mail, Shield, Coins, Star, Calendar, Clock } from 'lucide-react';
 import * as AdminAPI from '../../api/admin';
 
 interface UserEditModalProps {
@@ -15,6 +16,7 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({ isOpen, user, onCl
     const [role, setRole] = useState('');
     const [points, setPoints] = useState(0);
     const [vipLevel, setVipLevel] = useState(0);
+    const [vipExpiresAt, setVipExpiresAt] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -24,6 +26,13 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({ isOpen, user, onCl
             setRole(user.role);
             setPoints(user.points);
             setVipLevel(user.vipLevel || 0);
+            // Format date to YYYY-MM-DD for input[type="date"]
+            if (user.vipExpiresAt) {
+                const date = new Date(user.vipExpiresAt);
+                setVipExpiresAt(date.toISOString().split('T')[0]);
+            } else {
+                setVipExpiresAt('');
+            }
             setError('');
         }
     }, [user]);
@@ -35,12 +44,29 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({ isOpen, user, onCl
         try {
             setLoading(true);
             setError('');
-            await AdminAPI.updateUser(user.id, {
+
+            // Construct payload
+            const payload: any = {
                 nickname,
                 role: role as any,
                 points,
                 vipLevel
-            });
+            };
+
+            // Only send vipExpiresAt if it has a value, or if we explicitly want to clear it (logic depends on backend)
+            // Assuming backend accepts ISO string or null
+            if (vipExpiresAt) {
+                // Convert back to ISO string (start of day or preserve existing time if possible, but keeping it simple)
+                payload.vipExpiresAt = new Date(vipExpiresAt).toISOString();
+            } else {
+                // If cleared, you might want to send null or handle differently. 
+                // For now, if empty, we might not update it or send null if backend supports.
+                // Let's assume sending null clears it if that's the intent, or just omit if no change.
+                // AdminAPI/Prisma usually expects Date object or ISO string.
+                payload.vipExpiresAt = null;
+            }
+
+            await AdminAPI.updateUser(user.id, payload);
             onSuccess();
             onClose();
         } catch (err: any) {
@@ -112,14 +138,31 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({ isOpen, user, onCl
                                         onChange={(e) => setRole(e.target.value)}
                                         className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-violet-500 outline-none transition-all appearance-none"
                                     >
-                                        <option value="USER">普通用户</option>
+                                        <option value="USER">免费用户</option>
+                                        <option value="BASIC">基础用户</option>
                                         <option value="PROFESSIONAL">专业用户</option>
+                                        <option value="PREMIUM">尊享用户</option>
                                         <option value="ENTERPRISE">企业用户</option>
-                                        <option value="ADMIN">管理员</option>
-                                        <option value="SUPER_ADMIN">超级管理员</option>
+                                        <option value="ADMIN">业务管理员</option>
+                                        <option value="SUPER_ADMIN">系统管理员</option>
                                     </select>
                                 </div>
                             </div>
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-1.5 ml-1">积分余额</label>
+                                <div className="relative">
+                                    <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="number"
+                                        value={points}
+                                        onChange={(e) => setPoints(Number(e.target.value))}
+                                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-violet-500 outline-none transition-all"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-1.5 ml-1">VIP 等级</label>
                                 <div className="relative">
@@ -129,25 +172,25 @@ export const UserEditModal: React.FC<UserEditModalProps> = ({ isOpen, user, onCl
                                         onChange={(e) => setVipLevel(Number(e.target.value))}
                                         className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-violet-500 outline-none transition-all appearance-none"
                                     >
-                                        <option value={0}>VIP 0</option>
-                                        <option value={1}>VIP 1</option>
-                                        <option value={2}>VIP 2</option>
-                                        <option value={3}>VIP 3</option>
+                                        <option value={0}>VIP 0 (免费用户)</option>
+                                        <option value={1}>VIP 1 (基础用户)</option>
+                                        <option value={2}>VIP 2 (专业用户)</option>
+                                        <option value={3}>VIP 3 (尊享用户)</option>
+                                        <option value={4}>VIP 4 (企业用户)</option>
                                     </select>
                                 </div>
                             </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-1.5 ml-1">积分余额</label>
-                            <div className="relative">
-                                <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                <input
-                                    type="number"
-                                    value={points}
-                                    onChange={(e) => setPoints(Number(e.target.value))}
-                                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-violet-500 outline-none transition-all"
-                                />
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-1.5 ml-1">VIP 到期时间</label>
+                                <div className="relative">
+                                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="date"
+                                        value={vipExpiresAt}
+                                        onChange={(e) => setVipExpiresAt(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-violet-500 outline-none transition-all"
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>

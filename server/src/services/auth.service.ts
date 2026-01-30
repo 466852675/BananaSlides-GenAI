@@ -9,6 +9,12 @@ import {
     generateVerificationCode
 } from '../utils/password.util';
 import { signToken, getTokenExpiresIn } from '../utils/jwt.util';
+import crypto from 'crypto';
+
+// 生成唯一邀请码
+function generateInviteCode(): string {
+    return crypto.randomBytes(4).toString('hex').toUpperCase();
+}
 
 const prisma = new PrismaClient();
 
@@ -28,16 +34,7 @@ export interface RegisterDto {
     email: string;
     password: string;
     nickname?: string;
-}
-
-/**
- * 用户资料更新 DTO
- */
-export interface UpdateProfileDto {
-    nickname?: string;
-    avatar?: string;
-    phone?: string;
-    bio?: string;
+    inviteCode?: string; // 邀请码（可选）
 }
 
 /**
@@ -59,9 +56,11 @@ export interface AuthResult {
         email: string | null;
         username: string | null;
         nickname: string | null;
-        role: UserRole;
+        role: string;
         points: number;
         vipLevel: number;
+        inviteCode?: string | null;
+        [key: string]: any;
     };
     token: string;
     expiresIn: number;
@@ -76,6 +75,9 @@ export class AuthError extends Error {
         this.name = 'AuthError';
     }
 }
+
+// 邀请奖励积分
+const REFERRAL_REWARD_POINTS = 200;
 
 /**
  * 用户注册
@@ -101,8 +103,25 @@ export async function register(data: RegisterDto): Promise<AuthResult> {
         throw new AuthError('EMAIL_EXISTS', '该邮箱已被注册');
     }
 
-    // 4. 创建用户
+    // 4. 查找邀请人（如果提供了邀请码）
+    let inviter: { id: string; points: number } | null = null;
+    if (data.inviteCode) {
+        inviter = await prisma.user.findUnique({
+            where: { inviteCode: data.inviteCode },
+            select: { id: true, points: true }
+        });
+        // 如果邀请码无效，不阻止注册，只是不绑定
+        if (!inviter) {
+            console.log(`[Auth] 无效的邀请码: ${data.inviteCode}`);
+        }
+    }
+
+    // 5. 创建用户（新用户基础积分 30 + 被邀请奖励 200）
     const passwordHash = await hashPassword(data.password);
+    const newInviteCode = generateInviteCode();
+    const basePoints = 30;
+    const totalPoints = basePoints + (inviter ? REFERRAL_REWARD_POINTS : 0);
+
     const user = await prisma.user.create({
         data: {
             email: data.email,
@@ -110,23 +129,58 @@ export async function register(data: RegisterDto): Promise<AuthResult> {
             nickname: data.nickname || data.email.split('@')[0],
             role: UserRole.USER,
             status: UserStatus.ACTIVE,
-            points: 30, // 默认赠送 30 积分
+            points: totalPoints,
+            inviteCode: newInviteCode,
+            invitedById: inviter?.id, // 绑定邀请人
         }
     });
 
-    // 5. 签发 Token
+    // 6. 签发 Token
     const token = signToken({ userId: user.id, role: user.role });
 
-    // 6. 创建赠送积分的交易记录
+    // 7. 创建赠送积分的交易记录
     await prisma.transaction.create({
         data: {
             userId: user.id,
             type: 'bonus',
-            amount: 30,
-            balance: 30,
+            amount: basePoints,
+            balance: totalPoints,
             description: '新用户注册赠送',
         }
     });
+
+    // 8. 如果有有效邀请人，双方获得奖励
+    if (inviter) {
+        // 被邀请人获得奖励记录
+        await prisma.transaction.create({
+            data: {
+                userId: user.id,
+                type: 'bonus',
+                amount: REFERRAL_REWARD_POINTS,
+                balance: totalPoints,
+                description: '受邀注册奖励',
+            }
+        });
+
+        // 邀请人获得奖励
+        const inviterNewPoints = inviter.points + REFERRAL_REWARD_POINTS;
+        await prisma.user.update({
+            where: { id: inviter.id },
+            data: { points: inviterNewPoints }
+        });
+
+        await prisma.transaction.create({
+            data: {
+                userId: inviter.id,
+                type: 'bonus',
+                amount: REFERRAL_REWARD_POINTS,
+                balance: inviterNewPoints,
+                description: `邀请用户 ${user.nickname || user.email} 注册奖励`,
+            }
+        });
+
+        console.log(`[Auth] 邀请奖励已发放: 邀请人 ${inviter.id} 和新用户 ${user.id} 各获得 ${REFERRAL_REWARD_POINTS} 积分`);
+    }
 
     return {
         user: {
@@ -137,6 +191,7 @@ export async function register(data: RegisterDto): Promise<AuthResult> {
             role: user.role,
             points: user.points,
             vipLevel: user.vipLevel,
+            inviteCode: user.inviteCode,
         },
         token,
         expiresIn: getTokenExpiresIn(),
@@ -175,8 +230,8 @@ export async function login(identity: string, password: string, clientIp?: strin
     }
 
     // 4. 验证密码
-    if (!user.passwordHash) {
-        throw new AuthError('INVALID_CREDENTIALS', '该账户未设置密码，请使用第三方登录');
+    if (!user.passwordHash || typeof user.passwordHash !== 'string') {
+        throw new AuthError('INVALID_CREDENTIALS', '该账户未设置有效密码，请尝试重置密码或使用第三方登录');
     }
 
     const passwordValid = await comparePassword(password, user.passwordHash);
@@ -248,11 +303,22 @@ export async function getCurrentUser(userId: string) {
             vipExpiresAt: true,
             lastLoginAt: true,
             createdAt: true,
+            inviteCode: true, // 返回邀请码
         }
     });
 
     if (!user) {
         throw new AuthError('USER_NOT_FOUND', '用户不存在');
+    }
+
+    // 如果用户没有邀请码，自动生成一个
+    if (!user.inviteCode) {
+        const inviteCode = generateInviteCode();
+        await prisma.user.update({
+            where: { id: userId },
+            data: { inviteCode }
+        });
+        return { ...user, inviteCode };
     }
 
     return user;
@@ -428,13 +494,15 @@ export async function sendPhoneCode(phone: string): Promise<void> {
     // 查找或预创建用户
     let user = await prisma.user.findUnique({ where: { phone } });
     if (!user) {
+        const inviteCode = generateInviteCode();
         user = await prisma.user.create({
             data: {
                 phone,
                 nickname: `用户${phone.slice(-4)}`,
                 points: 30,
                 role: UserRole.USER,
-                status: UserStatus.ACTIVE
+                status: UserStatus.ACTIVE,
+                inviteCode, // 自动生成邀请码
             }
         });
 

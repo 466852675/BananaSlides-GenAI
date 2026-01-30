@@ -6,9 +6,10 @@ import { motion } from 'framer-motion';
 
 interface ReferralCardProps {
     className?: string;
+    onViewDetails?: () => void;
 }
 
-export const ReferralCard: React.FC<ReferralCardProps> = ({ className = '' }) => {
+export const ReferralCard: React.FC<ReferralCardProps> = ({ className = '', onViewDetails }) => {
     const { user } = useAuth();
     const [copied, setCopied] = useState(false);
     const [copiedType, setCopiedType] = useState<'link' | 'code' | null>(null);
@@ -126,7 +127,10 @@ export const ReferralCard: React.FC<ReferralCardProps> = ({ className = '' }) =>
                         </div>
                         <span className="text-xs font-medium text-white/80">已邀请 0 位好友</span>
                     </div>
-                    <button className="flex items-center gap-2 text-xs font-bold hover:gap-3 transition-all">
+                    <button
+                        onClick={onViewDetails}
+                        className="flex items-center gap-2 text-xs font-bold hover:gap-3 transition-all hover:underline"
+                    >
                         <span>查看明细</span>
                         <ArrowRight size={14} />
                     </button>

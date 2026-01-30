@@ -18,6 +18,7 @@ interface User {
     role: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
     points: number;
     vipLevel: number;
+    vipExpiresAt: string | null; // V8.5 Added
     bio: string | null;
     // V8.0 增长体系字段
     inviteCode?: string | null;
@@ -37,7 +38,7 @@ interface AuthContextType {
     login: (identity: string, password: string) => Promise<void>;
     loginWithPhone: (phone: string, code: string) => Promise<void>;
     sendPhoneCode: (phone: string) => Promise<void>;
-    register: (email: string, password: string, nickname?: string) => Promise<void>;
+    register: (email: string, password: string, nickname?: string, inviteCode?: string) => Promise<void>;
     logout: () => void;
     refreshUser: () => Promise<void>;
 
@@ -107,7 +108,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 role: userData.role,
                 points: userData.points,
                 vipLevel: userData.vipLevel,
+                vipExpiresAt: userData.vipExpiresAt,
                 bio: userData.bio || null,
+                inviteCode: userData.inviteCode, // 添加邀请码
             });
         } catch (error) {
             console.error('[Auth] 刷新用户信息失败:', error);
@@ -131,7 +134,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
             role: result.user.role,
             points: result.user.points,
             vipLevel: result.user.vipLevel,
+            vipExpiresAt: result.user.vipExpiresAt,
             bio: result.user.bio || null,
+            inviteCode: result.user.inviteCode,
         });
         setShowLoginModal(false);
     }, []);
@@ -148,7 +153,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
             role: result.user.role,
             points: result.user.points,
             vipLevel: result.user.vipLevel,
+            vipExpiresAt: result.user.vipExpiresAt,
             bio: result.user.bio || null,
+            inviteCode: result.user.inviteCode,
         });
         setShowLoginModal(false);
     }, []);
@@ -159,8 +166,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }, []);
 
     // 注册
-    const register = useCallback(async (email: string, password: string, nickname?: string) => {
-        const result = await AuthAPI.register({ email, password, nickname });
+    const register = useCallback(async (email: string, password: string, nickname?: string, inviteCode?: string) => {
+        const result = await AuthAPI.register({ email, password, nickname, inviteCode });
         setUser({
             id: result.user.id,
             email: result.user.email,
@@ -170,7 +177,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
             role: result.user.role,
             points: result.user.points,
             vipLevel: result.user.vipLevel,
+            vipExpiresAt: result.user.vipExpiresAt,
             bio: result.user.bio || null,
+            inviteCode: result.user.inviteCode,
         });
         setShowLoginModal(false);
     }, []);

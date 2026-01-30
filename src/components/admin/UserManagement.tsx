@@ -12,16 +12,19 @@ import {
     ChevronLeft,
     ChevronRight,
     User as UserIcon,
-    MoreHorizontal,
+    RefreshCcw,
     Shield,
     Mail,
     Calendar,
     CheckCircle,
-    Trash2
+    AlertCircle,
+    Trash2,
+    Plus
 } from 'lucide-react';
 import * as AdminAPI from '../../api/admin';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { UserEditModal } from './UserEditModal';
+import { UserCreateModal } from './UserCreateModal';
 import { PasswordResetModal } from './PasswordResetModal';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -34,8 +37,13 @@ export const UserManagement: React.FC = () => {
     const [roleFilter, setRoleFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [vipFilter, setVipFilter] = useState<number | ''>('');
+    const [startDate, setStartDate] = useState<string>('');
+    const [endDate, setEndDate] = useState<string>('');
+    const [amountType, setAmountType] = useState<'points' | 'spent' | ''>('');
+    const [minAmount, setMinAmount] = useState<string>('');
+    const [maxAmount, setMaxAmount] = useState<string>('');
     const [page, setPage] = useState(1);
-    const [pagination, setPagination] = useState({ total: 0, totalPages: 1, pageSize: 20 });
+    const [pagination, setPagination] = useState({ total: 0, totalPages: 1, pageSize: 8 });
 
     // 弹窗状态
     const [confirmConfig, setConfirmConfig] = useState<{
@@ -55,6 +63,7 @@ export const UserManagement: React.FC = () => {
     // 编辑/重置密码弹窗状态
     const [selectedUser, setSelectedUser] = useState<AdminAPI.AdminUser | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
     // 防抖搜索
@@ -72,8 +81,14 @@ export const UserManagement: React.FC = () => {
                 keyword: debouncedKeyword || undefined,
                 role: roleFilter || undefined,
                 status: statusFilter || undefined,
+                vipLevel: vipFilter !== '' ? Number(vipFilter) : undefined,
+                startDate: startDate || undefined,
+                endDate: endDate || undefined,
+                amountType: amountType || undefined,
+                minAmount: minAmount !== '' ? Number(minAmount) : undefined,
+                maxAmount: maxAmount !== '' ? Number(maxAmount) : undefined,
                 page,
-                pageSize: 20
+                pageSize: 8
             });
             setUsers(result.users);
             setPagination(result.pagination);
@@ -82,7 +97,7 @@ export const UserManagement: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [debouncedKeyword, roleFilter, statusFilter, page]);
+    }, [debouncedKeyword, roleFilter, statusFilter, vipFilter, startDate, endDate, amountType, minAmount, maxAmount, page]);
 
     useEffect(() => {
         loadUsers();
@@ -107,22 +122,43 @@ export const UserManagement: React.FC = () => {
     const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
         const styles: Record<string, string> = {
             'SUPER_ADMIN': 'bg-amber-100 text-amber-700 border-amber-200',
-            'ADMIN': 'bg-blue-100 text-blue-700 border-blue-200',
+            'ADMIN': 'bg-slate-100 text-slate-700 border-slate-200',
             'ENTERPRISE': 'bg-indigo-100 text-indigo-700 border-indigo-200',
+            'PREMIUM': 'bg-amber-100 text-amber-800 border-amber-300',
             'PROFESSIONAL': 'bg-violet-100 text-violet-700 border-violet-200',
-            'USER': 'bg-slate-100 text-slate-600 border-slate-200'
+            'BASIC': 'bg-blue-100 text-blue-700 border-blue-200',
+            'USER': 'bg-slate-50 text-slate-600 border-slate-100'
         };
         const labels: Record<string, string> = {
-            'SUPER_ADMIN': '超级管理员',
-            'ADMIN': '管理员',
+            'SUPER_ADMIN': '系统管理员',
+            'ADMIN': '业务管理员',
             'ENTERPRISE': '企业用户',
+            'PREMIUM': '尊享用户',
             'PROFESSIONAL': '专业用户',
-            'USER': '普通用户'
+            'BASIC': '基础用户',
+            'USER': '免费用户'
         };
         return (
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${styles[role] || styles['USER']} flex items-center gap-1 w-fit`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${styles[role] || styles['USER']} flex items-center gap-1 w-fit whitespace-nowrap`}>
                 <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
                 {labels[role] || role}
+            </span>
+        );
+    };
+
+    // VIP 等级标签 (V8.5 简约版)
+    const VipBadge: React.FC<{ level: number }> = ({ level }) => {
+        const config: Record<number, { label: string; style: string }> = {
+            0: { label: 'Lv0', style: 'bg-slate-100 text-slate-500 border-slate-200' },
+            1: { label: 'Lv1', style: 'bg-blue-100 text-blue-600 border-blue-200' },
+            2: { label: 'Lv2', style: 'bg-violet-100 text-violet-600 border-violet-200' },
+            3: { label: 'Lv3', style: 'bg-amber-100 text-amber-600 border-amber-200' },
+            4: { label: 'Lv4', style: 'bg-indigo-100 text-indigo-600 border-indigo-200' }
+        };
+        const { label, style } = config[level] || config[0];
+        return (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider ${style} w-fit shadow-sm`}>
+                {label}
             </span>
         );
     };
@@ -137,13 +173,17 @@ export const UserManagement: React.FC = () => {
         const labels: Record<string, string> = {
             'ACTIVE': '正常',
             'DISABLED': '禁用',
-            'PENDING': '待验证'
+            'PENDING': '待核'
+        };
+        const icons = {
+            'ACTIVE': <CheckCircle size={12} className="shrink-0" />,
+            'DISABLED': <Ban size={12} className="shrink-0" />,
+            'PENDING': <AlertCircle size={12} className="shrink-0" />
         };
         return (
-            <div className={`px-2.5 py-1 rounded-lg text-xs font-bold border flex items-center gap-1.5 w-fit ${styles[status] || styles['PENDING']}`}>
-                {status === 'ACTIVE' && <CheckCircle size={12} />}
-                {status === 'DISABLED' && <Ban size={12} />}
-                {labels[status] || status}
+            <div className={`px-2 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1.5 w-fit whitespace-nowrap ${styles[status] || styles['PENDING']}`}>
+                {icons[status] || <AlertCircle size={12} className="shrink-0" />}
+                <span className="leading-none">{labels[status] || status}</span>
             </div>
         );
     };
@@ -165,83 +205,163 @@ export const UserManagement: React.FC = () => {
                             </p>
                         </div>
                     </div>
+
+                    <button
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="px-5 py-2.5 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-xl font-bold text-sm hover:bg-white/20 active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-violet-900/10"
+                    >
+                        <Plus size={18} /> 新增用户
+                    </button>
                 </div>
             </div>
 
-            {/* Filter Bar - Standardized Outside Hero */}
-            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-white/60 shadow-sm flex flex-col lg:flex-row items-center gap-4">
-                <div className="relative flex-1 w-full group">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
-                    <input
-                        type="text"
-                        placeholder="搜索邮箱、用户名、昵称..."
-                        value={keyword}
-                        onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
-                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none transition-all font-medium"
-                    />
-                </div>
+            {/* Filter Bar */}
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-1.5 border border-white/60 shadow-sm overflow-x-auto no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                <div className="flex items-center gap-1 min-w-max">
+                    <div className="relative group w-40 flex-shrink-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={16} />
+                        <input
+                            type="text"
+                            placeholder="搜索用户..."
+                            value={keyword}
+                            onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
+                            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none transition-all font-medium"
+                        />
+                    </div>
 
-                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                    <div className="relative flex-1 lg:flex-none min-w-[140px]">
-                        <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <div className="relative flex-shrink-0">
+                        <Shield className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                         <select
                             value={roleFilter}
                             onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
-                            className="w-full pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all"
+                            className="pl-7 pr-6 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[85px]"
                         >
-                            <option value="">全部角色</option>
-                            <option value="USER">普通用户</option>
-                            <option value="PROFESSIONAL">专业用户</option>
-                            <option value="ENTERPRISE">企业用户</option>
-                            <option value="ADMIN">管理员</option>
-                            <option value="SUPER_ADMIN">超级管理员</option>
+                            <option value="">角色</option>
+                            <option value="SUPER_ADMIN">中心管理</option>
+                            <option value="ADMIN">业务管理</option>
+                            <option value="ENTERPRISE">企业</option>
+                            <option value="PREMIUM">尊享</option>
+                            <option value="PROFESSIONAL">专业</option>
+                            <option value="BASIC">基础</option>
+                            <option value="USER">免费</option>
                         </select>
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                            <Filter size={12} />
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Filter size={10} />
                         </div>
                     </div>
 
-                    <div className="relative flex-1 lg:flex-none min-w-[140px]">
-                        <CheckCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                            className="w-full pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all"
-                        >
-                            <option value="">全部状态</option>
-                            <option value="ACTIVE">正常</option>
-                            <option value="DISABLED">已禁用</option>
-                            <option value="PENDING">待验证</option>
-                        </select>
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                            <Filter size={12} />
-                        </div>
-                    </div>
-
-                    <div className="relative flex-1 lg:flex-none min-w-[150px]">
-                        <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <div className="relative flex-shrink-0">
+                        <Shield className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                         <select
                             value={vipFilter}
                             onChange={(e) => { setVipFilter(e.target.value === '' ? '' : Number(e.target.value)); setPage(1); }}
-                            className="w-full pl-10 pr-8 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all"
+                            className="pl-7 pr-6 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[100px]"
                         >
-                            <option value="">全部VIP等级</option>
-                            <option value="0">VIP 0 (普通)</option>
-                            <option value="1">VIP 1 (基础)</option>
-                            <option value="2">VIP 2 (专业)</option>
-                            <option value="3">VIP 3 (企业)</option>
+                            <option value="">VIP等级</option>
+                            <option value="0">Lv0 (免费)</option>
+                            <option value="1">Lv1 (基础)</option>
+                            <option value="2">Lv2 (专业)</option>
+                            <option value="3">Lv3 (尊享)</option>
+                            <option value="4">Lv4 (企业)</option>
                         </select>
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                            <Filter size={12} />
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Filter size={10} />
                         </div>
                     </div>
+
+                    <div className="relative flex-shrink-0">
+                        <CheckCircle className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                            className="pl-7 pr-6 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[80px]"
+                        >
+                            <option value="">状态</option>
+                            <option value="ACTIVE">正常</option>
+                            <option value="DISABLED">禁用</option>
+                            <option value="PENDING">待核</option>
+                        </select>
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Filter size={10} />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 flex-shrink-0 bg-slate-50/50 p-1 rounded-lg border border-slate-100">
+                        <select
+                            value={amountType}
+                            onChange={(e) => { setAmountType(e.target.value as any); setPage(1); }}
+                            className="pl-1.5 pr-0.5 py-1.5 bg-transparent text-[11px] font-bold text-slate-600 outline-none cursor-pointer min-w-[65px]"
+                        >
+                            <option value="">数值类型</option>
+                            <option value="points">积分</option>
+                            <option value="spent">充值</option>
+                        </select>
+                        <div className="flex items-center gap-1">
+                            <input
+                                type="number"
+                                placeholder="Min"
+                                value={minAmount}
+                                onChange={(e) => { setMinAmount(e.target.value); setPage(1); }}
+                                className="w-12 px-1 py-1 bg-white border border-slate-200 rounded text-[11px] font-medium outline-none focus:border-violet-400 transition-all"
+                            />
+                            <span className="text-slate-300 text-[10px]">-</span>
+                            <input
+                                type="number"
+                                placeholder="Max"
+                                value={maxAmount}
+                                onChange={(e) => { setMaxAmount(e.target.value); setPage(1); }}
+                                className="w-12 px-1 py-1 bg-white border border-slate-200 rounded text-[11px] font-medium outline-none focus:border-violet-400 transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="relative group">
+                            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                                className="pl-7 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[100px]"
+                            />
+                        </div>
+                        <span className="text-slate-300 font-bold text-[10px]">-</span>
+                        <div className="relative group">
+                            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                                className="pl-7 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[100px]"
+                            />
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => {
+                            setKeyword('');
+                            setRoleFilter('');
+                            setVipFilter('');
+                            setStatusFilter('');
+                            setStartDate('');
+                            setEndDate('');
+                            setAmountType('');
+                            setMinAmount('');
+                            setMaxAmount('');
+                            setPage(1);
+                        }}
+                        className="px-2 py-2 bg-white border border-slate-200 text-slate-500 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 rounded-lg text-xs font-bold transition-all flex items-center justify-center group flex-shrink-0"
+                        title="重置筛选"
+                    >
+                        <RefreshCcw size={14} className="group-hover:rotate-180 transition-transform duration-500" />
+                    </button>
                 </div>
             </div>
 
             {/* Users Table */}
-            <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+            <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden min-h-[520px]">
                 {loading ? (
-                    <div className="flex items-center justify-center h-80">
+                    <div className="flex items-center justify-center h-[520px]">
                         <div className="relative">
                             <div className="w-12 h-12 rounded-full border-4 border-violet-100 animate-pulse"></div>
                             <div className="absolute top-0 left-0 w-12 h-12 rounded-full border-4 border-violet-500 border-t-transparent animate-spin"></div>
@@ -270,21 +390,23 @@ export const UserManagement: React.FC = () => {
                         <table className="w-full">
                             <thead>
                                 <tr className="border-b border-slate-100/60 bg-slate-50/50">
-                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">基本信息</th>
-                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">身份角色</th>
-                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">账号状态</th>
-                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">积分余额</th>
-                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">项目数据</th>
-                                    <th className="text-left text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">注册时间</th>
-                                    <th className="text-right text-xs font-black text-slate-400 uppercase tracking-wider px-6 py-4">操作</th>
+                                    <th className="text-left text-[11px] font-black text-slate-400 uppercase tracking-wider px-3 py-3 whitespace-nowrap">基本信息</th>
+                                    <th className="text-left text-[11px] font-black text-slate-400 uppercase tracking-wider px-3 py-3 whitespace-nowrap">身份角色</th>
+                                    <th className="text-left text-[11px] font-black text-slate-400 uppercase tracking-wider px-3 py-3 whitespace-nowrap">VIP</th>
+                                    <th className="text-left text-[11px] font-black text-slate-400 uppercase tracking-wider px-3 py-3 whitespace-nowrap">账号状态</th>
+                                    <th className="text-left text-[11px] font-black text-slate-400 uppercase tracking-wider px-3 py-3 whitespace-nowrap">积分余额</th>
+                                    <th className="text-left text-[11px] font-black text-slate-400 uppercase tracking-wider px-3 py-3 whitespace-nowrap">累计充值</th>
+                                    <th className="text-left text-[11px] font-black text-slate-400 uppercase tracking-wider px-3 py-3 whitespace-nowrap">项目数据</th>
+                                    <th className="text-left text-[11px] font-black text-slate-400 uppercase tracking-wider px-3 py-3 whitespace-nowrap">注册时间</th>
+                                    <th className="text-right text-[11px] font-black text-slate-400 uppercase tracking-wider px-3 py-3 whitespace-nowrap">操作</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100/60">
                                 {users.map((user) => (
                                     <tr key={user.id} className="group hover:bg-violet-50/30 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-violet-500/20">
+                                        <td className="px-3 py-3 whitespace-nowrap">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-[10px] font-bold shadow-md shadow-violet-500/20 shrink-0">
                                                     {user.avatar ? (
                                                         <img src={user.avatar} alt="" className="w-full h-full rounded-full object-cover" />
                                                     ) : (
@@ -292,34 +414,43 @@ export const UserManagement: React.FC = () => {
                                                     )}
                                                 </div>
                                                 <div>
-                                                    <div className="text-sm font-bold text-slate-800">
+                                                    <div className="text-[13px] font-bold text-slate-800">
                                                         {user.nickname || (user.username ? `@${user.username}` : '未命名用户')}
                                                     </div>
-                                                    <div className="text-xs text-slate-500 font-mono mt-0.5 flex items-center gap-1">
-                                                        <Mail size={10} />
+                                                    <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                                                        <Mail size={9} />
                                                         {user.email || '无邮箱'}
                                                     </div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-3 py-3 whitespace-nowrap">
                                             <RoleBadge role={user.role} />
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-3 py-3 whitespace-nowrap">
+                                            <VipBadge level={user.vipLevel} />
+                                        </td>
+                                        <td className="px-3 py-3 whitespace-nowrap">
                                             <StatusBadge status={user.status} />
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="font-mono font-bold text-slate-700">
-                                                {user.points.toLocaleString()} <span className="text-xs text-slate-400 font-normal">PTS</span>
+                                        <td className="px-3 py-3 whitespace-nowrap">
+                                            <div className="font-mono font-bold text-slate-700 text-[13px]">
+                                                {user.points.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">PTS</span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="text-sm font-medium text-slate-600">
-                                                {user.projectCount || 0} <span className="text-slate-400 text-xs">个项目</span>
+                                        <td className="px-3 py-3 whitespace-nowrap">
+                                            <div className="font-mono font-bold text-blue-600 text-[13px]">
+                                                <span className="text-[10px] mr-0.5">￥</span>
+                                                {(user.totalSpent || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                        <td className="px-3 py-3 whitespace-nowrap">
+                                            <div className="text-[13px] font-medium text-slate-600">
+                                                {user.projectCount || 0} <span className="text-slate-400 text-[11px]">项目</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-3 whitespace-nowrap">
+                                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
                                                 <Calendar size={12} />
                                                 {formatDate(user.createdAt).split(' ')[0]}
                                             </div>
@@ -327,27 +458,27 @@ export const UserManagement: React.FC = () => {
                                                 {formatDate(user.createdAt).split(' ')[1]}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2 transition-all">
+                                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                                            <div className="flex items-center justify-end gap-1.5 transition-all">
                                                 <button
                                                     onClick={() => {
                                                         setSelectedUser(user);
                                                         setIsEditModalOpen(true);
                                                     }}
-                                                    className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
-                                                    title="编辑详情"
+                                                    className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
+                                                    title="编辑"
                                                 >
-                                                    <Edit2 size={16} />
+                                                    <Edit2 size={14} />
                                                 </button>
                                                 <button
                                                     onClick={() => {
                                                         setSelectedUser(user);
                                                         setIsResetModalOpen(true);
                                                     }}
-                                                    className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
-                                                    title="重置密码"
+                                                    className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
+                                                    title="密码"
                                                 >
-                                                    <Key size={16} />
+                                                    <Key size={14} />
                                                 </button>
                                                 {isPowerfulAdmin && (
                                                     <>
@@ -372,13 +503,13 @@ export const UserManagement: React.FC = () => {
                                                                     }
                                                                 });
                                                             }}
-                                                            className={`p-2 rounded-lg transition-colors border border-slate-100/50 shadow-sm ${user.status === 'DISABLED'
+                                                            className={`p-1.5 rounded-lg transition-colors border border-slate-100/50 shadow-sm ${user.status === 'DISABLED'
                                                                 ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50'
                                                                 : 'text-rose-400 hover:text-rose-600 hover:bg-rose-50'
                                                                 }`}
-                                                            title={user.status === 'DISABLED' ? '启用账号' : '禁用账号'}
+                                                            title={user.status === 'DISABLED' ? '启用' : '禁用'}
                                                         >
-                                                            {user.status === 'DISABLED' ? <Check size={16} /> : <Ban size={16} />}
+                                                            {user.status === 'DISABLED' ? <Check size={14} /> : <Ban size={14} />}
                                                         </button>
                                                         <button
                                                             onClick={() => {
@@ -399,10 +530,10 @@ export const UserManagement: React.FC = () => {
                                                                     }
                                                                 });
                                                             }}
-                                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
-                                                            title="删除用户"
+                                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
+                                                            title="删除"
                                                         >
-                                                            <Trash2 size={16} />
+                                                            <Trash2 size={14} />
                                                         </button>
                                                     </>
                                                 )}
@@ -419,7 +550,7 @@ export const UserManagement: React.FC = () => {
                 {!loading && users.length > 0 && (
                     <div className="flex items-center justify-between px-8 py-5 border-t border-slate-100/60 bg-slate-50/30">
                         <div className="text-sm text-slate-500 font-medium">
-                            显示第 <span className="font-bold text-slate-800">{(page - 1) * 20 + 1}</span> 到 <span className="font-bold text-slate-800">{Math.min(page * 20, pagination.total)}</span> 条，共 <span className="font-bold text-slate-800">{pagination.total}</span> 条
+                            显示第 <span className="font-bold text-slate-800">{(page - 1) * 8 + 1}</span> 到 <span className="font-bold text-slate-800">{Math.min(page * 8, pagination.total)}</span> 条，共 <span className="font-bold text-slate-800">{pagination.total}</span> 条
                         </div>
                         <div className="flex items-center gap-2">
                             <button
@@ -455,6 +586,15 @@ export const UserManagement: React.FC = () => {
                 isOpen={isResetModalOpen}
                 user={selectedUser}
                 onClose={() => setIsResetModalOpen(false)}
+            />
+
+            {/* Create User Modal */}
+            <UserCreateModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                onSuccess={() => {
+                    loadUsers();
+                }}
             />
 
             <ConfirmDialog

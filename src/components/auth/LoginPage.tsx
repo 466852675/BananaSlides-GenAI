@@ -286,10 +286,10 @@ export const LoginPage: React.FC = () => {
                                         exit={{ opacity: 0, scale: 0.98 }}
                                     >
                                         <SignUpForm
-                                            onSubmit={async (email, password, nickname) => {
+                                            onSubmit={async (email, password, nickname, inviteCode) => {
                                                 setIsLoading(true); setError('');
                                                 try {
-                                                    await register(email, password, nickname);
+                                                    await register(email, password, nickname, inviteCode);
                                                     handleSuccess('注册成功');
                                                 } catch (err: any) {
                                                     setError(err.message || '注册失败');
@@ -485,16 +485,26 @@ const PhoneLoginForm: React.FC<{
 // ============================================================
 
 const SignUpForm: React.FC<{
-    onSubmit: (e: string, p: string, n?: string) => Promise<void>;
+    onSubmit: (e: string, p: string, n?: string, inviteCode?: string) => Promise<void>;
     isLoading: boolean;
     onSwitch: () => void;
 }> = ({ onSubmit, isLoading, onSwitch }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [nickname, setNickname] = useState('');
+    const [inviteCode, setInviteCode] = useState('');
+
+    // 检查 URL 中是否有邀请码参数
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const ref = params.get('ref');
+        if (ref) {
+            setInviteCode(ref);
+        }
+    }, []);
 
     return (
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit(email, password, nickname); }} className="space-y-6">
+        <form onSubmit={(e) => { e.preventDefault(); onSubmit(email, password, nickname, inviteCode); }} className="space-y-6">
             <div className="space-y-4">
                 <div className="group relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={20} />
@@ -524,6 +534,17 @@ const SignUpForm: React.FC<{
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                         className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/50 border border-slate-200 focus:bg-white focus:border-violet-500 outline-none transition-all placeholder:text-slate-400 font-bold text-slate-700 text-sm"
+                    />
+                </div>
+                {/* 邀请码输入框 */}
+                <div className="group relative">
+                    <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-amber-500 transition-colors" size={20} />
+                    <input
+                        type="text"
+                        placeholder="邀请码（选填，双方各得200积分）"
+                        value={inviteCode}
+                        onChange={e => setInviteCode(e.target.value.toUpperCase())}
+                        className="w-full pl-12 pr-4 py-4 rounded-2xl bg-amber-50/50 border border-amber-100 focus:bg-white focus:border-amber-400 outline-none transition-all placeholder:text-slate-400 font-bold text-slate-700 text-sm"
                     />
                 </div>
             </div>

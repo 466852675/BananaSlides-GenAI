@@ -15,7 +15,13 @@ export type PointsActionCode =
     | 'style_apply'
     | 'export_pptx'
     | 'vision_analyze'
-    | 'smart_refine';
+    | 'smart_refine'
+    | 'style_image'
+    | 'full_content_generation'
+    | 'theme_refine'
+    | 'content_refine'
+    | 'template_refine'
+    | 'template_doc_parse';
 
 export interface DeductResult {
     success: boolean;
@@ -26,9 +32,9 @@ export interface DeductResult {
 }
 
 /**
- * 获取操作所需积分
+ * 获取操作所需积分 (支持 VIP 价格)
  */
-export async function getActionCost(actionCode: PointsActionCode): Promise<number> {
+export async function getActionCost(actionCode: PointsActionCode, userId?: string): Promise<number> {
     const rule = await prisma.pointsRule.findUnique({
         where: { code: actionCode },
     });
@@ -38,8 +44,75 @@ export async function getActionCost(actionCode: PointsActionCode): Promise<numbe
         return 0; // 规则不存在时免费
     }
 
+    // 如果没有用户 ID，返回标准价格
+    if (!userId) {
+        return rule.costPoints;
+    }
+
+    // 检查用户 VIP 状态
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { vipLevel: true, vipExpiresAt: true }
+    });
+
+    if (user && user.vipLevel > 0) {
+        // 检查 VIP 是否过期
+        const now = new Date();
+        const isVipValid = user.vipExpiresAt ? new Date(user.vipExpiresAt) > now : true; // 如果没有过期时间，假设永久有效 (或由业务逻辑控制)
+
+        if (isVipValid && rule.vipCostPoints !== null && rule.vipCostPoints !== undefined) {
+            // console.log(`[Points] VIP User ${userId} applies VIP cost: ${rule.vipCostPoints} (Standard: ${rule.costPoints})`);
+            return rule.vipCostPoints;
+        }
+    }
+
     return rule.costPoints;
 }
+
+/**
+ * [V8.5] 积分风控检测：检查用户是否触发频率限制
+ */
+export async function checkRateLimit(userId: string, actionCode: PointsActionCode): Promise<{
+    allowed: boolean;
+    reason?: string;
+    resetInSeconds?: number;
+}> {
+    const LIMITS: Record<string, { count: number; windowSeconds: number }> = {
+        'slide_image': { count: 30, windowSeconds: 3600 },
+        'default': { count: 100, windowSeconds: 3600 }
+    };
+
+    const limit = LIMITS[actionCode] || LIMITS.default;
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - limit.windowSeconds * 1000);
+
+    const count = await prisma.transaction.count({
+        where: {
+            userId,
+            ruleCode: actionCode,
+            type: 'consume',
+            createdAt: { gte: windowStart }
+        }
+    });
+
+    if (count >= limit.count) {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { vipLevel: true } });
+        const vipMultiplier = (user?.vipLevel || 0) >= 3 ? 3 : 1;
+
+        if (count < limit.count * vipMultiplier) {
+            return { allowed: true };
+        }
+
+        return {
+            allowed: false,
+            reason: `操作过于频繁，请稍后再试 (当前限制: ${limit.count * vipMultiplier} 次/${limit.windowSeconds / 60}分钟)`,
+            resetInSeconds: limit.windowSeconds
+        };
+    }
+
+    return { allowed: true };
+}
+
 
 /**
  * 检查用户积分是否足够
@@ -51,7 +124,7 @@ export async function checkPoints(userId: string, actionCode: PointsActionCode):
 }> {
     const [user, cost] = await Promise.all([
         prisma.user.findUnique({ where: { id: userId }, select: { points: true } }),
-        getActionCost(actionCode),
+        getActionCost(actionCode, userId),
     ]);
 
     if (!user) {
@@ -65,6 +138,13 @@ export async function checkPoints(userId: string, actionCode: PointsActionCode):
     };
 }
 
+/**
+ * 扣除用户积分
+ * @param userId 用户 ID
+ * @param actionCode 操作码
+ * @param projectId 关联的项目 ID（可选）
+ * @param description 自定义描述（可选）
+ */
 /**
  * 扣除用户积分
  * @param userId 用户 ID
@@ -92,7 +172,6 @@ export async function deductPoints(
     });
 
     if (!rule || !rule.isActive) {
-        // 规则不存在或未启用，免费放行
         return {
             success: true,
             remainingPoints: 0,
@@ -101,9 +180,24 @@ export async function deductPoints(
         };
     }
 
-    const cost = rule.costPoints * multiplier;
+    // 计算实际消耗 (传入 userId 以支持 VIP 价格)
+    const costPerAction = await getActionCost(actionCode, userId);
+    const totalCost = costPerAction * multiplier;
 
-    if (cost === 0) {
+    // [V8.5] 风控检测：仅当涉及真实消耗且规则命中时执行
+    if (totalCost > 0) {
+        const rateLimit = await checkRateLimit(userId, actionCode);
+        if (!rateLimit.allowed) {
+            return {
+                success: false,
+                remainingPoints: 0,
+                deductedAmount: 0,
+                message: rateLimit.reason || '操作过于频繁，请稍后再试',
+            };
+        }
+    }
+
+    if (totalCost === 0) {
         return {
             success: true,
             remainingPoints: 0,
@@ -112,63 +206,67 @@ export async function deductPoints(
         };
     }
 
-    // 获取用户
+    // 检查余额
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { points: true },
+        select: { points: true, pointsUsed: true }
     });
 
     if (!user) {
-        return {
-            success: false,
-            remainingPoints: 0,
-            deductedAmount: 0,
-            message: '用户不存在',
-        };
+        throw new Error('用户不存在');
     }
 
-    if (user.points < cost) {
+    if (user.points < totalCost) {
         return {
             success: false,
             remainingPoints: user.points,
             deductedAmount: 0,
-            message: `积分不足，需要 ${cost} 积分，当前余额 ${user.points} 积分`,
+            message: `积分不足 (需要 ${totalCost}, 当前 ${user.points})`
         };
     }
 
-    // 扣除积分并记录交易
-    const newBalance = user.points - cost;
+    // 执行扣费事务
+    const result = await prisma.$transaction(async (tx) => {
+        // 1. 扣除积分
+        const updatedUser = await tx.user.update({
+            where: { id: userId },
+            data: {
+                points: { decrement: totalCost },
+                pointsUsed: { increment: totalCost }
+            }
+        });
 
-    const transaction = await prisma.transaction.create({
-        data: {
-            userId,
-            type: 'consume',
-            amount: -cost, // 负数表示消耗
-            balance: newBalance,
-            ruleCode: actionCode,
-            projectId,
-            description: description || rule.name,
-            module: options?.module || rule.module,
-            category: options?.category || rule.category,
-            subcategory: options?.subcategory,
-            triggerTime: options?.triggerTime,
-            // @ts-ignore: Prisma types not regenerated yet
-            templateId: options?.templateId, // Save templateId
-        },
-    });
+        // 2. 记录流水 (使用 Transaction 模型)
+        const log = await tx.transaction.create({
+            data: {
+                userId,
+                type: 'consume',
+                amount: -totalCost, // 支出为负
+                balance: updatedUser.points,
+                ruleCode: actionCode, // 对应 actionCode
+                projectId,
+                description: description || rule.name,
+                module: options?.module || rule.module,
+                category: options?.category || rule.category,
+                subcategory: options?.subcategory,
+                triggerTime: options?.triggerTime,
+                templateId: options?.templateId
+            }
+        });
 
-    await prisma.user.update({
-        where: { id: userId },
-        data: { points: newBalance },
+        return { updatedUser, log };
     });
 
     return {
         success: true,
-        remainingPoints: newBalance,
-        deductedAmount: cost,
-        transactionId: transaction.id,
+        remainingPoints: result.updatedUser.points,
+        deductedAmount: totalCost,
+        transactionId: result.log.id,
+        message: '扣费成功'
     };
 }
+
+
 
 /**
  * 标记交易为已完成（AI生成成功）
