@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback, useMemo, ClipboardEvent } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo, ClipboardEvent } from "react";
 import { PointsBadge } from './components/PointsBadge';
 import { createPortal } from 'react-dom';
 import {
@@ -130,6 +130,18 @@ import { PurchaseModal } from './components/PurchaseModal';
 import { TopUpModal } from './components/TopUpModal';
 
 import { generateId } from "./utils";
+
+// --- PointsGuard Wrapper Component ---
+interface PointsGuardWrapperProps {
+  onPurchase?: () => void;
+}
+
+const PointsGuardWrapper: React.FC<PointsGuardWrapperProps> = ({ onPurchase }) => {
+  const { data: settings } = useAppSettings();
+  const warnThreshold = settings?.WARN_THRESHOLD ? parseInt(settings.WARN_THRESHOLD, 10) : 50;
+
+  return <PointsGuard warnThreshold={warnThreshold} onPurchase={onPurchase} />;
+};
 
 // --- Constants ---
 const DEFAULT_STYLE_CONFIG: StyleConfig = {
@@ -5146,10 +5158,7 @@ const App: React.FC = () => {
           }}
         />
         <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} />
-        <PointsGuard
-          warnThreshold={50}
-          onPurchase={() => setShowTopUp(true)}
-        />
+        <PointsGuardWrapper onPurchase={() => setShowTopUp(true)} />
 
         {/* 全局充值与支付弹窗 */}
         <TopUpModal

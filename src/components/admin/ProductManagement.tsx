@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import * as AdminAPI from '../../api/admin';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 // Define the handle interface
 export interface ProductManagementHandle {
@@ -39,6 +40,17 @@ export const ProductManagement = React.forwardRef<ProductManagementHandle>((_, r
     const [periodTab, setPeriodTab] = useState<'ALL' | 'year' | 'month' | 'once'>('ALL');
     const [displayFilter, setDisplayFilter] = useState<'ALL' | 'public' | 'hidden' | 'contact_sales'>('ALL');
     const [keyword, setKeyword] = useState('');
+
+    // 删除确认对话框状态
+    const [deleteDialog, setDeleteDialog] = useState<{
+        isOpen: boolean;
+        productId: string;
+        productName: string;
+    }>({
+        isOpen: false,
+        productId: '',
+        productName: ''
+    });
 
     // Form State
     const [formData, setFormData] = useState({
@@ -215,6 +227,20 @@ export const ProductManagement = React.forwardRef<ProductManagementHandle>((_, r
         setIsModalOpen(true);
     };
 
+    const confirmDelete = async () => {
+        try {
+            await deleteMutation.mutateAsync(deleteDialog.productId);
+            setDeleteDialog(prev => ({ ...prev, isOpen: false }));
+            loadProducts();
+        } catch (error) {
+            alert('删除失败');
+        }
+    };
+
+    const closeDeleteDialog = () => {
+        setDeleteDialog(prev => ({ ...prev, isOpen: false }));
+    };
+
     const handleToggleDisplay = async (product: AdminAPI.Product) => {
         try {
             const nextDisplay = product.displayType === 'public' ? 'hidden' : 'public';
@@ -388,9 +414,11 @@ export const ProductManagement = React.forwardRef<ProductManagementHandle>((_, r
                                     </button>
                                     <button
                                         onClick={() => {
-                                            if (confirm('确定要删除这个商品吗？')) {
-                                                deleteMutation.mutate(product.id);
-                                            }
+                                            setDeleteDialog({
+                                                isOpen: true,
+                                                productId: product.id,
+                                                productName: product.name
+                                            });
                                         }}
                                         className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                         title="删除"
@@ -733,6 +761,18 @@ export const ProductManagement = React.forwardRef<ProductManagementHandle>((_, r
                     </div>
                 </div>
             )}
+
+            {/* 删除确认对话框 */}
+            <ConfirmDialog
+                isOpen={deleteDialog.isOpen}
+                title="确认删除"
+                message={`确定要删除商品「${deleteDialog.productName}」吗？此操作不可恢复。`}
+                onConfirm={confirmDelete}
+                onCancel={closeDeleteDialog}
+                type="danger"
+                confirmText="删除"
+                cancelText="取消"
+            />
         </div>
     );
 });

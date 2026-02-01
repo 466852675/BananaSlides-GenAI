@@ -9,6 +9,7 @@ import {
     generateVerificationCode
 } from '../utils/password.util';
 import { signToken, getTokenExpiresIn } from '../utils/jwt.util';
+import { SettingService } from './setting.service';
 import crypto from 'crypto';
 
 // 生成唯一邀请码
@@ -76,9 +77,6 @@ export class AuthError extends Error {
     }
 }
 
-// 邀请奖励积分
-const REFERRAL_REWARD_POINTS = 200;
-
 /**
  * 用户注册
  */
@@ -116,11 +114,15 @@ export async function register(data: RegisterDto): Promise<AuthResult> {
         }
     }
 
-    // 5. 创建用户（新用户基础积分 30 + 被邀请奖励 200）
+    // 5. 读取配置（新用户赠送积分、邀请奖励积分）
+    const settings = await SettingService.getSettings();
+    const basePoints = parseInt(settings?.NEW_USER_POINTS || '30', 10);
+    const referralRewardPoints = parseInt(settings?.REFERRAL_POINTS || '200', 10);
+
+    // 6. 创建用户（新用户基础积分 + 被邀请奖励）
     const passwordHash = await hashPassword(data.password);
     const newInviteCode = generateInviteCode();
-    const basePoints = 30;
-    const totalPoints = basePoints + (inviter ? REFERRAL_REWARD_POINTS : 0);
+    const totalPoints = basePoints + (inviter ? referralRewardPoints : 0);
 
     const user = await prisma.user.create({
         data: {
@@ -135,10 +137,10 @@ export async function register(data: RegisterDto): Promise<AuthResult> {
         }
     });
 
-    // 6. 签发 Token
+    // 7. 签发 Token
     const token = signToken({ userId: user.id, role: user.role });
 
-    // 7. 创建赠送积分的交易记录
+    // 8. 创建赠送积分的交易记录
     await prisma.transaction.create({
         data: {
             userId: user.id,
@@ -149,21 +151,21 @@ export async function register(data: RegisterDto): Promise<AuthResult> {
         }
     });
 
-    // 8. 如果有有效邀请人，双方获得奖励
+    // 9. 如果有有效邀请人，双方获得奖励
     if (inviter) {
         // 被邀请人获得奖励记录
         await prisma.transaction.create({
             data: {
                 userId: user.id,
                 type: 'bonus',
-                amount: REFERRAL_REWARD_POINTS,
+                amount: referralRewardPoints,
                 balance: totalPoints,
                 description: '受邀注册奖励',
             }
         });
 
         // 邀请人获得奖励
-        const inviterNewPoints = inviter.points + REFERRAL_REWARD_POINTS;
+        const inviterNewPoints = inviter.points + referralRewardPoints;
         await prisma.user.update({
             where: { id: inviter.id },
             data: { points: inviterNewPoints }
@@ -173,13 +175,13 @@ export async function register(data: RegisterDto): Promise<AuthResult> {
             data: {
                 userId: inviter.id,
                 type: 'bonus',
-                amount: REFERRAL_REWARD_POINTS,
+                amount: referralRewardPoints,
                 balance: inviterNewPoints,
                 description: `邀请用户 ${user.nickname || user.email} 注册奖励`,
             }
         });
 
-        console.log(`[Auth] 邀请奖励已发放: 邀请人 ${inviter.id} 和新用户 ${user.id} 各获得 ${REFERRAL_REWARD_POINTS} 积分`);
+        console.log(`[Auth] 邀请奖励已发放: 邀请人 ${inviter.id} 和新用户 ${user.id} 各获得 ${referralRewardPoints} 积分`);
     }
 
     return {
@@ -454,29 +456,95 @@ export async function updateProfile(userId: string, data: UpdateProfileDto): Pro
         return await getCurrentUser(userId);
     }
 
-    const user = await prisma.user.update({
-        where: { id: userId },
-        data: updateData,
-        select: {
-            id: true,
-            email: true,
-            phone: true,
-            username: true,
-            nickname: true,
-            avatar: true,
-            bio: true,
-            role: true,
-            status: true,
-            points: true,
-            pointsUsed: true,
-            vipLevel: true,
-            vipExpiresAt: true,
-            lastLoginAt: true,
-            createdAt: true,
+    // 检查是否是首次绑定手机号
+    let shouldRewardPhone = false;
+    if (data.phone !== undefined) {
+        const existingUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { phone: true, points: true }
+        });
+        // 如果之前没有手机号，且现在绑定了手机号，则赠送积分
+        if (existingUser && !existingUser.phone && data.phone) {
+            shouldRewardPhone = true;
         }
+    }
+
+    // 使用事务更新用户资料和赠送积分
+    const result = await prisma.$transaction(async (tx) => {
+        // 更新用户资料
+        const user = await tx.user.update({
+            where: { id: userId },
+            data: updateData,
+            select: {
+                id: true,
+                email: true,
+                phone: true,
+                username: true,
+                nickname: true,
+                avatar: true,
+                bio: true,
+                role: true,
+                status: true,
+                points: true,
+                pointsUsed: true,
+                vipLevel: true,
+                vipExpiresAt: true,
+                lastLoginAt: true,
+                createdAt: true,
+            }
+        });
+
+        // 首次绑定手机号赠送积分
+        if (shouldRewardPhone) {
+            const settings = await SettingService.getSettings();
+            const bindPhonePoints = parseInt(settings?.BIND_PHONE_POINTS || '50', 10);
+
+            await tx.user.update({
+                where: { id: userId },
+                data: { points: { increment: bindPhonePoints } }
+            });
+
+            await tx.transaction.create({
+                data: {
+                    userId: userId,
+                    type: 'bonus',
+                    amount: bindPhonePoints,
+                    balance: user.points + bindPhonePoints,
+                    description: '绑定手机号奖励',
+                    module: '增长',
+                    category: '绑定手机'
+                }
+            });
+
+            console.log(`[Auth] 用户 ${userId} 首次绑定手机号，赠送 ${bindPhonePoints} 积分`);
+
+            // 返回更新后的用户信息
+            return await tx.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    email: true,
+                    phone: true,
+                    username: true,
+                    nickname: true,
+                    avatar: true,
+                    bio: true,
+                    role: true,
+                    status: true,
+                    points: true,
+                    pointsUsed: true,
+                    vipLevel: true,
+                    vipExpiresAt: true,
+                    lastLoginAt: true,
+                    createdAt: true,
+                }
+            });
+        }
+
+        return user;
     });
 
-    return user;
+    return result;
 }
 
 /**
@@ -494,12 +562,16 @@ export async function sendPhoneCode(phone: string): Promise<void> {
     // 查找或预创建用户
     let user = await prisma.user.findUnique({ where: { phone } });
     if (!user) {
+        // 读取新用户赠送积分配置
+        const settings = await SettingService.getSettings();
+        const newUserPoints = parseInt(settings?.NEW_USER_POINTS || '30', 10);
+
         const inviteCode = generateInviteCode();
         user = await prisma.user.create({
             data: {
                 phone,
                 nickname: `用户${phone.slice(-4)}`,
-                points: 30,
+                points: newUserPoints,
                 role: UserRole.USER,
                 status: UserStatus.ACTIVE,
                 inviteCode, // 自动生成邀请码
@@ -511,8 +583,8 @@ export async function sendPhoneCode(phone: string): Promise<void> {
             data: {
                 userId: user.id,
                 type: 'bonus',
-                amount: 30,
-                balance: 30,
+                amount: newUserPoints,
+                balance: newUserPoints,
                 description: '手机号注册赠送',
             }
         });

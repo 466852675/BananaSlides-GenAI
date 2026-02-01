@@ -45,3 +45,6 @@ tests/e2e/fail_*.png
 
 # Claude / Agent tools
 .agent/
+
+# ReCode local database
+.recode

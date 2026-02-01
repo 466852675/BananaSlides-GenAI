@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as AdminApi from '../../api/admin';
 import { PointsRule } from '../../api/admin';
 import { Loader2, Plus, Edit2, Trash2, CheckCircle, XCircle, AlertCircle, Search, Coins, Folder, Layers, Sparkles, BookOpen, Crown, Copy } from 'lucide-react';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 // PointsRuleEditor.tsx - with Search & Filters & VIP Pricing
 
@@ -18,6 +19,17 @@ export const PointsRuleEditor: React.FC = () => {
         rule: PointsRule | null;
         action: 'enable' | 'disable';
     }>({ isOpen: false, rule: null, action: 'enable' });
+
+    // 删除确认对话框状态
+    const [deleteDialog, setDeleteDialog] = useState<{
+        isOpen: boolean;
+        ruleId: string;
+        ruleName: string;
+    }>({
+        isOpen: false,
+        ruleId: '',
+        ruleName: ''
+    });
 
     // Filter State
     const [keyword, setKeyword] = useState('');
@@ -206,10 +218,25 @@ export const PointsRuleEditor: React.FC = () => {
         }
     };
 
-    const handleDelete = (id: string) => {
-        if (confirm('确定要删除此规则吗？')) {
-            deleteMutation.mutate(id);
+    const handleDelete = (id: string, name: string) => {
+        setDeleteDialog({
+            isOpen: true,
+            ruleId: id,
+            ruleName: name
+        });
+    };
+
+    const confirmDelete = async () => {
+        try {
+            await deleteMutation.mutateAsync(deleteDialog.ruleId);
+            setDeleteDialog(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+            alert('删除失败');
         }
+    };
+
+    const closeDeleteDialog = () => {
+        setDeleteDialog(prev => ({ ...prev, isOpen: false }));
     };
 
     const handleToggleActive = (rule: PointsRule) => {
@@ -514,7 +541,7 @@ export const PointsRuleEditor: React.FC = () => {
                                                             <Copy size={16} />
                                                         </button>
                                                         <button
-                                                            onClick={() => handleDelete(rule.id)}
+                                                            onClick={() => handleDelete(rule.id, rule.name)}
                                                             title="删除规则"
                                                             className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
                                                         >
@@ -745,9 +772,21 @@ export const PointsRuleEditor: React.FC = () => {
                                 </button>
                             </div>
                         </div>
-                    </div>
-                )
-            }
-        </div>
+                </div>
+            )
+        }
+
+            {/* 删除确认对话框 */}
+            <ConfirmDialog
+                isOpen={deleteDialog.isOpen}
+                title="确认删除"
+                message={`确定要删除规则「${deleteDialog.ruleName}」吗？此操作不可恢复。`}
+                onConfirm={confirmDelete}
+                onCancel={closeDeleteDialog}
+                type="danger"
+                confirmText="删除"
+                cancelText="取消"
+            />
+        </div >
     );
 };

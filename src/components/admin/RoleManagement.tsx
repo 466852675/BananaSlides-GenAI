@@ -30,6 +30,9 @@ const MODULE_NAMES: Record<string, string> = {
     HISTORY: '项目管理 (History)',
     CREATION: '创作室 (Creation)',
     TEMPLATE: '模版间 (Template)',
+    INVITE: '邀请推广 (Invite)',
+    CHECKIN: '签到系统 (CheckIn)',
+    BILLING: '充值消费 (Billing)',
     // 管理侧
     ADMIN: '系统访问',
     DASHBOARD: '控制台',
@@ -43,7 +46,7 @@ const MODULE_NAMES: Record<string, string> = {
     SETTINGS: '系统设置'
 };
 
-const USER_SIDE_MODULES = ['HISTORY', 'CREATION', 'TEMPLATE'];
+const USER_SIDE_MODULES = ['HISTORY', 'CREATION', 'TEMPLATE', 'INVITE', 'CHECKIN', 'BILLING'];
 
 export const RoleManagement: React.FC = () => {
     const queryClient = useQueryClient();
