@@ -84,3 +84,62 @@ export async function deleteLead(req: Request, res: Response) {
         res.status(500).json({ success: false, error: '删除失败' });
     }
 }
+
+/**
+ * 获取线索详情 (Admin)
+ */
+export async function getLeadDetail(req: Request, res: Response) {
+    try {
+        const id = req.params.id as string;
+        const lead = await LeadService.getLeadById(id);
+        
+        if (!lead) {
+            return res.status(404).json({ success: false, error: '线索不存在' });
+        }
+        
+        res.json({ success: true, data: lead });
+    } catch (error) {
+        console.error('Get Lead Detail Error:', error);
+        res.status(500).json({ success: false, error: '获取线索详情失败' });
+    }
+}
+
+/**
+ * 添加跟进备注 (Admin)
+ */
+export async function addLeadNote(req: Request, res: Response) {
+    try {
+        const id = req.params.id as string;
+        const { note } = req.body;
+        
+        if (!note || typeof note !== 'string') {
+            return res.status(400).json({ success: false, error: '备注内容不能为空' });
+        }
+        
+        const lead = await LeadService.addLeadNote(id, note);
+        res.json({ success: true, data: lead });
+    } catch (error) {
+        console.error('Add Lead Note Error:', error);
+        res.status(500).json({ success: false, error: '添加备注失败' });
+    }
+}
+
+/**
+ * 转换线索为用户 (Admin)
+ */
+export async function convertLeadToUser(req: Request, res: Response) {
+    try {
+        const id = req.params.id as string;
+        const { email, password } = req.body;
+        
+        if (!email || !password) {
+            return res.status(400).json({ success: false, error: '邮箱和密码为必填项' });
+        }
+        
+        const result = await LeadService.convertLeadToUser(id, email, password);
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        console.error('Convert Lead Error:', error);
+        res.status(500).json({ success: false, error: error.message || '转换失败' });
+    }
+}

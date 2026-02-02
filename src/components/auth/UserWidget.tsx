@@ -195,8 +195,8 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
                             {/* 菜单项部分 */}
                             <div className="p-1.5">
                                 <div className="text-[10px] font-bold text-slate-400 px-3 py-1.5 uppercase tracking-wider">个人中心</div>
-                                <MenuButton icon={<User size={16} />} label="系统资料设置" onClick={() => { setIsOpen(false); onProfileClick?.(); }} />
-                                <MenuButton icon={<History size={16} />} label="查看积分明细" onClick={() => { setIsOpen(false); onPointsClick?.(); }} />
+                                <MenuButton icon={<User size={16} />} label="资料设置" onClick={() => { setIsOpen(false); onProfileClick?.(); }} />
+                                <MenuButton icon={<History size={16} />} label="积分明细" onClick={() => { setIsOpen(false); onPointsClick?.(); }} />
                                 <MenuButton icon={<ShoppingBag size={16} />} label="我的订单" onClick={() => { setIsOpen(false); onOrdersClick?.(); }} />
                                 <MenuButton icon={<CalendarCheck size={16} />} label="每日签到" onClick={() => { setIsOpen(false); onCheckInClick?.(); }} highlight />
                                 <MenuButton icon={<Gift size={16} />} label="邀请有礼" onClick={() => { setIsOpen(false); onInviteClick?.(); }} />

@@ -26,6 +26,7 @@ import { ConfirmDialog } from '../ConfirmDialog';
 import { UserEditModal } from './UserEditModal';
 import { UserCreateModal } from './UserCreateModal';
 import { PasswordResetModal } from './PasswordResetModal';
+import { PermissionTooltip } from '../PermissionTooltip.tsx';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const UserManagement: React.FC = () => {
@@ -206,12 +207,14 @@ export const UserManagement: React.FC = () => {
                         </div>
                     </div>
 
-                    <button
-                        onClick={() => setIsCreateModalOpen(true)}
-                        className="px-5 py-2.5 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-xl font-bold text-sm hover:bg-white/20 active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-violet-900/10"
-                    >
-                        <Plus size={18} /> 新增用户
-                    </button>
+                    <PermissionTooltip requiredPermission="admin.users.create">
+                        <button
+                            onClick={() => setIsCreateModalOpen(true)}
+                            className="px-5 py-2.5 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-xl font-bold text-sm hover:bg-white/20 active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-violet-900/10"
+                        >
+                            <Plus size={18} /> 新增用户
+                        </button>
+                    </PermissionTooltip>
                 </div>
             </div>
 
@@ -460,81 +463,89 @@ export const UserManagement: React.FC = () => {
                                         </td>
                                         <td className="px-3 py-3 text-right whitespace-nowrap">
                                             <div className="flex items-center justify-end gap-1.5 transition-all">
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedUser(user);
-                                                        setIsEditModalOpen(true);
-                                                    }}
-                                                    className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
-                                                    title="编辑"
-                                                >
-                                                    <Edit2 size={14} />
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedUser(user);
-                                                        setIsResetModalOpen(true);
-                                                    }}
-                                                    className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
-                                                    title="密码"
-                                                >
-                                                    <Key size={14} />
-                                                </button>
+                                                <PermissionTooltip requiredPermission="admin.users.manage.role">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedUser(user);
+                                                            setIsEditModalOpen(true);
+                                                        }}
+                                                        className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
+                                                        title="编辑"
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                </PermissionTooltip>
+                                                <PermissionTooltip requiredPermission="admin.users.reset.password">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedUser(user);
+                                                            setIsResetModalOpen(true);
+                                                        }}
+                                                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
+                                                        title="密码"
+                                                    >
+                                                        <Key size={14} />
+                                                    </button>
+                                                </PermissionTooltip>
                                                 {isPowerfulAdmin && (
                                                     <>
-                                                        <button
-                                                            onClick={() => {
-                                                                const newStatus = user.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED';
-                                                                const actionText = user.status === 'DISABLED' ? '启用' : '禁用';
-                                                                setConfirmConfig({
-                                                                    isOpen: true,
-                                                                    title: `${actionText}用户确认`,
-                                                                    message: `您确定要${actionText}用户 "${user.nickname || user.email}" 吗？`,
-                                                                    type: user.status === 'DISABLED' ? 'info' : 'danger',
-                                                                    onConfirm: async () => {
-                                                                        try {
-                                                                            await AdminAPI.updateUser(user.id, { status: newStatus });
-                                                                            loadUsers();
-                                                                        } catch (err: any) {
-                                                                            alert(err.message || '操作失败');
-                                                                        } finally {
-                                                                            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                                                        <PermissionTooltip requiredPermission="admin.users.manage.status">
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newStatus = user.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED';
+                                                                    const actionText = user.status === 'DISABLED' ? '启用' : '禁用';
+                                                                    setConfirmConfig({
+                                                                        isOpen: true,
+                                                                        title: `${actionText}用户确认`,
+                                                                        message: `您确定要${actionText}用户 "${user.nickname || user.email}" 吗？`,
+                                                                        type: user.status === 'DISABLED' ? 'info' : 'danger',
+                                                                        onConfirm: async () => {
+                                                                            try {
+                                                                                await AdminAPI.updateUser(user.id, { status: newStatus });
+                                                                                loadUsers();
+                                                                            } catch (err: any) {
+                                                                                alert(err.message || '操作失败');
+                                                                            } finally {
+                                                                                setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                                                                            }
                                                                         }
-                                                                    }
-                                                                });
-                                                            }}
-                                                            className={`p-1.5 rounded-lg transition-colors border border-slate-100/50 shadow-sm ${user.status === 'DISABLED'
-                                                                ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50'
-                                                                : 'text-rose-400 hover:text-rose-600 hover:bg-rose-50'
-                                                                }`}
-                                                            title={user.status === 'DISABLED' ? '启用' : '禁用'}
-                                                        >
-                                                            {user.status === 'DISABLED' ? <Check size={14} /> : <Ban size={14} />}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setConfirmConfig({
-                                                                    isOpen: true,
-                                                                    title: "删除用户确认 (高危操作)",
-                                                                    message: `您确定要永久删除用户 "${user.nickname || user.email}" 吗？此操作不可逆，将清除该用户的所有关联数据！`,
-                                                                    type: 'danger',
-                                                                    onConfirm: async () => {
-                                                                        try {
-                                                                            await AdminAPI.deleteUser(user.id);
-                                                                            loadUsers();
-                                                                        } catch (err: any) {
-                                                                            alert(err.message || '操作失败');
-                                                                        } finally {
-                                                                            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                                                                    });
+                                                                }}
+                                                                className={`p-1.5 rounded-lg transition-colors border border-slate-100/50 shadow-sm ${user.status === 'DISABLED'
+                                                                    ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50'
+                                                                    : 'text-rose-400 hover:text-rose-600 hover:bg-rose-50'
+                                                                    }`}
+                                                                title={user.status === 'DISABLED' ? '启用' : '禁用'}
+                                                            >
+                                                                {user.status === 'DISABLED' ? <Check size={14} /> : <Ban size={14} />}
+                                                            </button>
+                                                        </PermissionTooltip>
+                                                        <PermissionTooltip requiredPermission="admin.users.delete">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setConfirmConfig({
+                                                                        isOpen: true,
+                                                                        title: "删除用户确认 (高危操作)",
+                                                                        message: `您确定要永久删除用户 "${user.nickname || user.email}" 吗？此操作不可逆，将清除该用户的所有关联数据！`,
+                                                                        type: 'danger',
+                                                                        onConfirm: async () => {
+                                                                            try {
+                                                                                await AdminAPI.deleteUser(user.id);
+                                                                                loadUsers();
+                                                                            } catch (err: any) {
+                                                                                alert(err.message || '操作失败');
+                                                                            } finally {
+                                                                                setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                                                                            }
                                                                         }
-                                                                    }
-                                                                });
-                                                            }}
-                                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
-                                                            title="删除"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
+                                                                    });
+                                                                }}
+                                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
+                                                                title="删除"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </PermissionTooltip>
                                                     </>
                                                 )}
                                             </div>

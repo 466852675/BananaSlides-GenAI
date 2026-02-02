@@ -25,6 +25,7 @@ import * as AdminAPI from '../../api/admin';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { ConfirmDialog } from '../ConfirmDialog';
+import { PermissionTooltip } from '../PermissionTooltip';
 
 const STATUS_LABELS: Record<string, string> = {
     'PENDING': '待处理',
@@ -287,29 +288,35 @@ export const LeadManagement: React.FC = () => {
                             {/* Hover Actions - Top Right */}
                             {editingId !== lead.id && (
                                 <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 bg-white/95 backdrop-blur-sm p-1.5 rounded-xl shadow-lg border border-slate-100 z-20">
-                                    <button
-                                        onClick={() => openEdit(lead)}
-                                        className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                                        title="跟进"
-                                    >
-                                        <MessageSquare size={16} />
-                                    </button>
-                                    {lead.status === 'PENDING' && (
+                                    <PermissionTooltip requiredPermission="admin.leads.manage.note">
                                         <button
-                                            onClick={() => handleMarkContactedClick(lead)}
-                                            className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
-                                            title="标记已联系"
+                                            onClick={() => openEdit(lead)}
+                                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                            title="跟进"
                                         >
-                                            <CheckCircle2 size={16} />
+                                            <MessageSquare size={16} />
                                         </button>
+                                    </PermissionTooltip>
+                                    {lead.status === 'PENDING' && (
+                                        <PermissionTooltip requiredPermission="admin.leads.manage.status">
+                                            <button
+                                                onClick={() => handleMarkContactedClick(lead)}
+                                                className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
+                                                title="标记已联系"
+                                            >
+                                                <CheckCircle2 size={16} />
+                                            </button>
+                                        </PermissionTooltip>
                                     )}
-                                    <button
-                                        onClick={() => handleDelete(lead.id, lead.name)}
-                                        className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                        title="删除"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                    <PermissionTooltip requiredPermission="admin.leads.delete">
+                                        <button
+                                            onClick={() => handleDelete(lead.id, lead.name)}
+                                            className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                            title="删除"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </PermissionTooltip>
                                 </div>
                             )}
 

@@ -480,6 +480,24 @@ export async function getRolePermissions(req: Request, res: Response): Promise<v
 }
 
 /**
+ * 获取当前用户权限
+ * GET /api/admin/roles/my-permissions
+ */
+export async function getMyPermissions(req: Request, res: Response): Promise<void> {
+    try {
+        const userRole = req.user!.role;
+        const permissions = await AdminService.getRolePermissions(userRole);
+        res.json({ success: true, data: permissions });
+    } catch (error) {
+        console.error('[Admin] 获取我的权限失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取权限失败' }
+        });
+    }
+}
+
+/**
  * 更新角色权限
  * PUT /api/admin/roles/:role/permissions
  */
