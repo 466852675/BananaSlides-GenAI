@@ -1,9 +1,7 @@
 // server/src/services/points.service.ts
 // 积分服务：积分扣除、查询和记录
 
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../db';
 
 // 积分操作类型
 export type PointsActionCode =

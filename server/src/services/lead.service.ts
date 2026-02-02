@@ -1,9 +1,8 @@
 // server/src/services/lead.service.ts
 // 销售线索服务：处理企业咨询、需求收集
 
-import { PrismaClient, Lead } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { Lead } from '@prisma/client';
+import { prisma } from '../db';
 
 export interface CreateLeadDto {
     userId?: string;

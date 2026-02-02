@@ -2,10 +2,9 @@
 // 认证中间件：JWT 验证和角色检查
 
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient, UserRole, UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 import { verifyToken, JwtPayload } from '../utils/jwt.util';
-
-const prisma = new PrismaClient();
+import { prisma } from '../db';
 
 // 扩展 Express Request 类型以包含用户信息
 declare global {

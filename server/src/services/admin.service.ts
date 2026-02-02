@@ -1,10 +1,9 @@
 // server/src/services/admin.service.ts
 // 管理员服务：用户管理、订单管理、积分规则管理
 
-import { PrismaClient, UserRole, UserStatus, OrderStatus } from '@prisma/client';
+import { UserRole, UserStatus, OrderStatus } from '@prisma/client';
 import { hashPassword } from '../utils/password.util';
-
-const prisma = new PrismaClient();
+import { prisma } from '../db';
 
 // ============================================================
 // 用户管理

@@ -2,10 +2,8 @@
 // 积分控制器：处理用户积分相关 HTTP 请求
 
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db';
 import * as PointsService from '../services/points.service';
-
-const prisma = new PrismaClient();
 
 /**
  * 获取当前用户积分余额

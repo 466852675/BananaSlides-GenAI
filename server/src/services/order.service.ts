@@ -1,9 +1,8 @@
 // server/src/services/order.service.ts
 // 订单服务：处理订单查询、更新和退款
 
-import { PrismaClient, OrderStatus } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { OrderStatus } from '@prisma/client';
+import { prisma } from '../db';
 
 export interface OrderListFilters {
     userId?: string;

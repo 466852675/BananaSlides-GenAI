@@ -1,9 +1,6 @@
-
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db';
 import { addPoints, getActionCost } from './points.service';
 import { SettingService } from './setting.service';
-
-const prisma = new PrismaClient();
 
 export const growthService = {
     /**

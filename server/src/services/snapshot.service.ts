@@ -1,9 +1,7 @@
-import { PrismaClient } from '@prisma/client';
 import { AIService } from './ai.service';
 import { AppSettings, ProjectSession } from '../types';
 import { SettingService } from './setting.service';
-
-const prisma = new PrismaClient();
+import { prisma } from '../db';
 
 // --- Memory Queue for Notifications ---
 export const notificationQueue: Array<{

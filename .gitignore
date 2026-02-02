@@ -48,3 +48,10 @@ tests/e2e/fail_*.png
 
 # ReCode local database
 .recode
+
+# AI Agent contexts and workflows
+.claude/
+.sisyphus/
+.spec-workflow/
+.trae/
+contexts/

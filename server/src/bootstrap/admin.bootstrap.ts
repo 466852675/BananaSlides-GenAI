@@ -1,10 +1,9 @@
 // server/src/bootstrap/admin.bootstrap.ts
 // 管理员初始化脚本：启动时自动创建默认管理员
 
-import { PrismaClient, UserRole, UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 import { hashPassword } from '../utils/password.util';
-
-const prisma = new PrismaClient();
+import { prisma } from '../db';
 
 /**
  * 默认管理员配置

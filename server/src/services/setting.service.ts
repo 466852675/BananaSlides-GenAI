@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../db';
 
 // Helper to mask API keys (show only last 4 chars)
 const maskApiKey = (key: string | undefined): string => {

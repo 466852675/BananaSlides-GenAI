@@ -1,6 +1,5 @@
-import { PrismaClient, Prisma } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { Prisma } from '@prisma/client';
+import { prisma } from '../db';
 import { saveBase64Image, isBase64Image } from '../utils/imageSaver';
 
 export class ProjectService {

@@ -1,7 +1,7 @@
 // server/src/services/auth.service.ts
 // 认证服务：注册、登录、密码重置
 
-import { PrismaClient, UserRole, UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 import {
     hashPassword,
     comparePassword,
@@ -10,14 +10,13 @@ import {
 } from '../utils/password.util';
 import { signToken, getTokenExpiresIn } from '../utils/jwt.util';
 import { SettingService } from './setting.service';
+import { prisma } from '../db';
 import crypto from 'crypto';
 
 // 生成唯一邀请码
 function generateInviteCode(): string {
     return crypto.randomBytes(4).toString('hex').toUpperCase();
 }
-
-const prisma = new PrismaClient();
 
 // 账户锁定配置
 const LOCK_CONFIG = {
