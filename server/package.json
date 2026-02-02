@@ -8,7 +8,9 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "db:seed": "ts-node prisma/seed.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage"
   },
   "keywords": [],
   "author": "",
