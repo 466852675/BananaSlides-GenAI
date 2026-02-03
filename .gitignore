@@ -55,3 +55,47 @@ tests/e2e/fail_*.png
 .spec-workflow/
 .trae/
 contexts/
+
+# ============================================
+# 建议添加的配置
+# ============================================
+
+# Test database (auto-generated during testing)
+server/prisma/test.db
+server/test.db
+test.db
+
+# Coverage reports
+coverage/
+*.lcov
+.nyc_output/
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Additional editor/IDE files
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Debug configurations
+.debug/
+.vscode/launch.json
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/

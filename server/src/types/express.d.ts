@@ -1,0 +1,26 @@
+import { UserRole, UserStatus } from '@prisma/client';
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        email: string | null;
+        username: string | null;
+        nickname: string | null;
+        role: UserRole;
+        status: UserStatus;
+        points: number;
+        vipLevel?: number;
+        avatar?: string | null;
+      };
+    }
+
+    interface Response {
+      deductedPoints?: number;
+      transactionId?: string;
+    }
+  }
+}
+
+export {};

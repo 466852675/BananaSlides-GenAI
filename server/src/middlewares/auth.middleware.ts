@@ -1,12 +1,9 @@
-// server/src/middlewares/auth.middleware.ts
-// 认证中间件：JWT 验证和角色检查
-
 import { Request, Response, NextFunction } from 'express';
 import { UserRole, UserStatus } from '@prisma/client';
 import { verifyToken, JwtPayload } from '../utils/jwt.util';
 import { prisma } from '../db';
+import '../types/express';
 
-// 扩展 Express Request 类型以包含用户信息
 declare global {
     namespace Express {
         interface Request {

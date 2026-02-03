@@ -269,9 +269,9 @@ export async function deductPoints(
 
         return {
             success: true,
-            remainingPoints: result.updatedUser.points,
+            remainingPoints: result.updatedUser!.points,
             deductedAmount: result.deductedAmount,
-            transactionId: result.log.id,
+            transactionId: result.log!.id,
             message: '扣费成功'
         };
     } catch (error) {
