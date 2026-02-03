@@ -204,64 +204,90 @@ export async function deductPoints(
         };
     }
 
-    // 检查余额
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { points: true, pointsUsed: true }
-    });
+    try {
+        const result = await prisma.$transaction(async (tx) => {
+            const user = await tx.$queryRaw<{ points: number }[]>`
+                SELECT points FROM User WHERE id = ${userId} FOR UPDATE
+            `;
 
-    if (!user) {
-        throw new Error('用户不存在');
-    }
+            if (!user || user.length === 0) {
+                throw new Error('用户不存在');
+            }
 
-    if (user.points < totalCost) {
+            const currentPoints = user[0].points;
+
+            if (currentPoints < totalCost) {
+                return {
+                    success: false,
+                    remainingPoints: currentPoints,
+                    deductedAmount: 0,
+                    message: `积分不足 (需要 ${totalCost}, 当前 ${currentPoints})`,
+                    transactionId: undefined,
+                };
+            }
+
+            const updatedUser = await tx.user.update({
+                where: { id: userId },
+                data: {
+                    points: { decrement: totalCost },
+                    pointsUsed: { increment: totalCost }
+                }
+            });
+
+            const log = await tx.transaction.create({
+                data: {
+                    userId,
+                    type: 'consume',
+                    amount: -totalCost,
+                    balance: updatedUser.points,
+                    ruleCode: actionCode,
+                    projectId,
+                    description: description || rule.name,
+                    module: options?.module || rule.module,
+                    category: options?.category || rule.category,
+                    subcategory: options?.subcategory,
+                    triggerTime: options?.triggerTime,
+                    templateId: options?.templateId
+                }
+            });
+
+            return {
+                success: true,
+                updatedUser,
+                log,
+                deductedAmount: totalCost,
+            };
+        }, {
+            isolationLevel: 'Serializable',
+            maxWait: 5000,
+            timeout: 10000,
+        });
+
+        if (!result.success) {
+            return result as DeductResult;
+        }
+
         return {
-            success: false,
-            remainingPoints: user.points,
-            deductedAmount: 0,
-            message: `积分不足 (需要 ${totalCost}, 当前 ${user.points})`
+            success: true,
+            remainingPoints: result.updatedUser.points,
+            deductedAmount: result.deductedAmount,
+            transactionId: result.log.id,
+            message: '扣费成功'
         };
+    } catch (error) {
+        console.error('[Points] 扣费事务失败:', error);
+
+        if (error instanceof Error && error.message.includes('deadlock')) {
+            return {
+                success: false,
+                remainingPoints: 0,
+                deductedAmount: 0,
+                message: '系统繁忙，请稍后重试',
+            };
+        }
+
+        throw error;
     }
-
-    // 执行扣费事务
-    const result = await prisma.$transaction(async (tx) => {
-        // 1. 扣除积分
-        const updatedUser = await tx.user.update({
-            where: { id: userId },
-            data: {
-                points: { decrement: totalCost },
-                pointsUsed: { increment: totalCost }
-            }
-        });
-
-        // 2. 记录流水 (使用 Transaction 模型)
-        const log = await tx.transaction.create({
-            data: {
-                userId,
-                type: 'consume',
-                amount: -totalCost, // 支出为负
-                balance: updatedUser.points,
-                ruleCode: actionCode, // 对应 actionCode
-                projectId,
-                description: description || rule.name,
-                module: options?.module || rule.module,
-                category: options?.category || rule.category,
-                subcategory: options?.subcategory,
-                triggerTime: options?.triggerTime,
-                templateId: options?.templateId
-            }
-        });
-
-        return { updatedUser, log };
-    });
-
-    return {
-        success: true,
-        remainingPoints: result.updatedUser.points,
-        deductedAmount: totalCost,
-        transactionId: result.log.id,
-        message: '扣费成功'
-    };
 }
 
 

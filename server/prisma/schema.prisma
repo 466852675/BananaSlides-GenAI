@@ -339,3 +339,20 @@ enum OrderStatus {
   REFUNDED
   FAILED
 }
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  type      String
+  content   String?
+  reason    String?
+  severity  String
+  metadata  String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([severity])
+  @@index([createdAt])
+}
