@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import { disconnectDatabase } from './db';
 import uploadRoutes from './routes/upload.routes';
 import projectRoutes from './routes/project.routes';
 import snapshotRoutes from './routes/snapshot.routes';
@@ -161,13 +162,44 @@ server.on('error', (err: NodeJS.ErrnoException) => {
 });
 
 
-// Global Error Handlers
+async function gracefulShutdown(exitCode: number) {
+    console.log('[App] Graceful shutdown initiated...');
+    
+    server.close(() => {
+        console.log('[App] HTTP server closed');
+    });
+    
+    try {
+        await disconnectDatabase();
+        console.log('[App] Database connections closed');
+    } catch (err) {
+        console.error('[App] Error during database disconnect:', err);
+    }
+    
+    setTimeout(() => {
+        console.error('[App] Forced exit after timeout');
+        process.exit(exitCode);
+    }, 10000).unref();
+}
+
 process.on('uncaughtException', (err) => {
     console.error('[App] Uncaught Exception:', err);
+    gracefulShutdown(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('[App] Unhandled Rejection at:', promise, 'reason:', reason);
+    gracefulShutdown(1);
+});
+
+process.on('SIGTERM', () => {
+    console.log('[App] SIGTERM received');
+    gracefulShutdown(0);
+});
+
+process.on('SIGINT', () => {
+    console.log('[App] SIGINT received');
+    gracefulShutdown(0);
 });
 
 export default app;
