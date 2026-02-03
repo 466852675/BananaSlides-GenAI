@@ -28,7 +28,25 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 1111;
 
-app.use(cors());
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
+  'http://localhost:1000',
+  'http://localhost:5173',
+  'http://127.0.0.1:1000',
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS policy violation'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 app.use(express.json({ limit: '50mb' }));
 
 // Static Uploads
