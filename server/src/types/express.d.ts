@@ -13,6 +13,7 @@ declare global {
         points: number;
         vipLevel?: number;
         avatar?: string | null;
+        name?: string | null;
       };
     }
 

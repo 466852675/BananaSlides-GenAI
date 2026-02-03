@@ -2,23 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 import { UserRole, UserStatus } from '@prisma/client';
 import { verifyToken, JwtPayload } from '../utils/jwt.util';
 import { prisma } from '../db';
-import '../types/express';
-
-declare global {
-    namespace Express {
-        interface Request {
-            user?: {
-                id: string;
-                email: string | null;
-                username: string | null;
-                nickname: string | null;
-                role: UserRole;
-                status: UserStatus;
-                points: number;
-            };
-        }
-    }
-}
 
 /**
  * JWT 认证中间件
