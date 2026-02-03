@@ -8,6 +8,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AssetService } from './asset.service';
 import { saveBase64Image } from '../utils/imageSaver';
+import { injectionDetector, promptSanitizer, SecurePromptBuilder } from '../utils/prompt-security';
+import { contentFilter } from '../utils/content-filter';
+import { AuditService } from './audit.service';
 
 // --- Default Configuration ---
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || "";
@@ -740,18 +743,49 @@ async function callOpenAIImageGeneration(
 
 export const AIService = {
 
-    async smartRefine(text: string, type: 'requirement' | 'content' | 'requirement_polish', settings?: AppSettings): Promise<string> {
+    async smartRefine(text: string, type: 'requirement' | 'content' | 'requirement_polish', settings?: AppSettings, userId?: string): Promise<string> {
         if (process.env.MOCK_AI === '1') {
             const t = text === undefined || text === null ? '' : String(text);
             if (!t.trim()) return '';
             return t.trim();
         }
+
+        const contentCheck = contentFilter.check(text);
+        if (contentCheck.riskLevel === 'high') {
+            await AuditService.log({
+                type: 'CONTENT_VIOLATION',
+                reason: contentCheck.reason || 'High risk content detected',
+                severity: 'high',
+                content: text.substring(0, 200),
+                userId,
+            });
+            throw new Error(`内容审核失败: ${contentCheck.reason}`);
+        }
+
+        if (injectionDetector.isInjectionAttempt(text)) {
+            const patterns = injectionDetector.detectPatterns(text);
+            await AuditService.log({
+                type: 'PROMPT_INJECTION',
+                reason: `Detected injection patterns: ${patterns.join(', ')}`,
+                severity: 'critical',
+                content: text.substring(0, 200),
+                userId,
+            });
+            throw new Error('检测到不安全的输入内容，请修改后重试');
+        }
+
+        const sanitized = promptSanitizer.sanitize(text);
+        if (sanitized.wasSanitized) {
+            console.log('[AI] User input sanitized:', sanitized.detectedPatterns);
+        }
+        const cleanText = sanitized.cleanedText;
+
         const config = getTaskConfig(settings, 'text');
         let prompt = '';
         if (type === 'requirement_polish') {
             prompt = `
 Task: Rewrite the user's input into ONE single fluent paragraph of plain text.
-Input: "${text}"
+Input: "${cleanText}"
 
 [STRICT RULES]
 1. NO Markdown (no **, #, etc).
@@ -767,7 +801,7 @@ Example Output:
             prompt = `
 Role: Senior Visual Director & PPT Expert.
 Task: Refine the user's input into a professional, structured "AI Visual Instruction" (Style Config) for a presentation generation system.
-Input Text: "${text}"
+Input Text: "${cleanText}"
 
 [CRITICAL REQUIREMENT]
 You MUST output the result in the following Standard Markdown Structure. Do NOT change the headings.
@@ -823,7 +857,7 @@ You MUST output the result in the following Standard Markdown Structure. Do NOT 
 Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简体中文).`;
         } else {
             // Content refinement remains simple
-            prompt = `Task: Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.\n\nInput Text: "${text}"\n\nRequirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`;
+            prompt = `Task: Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.\n\nInput Text: "${cleanText}"\n\nRequirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`;
         }
 
         if (shouldUseGeminiNative(config, settings)) {

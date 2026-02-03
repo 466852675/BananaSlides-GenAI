@@ -6,7 +6,7 @@ declare const afterEach: (fn: () => void | Promise<void>) => void;
 declare const afterAll: (fn: () => void | Promise<void>) => void;
 declare const beforeAll: (fn: () => void | Promise<void>) => void;
 
-export const testPrisma = new PrismaClient({
+export const prisma = new PrismaClient({
   datasources: {
     db: {
       url: 'file:./test.db',
@@ -28,7 +28,7 @@ export async function cleanupDatabase(): Promise<void> {
 
   for (const modelName of modelNames) {
     try {
-      await ((testPrisma as unknown) as Record<string, { deleteMany: () => Promise<void> }>)[modelName.toLowerCase()].deleteMany();
+      await ((prisma as unknown) as Record<string, { deleteMany: () => Promise<void> }>)[modelName.toLowerCase()].deleteMany();
     } catch {}
   }
 }
@@ -43,5 +43,5 @@ afterEach(async () => {
 
 afterAll(async () => {
   await cleanupDatabase();
-  await testPrisma.$disconnect();
+  await prisma.$disconnect();
 });
