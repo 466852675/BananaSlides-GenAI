@@ -63,15 +63,24 @@ export class MinerUService {
         const { batch_id, file_urls } = batchRes.data.data;
         const uploadUrl = file_urls[0];
 
-        // 2. Upload to OSS
-        // Note: fs.readFileSync is synchronous but safe for small files in this context. 
-        // For very large files, stream is better but Axios/Fetch PUT usually takes buffer/stream.
-        const fileBuffer = fs.readFileSync(filePath);
+        const stats = fs.statSync(filePath);
+        const fileSizeMB = stats.size / (1024 * 1024);
+        
+        if (fileSizeMB > 100) {
+            console.warn(`[MinerU] Large file detected: ${fileSizeMB.toFixed(2)}MB. Using chunked upload.`);
+        }
+
+        const fileStream = fs.createReadStream(filePath, {
+            highWaterMark: 64 * 1024
+        });
         
         try {
             const uploadRes = await fetch(uploadUrl, {
                 method: 'PUT',
-                body: fileBuffer,
+                body: fileStream as any,
+                headers: {
+                    'Content-Length': stats.size.toString(),
+                },
             });
             
             if (!uploadRes.ok) {
