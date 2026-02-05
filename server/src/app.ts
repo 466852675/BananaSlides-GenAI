@@ -49,24 +49,48 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// 开发环境白名单 - 本地开发跳过限流
+const skipLimiterForDev = (req: express.Request) => {
+  const origin = req.headers.origin || '';
+  const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+  const isDevEnv = process.env.NODE_ENV === 'development';
+  return isLocalhost || isDevEnv;
+};
+
+// 全局限流配置（更宽松）
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 200, // 放宽到 200次/15分钟
+  skip: skipLimiterForDev,
   message: { error: '请求过于频繁，请稍后再试' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
+// 登录限流配置（开发友好）
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 20, // 放宽到 20次/15分钟（开发测试需要）
+  skip: skipLimiterForDev, // 开发环境跳过
   skipSuccessfulRequests: true,
   message: { error: '登录尝试次数过多，请15分钟后再试' },
 });
 
-app.use('/api/', generalLimiter);
+// 通知轮询专用限流（更宽松，因为前端轮询频繁）
+const pollLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1分钟窗口
+  max: 60, // 60次/分钟
+  skip: skipLimiterForDev,
+  message: { error: '轮询请求过于频繁' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 应用限流 - 注意顺序：具体路由先，通用路由后
+app.use('/api/notifications/poll', pollLimiter); // 通知轮询专用
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/', generalLimiter); // 其他所有API路由
 
 app.use(express.json({ limit: '50mb' }));
 
