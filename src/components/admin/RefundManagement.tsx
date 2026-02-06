@@ -403,111 +403,97 @@ export const RefundManagement: React.FC = () => {
                 </div>
             </div>
 
-            {/* Filter Bar with Status Tabs */}
-            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-3 border border-white/60 shadow-sm">
-                <div className="flex flex-col gap-3">
-                    {/* Status Tabs */}
-                    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
-                        {[
-                            { key: '', label: '全部', count: stats?.totalRefunds || 0 },
-                            { key: 'PENDING', label: '待审核', count: stats?.pendingRefunds || 0 },
-                            { key: 'PROCESSING', label: '处理中', count: 0 },
-                            { key: 'COMPLETED', label: '已退款', count: stats?.completedRefunds || 0 },
-                            { key: 'REJECTED', label: '已拒绝', count: stats?.rejectedRefunds || 0 },
-                            { key: 'FAILED', label: '退款失败', count: 0 },
-                            { key: 'MANUAL_REQUIRED', label: '需人工', count: 0 },
-                        ].map((tab) => (
-                            <button
-                                key={tab.key}
-                                onClick={() => { setStatusFilter(tab.key); setPage(1); }}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                                    statusFilter === tab.key
-                                        ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/20'
-                                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                                }`}
-                            >
-                                {tab.label}
-                                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${
-                                    statusFilter === tab.key ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'
-                                }`}>
-                                    {tab.count}
-                                </span>
-                            </button>
-                        ))}
+            {/* Filter Bar */}
+            <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-1.5 border border-white/60 shadow-sm overflow-x-auto no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                <div className="flex items-center gap-1 min-w-max">
+                    <div className="relative group w-48 flex-shrink-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={16} />
+                        <input
+                            type="text"
+                            placeholder="搜索订单/用户..."
+                            value={keyword}
+                            onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
+                            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none transition-all font-medium"
+                        />
                     </div>
-                    
-                    {/* Search and Date Filters */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <div className="relative group flex-1 min-w-[200px] max-w-[300px]">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={16} />
+
+                    <div className="relative flex-shrink-0">
+                        <AlertCircle className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                            className="pl-7 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[100px]"
+                        >
+                            <option value="">全部状态</option>
+                            <option value="PENDING">待审核</option>
+                            <option value="PROCESSING">处理中</option>
+                            <option value="COMPLETED">已退款</option>
+                            <option value="REJECTED">已拒绝</option>
+                            <option value="FAILED">退款失败</option>
+                            <option value="MANUAL_REQUIRED">需人工处理</option>
+                        </select>
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Filter size={10} />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="relative group">
+                            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
                             <input
-                                type="text"
-                                placeholder="搜索订单/用户..."
-                                value={keyword}
-                                onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
-                                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none transition-all font-medium"
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                                className="pl-7 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[100px]"
                             />
                         </div>
-
-                        <div className="flex items-center gap-1">
-                            <div className="relative group">
-                                <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-                                    className="pl-7 pr-1 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[100px]"
-                                />
-                            </div>
-                            <span className="text-slate-300 font-bold text-[10px]">-</span>
-                            <div className="relative group">
-                                <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-                                    className="pl-7 pr-1 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[100px]"
-                                />
-                            </div>
+                        <span className="text-slate-300 font-bold text-[10px]">-</span>
+                        <div className="relative group">
+                            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                                className="pl-7 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[100px]"
+                            />
                         </div>
-
-                        {/* Batch Operations */}
-                        {selectedIds.size > 0 && (
-                            <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 ml-auto">
-                                <span className="text-xs font-bold text-slate-600">已选 {selectedIds.size} 项</span>
-                                <button
-                                    onClick={() => batchApproveMutation.mutate(Array.from(selectedIds))}
-                                    disabled={batchApproveMutation.isPending}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-all disabled:opacity-50"
-                                >
-                                    <Check size={14} />
-                                    批量通过
-                                </button>
-                                <button
-                                    onClick={() => batchRejectMutation.mutate(Array.from(selectedIds))}
-                                    disabled={batchRejectMutation.isPending}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-all disabled:opacity-50"
-                                >
-                                    <X size={14} />
-                                    批量拒绝
-                                </button>
-                                <button
-                                    onClick={() => { setSelectedIds(new Set()); setSelectAll(false); }}
-                                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-all"
-                                >
-                                    <X size={14} />
-                                </button>
-                            </div>
-                        )}
-
-                        <button
-                            onClick={handleReset}
-                            className="px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs font-bold text-slate-600 transition-colors flex items-center gap-1"
-                            title="重置筛选"
-                        >
-                            <RefreshCcw size={14} />
-                        </button>
                     </div>
+
+                    {selectedIds.size > 0 && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-200">
+                            <span className="text-xs font-bold text-slate-600">已选 {selectedIds.size} 项</span>
+                            <button
+                                onClick={() => batchApproveMutation.mutate(Array.from(selectedIds))}
+                                disabled={batchApproveMutation.isPending}
+                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-all disabled:opacity-50"
+                            >
+                                <Check size={12} />
+                                批量通过
+                            </button>
+                            <button
+                                onClick={() => batchRejectMutation.mutate(Array.from(selectedIds))}
+                                disabled={batchRejectMutation.isPending}
+                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-all disabled:opacity-50"
+                            >
+                                <X size={12} />
+                                批量拒绝
+                            </button>
+                            <button
+                                onClick={() => { setSelectedIds(new Set()); setSelectAll(false); }}
+                                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded transition-all"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    )}
+
+                    <button
+                        onClick={handleReset}
+                        className="px-2 py-2 bg-white border border-slate-200 text-slate-500 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 rounded-lg text-xs font-bold transition-all flex items-center justify-center group flex-shrink-0"
+                        title="重置筛选"
+                    >
+                        <RefreshCcw size={14} className="group-hover:rotate-180 transition-transform duration-500" />
+                    </button>
                 </div>
             </div>
 
@@ -592,13 +578,42 @@ export const RefundManagement: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-3 py-3 text-right">
-                                                <button
-                                                    onClick={() => setSelectedRefund(refund)}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-violet-600 hover:text-violet-800 hover:bg-violet-50 rounded-lg transition-colors"
-                                                >
-                                                    <Eye size={14} />
-                                                    查看
-                                                </button>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    {refund.status === 'PENDING' ? (
+                                                        <>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedRefund(refund);
+                                                                    setAuditDialog({ isOpen: true, action: 'approve', adminNote: '' });
+                                                                }}
+                                                                disabled={auditMutation.isPending}
+                                                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors disabled:opacity-50"
+                                                            >
+                                                                <Check size={12} />
+                                                                同意
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedRefund(refund);
+                                                                    setAuditDialog({ isOpen: true, action: 'reject', adminNote: '' });
+                                                                }}
+                                                                disabled={auditMutation.isPending}
+                                                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors disabled:opacity-50"
+                                                            >
+                                                                <X size={12} />
+                                                                拒绝
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => setSelectedRefund(refund)}
+                                                            className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-lg transition-colors"
+                                                        >
+                                                            <Eye size={12} />
+                                                            查看
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     );
