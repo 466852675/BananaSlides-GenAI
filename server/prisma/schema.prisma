@@ -49,6 +49,7 @@ model User {
   referrals          User[]          @relation("Referrals")
   refundRequests     RefundRequest[]
   refundStats        UserRefundStats?
+  messages           UserMessage[]
 
   @@index([role])
   @@index([status])
@@ -443,7 +444,63 @@ model BenefitRevokeLog {
   refundId    String
   revokedAt   DateTime @default(now())
   reason      String
-  
+
   @@index([userId])
   @@index([refundId])
+}
+
+// ============================================================
+// 消息中心模块 - 站内信系统
+// ============================================================
+
+enum MessageType {
+  SYSTEM
+  ORDER
+  REFUND
+  AI
+  POINTS
+  VIP
+  ACTIVITY
+  SECURITY
+}
+
+model UserMessage {
+  id            String      @id @default(uuid())
+  userId        String
+  type          MessageType
+  title         String
+  content       String
+  summary       String?
+
+  bizType       String?
+  bizId         String?
+  actionUrl     String?
+
+  isRead        Boolean     @default(false)
+  readAt        DateTime?
+  isImportant   Boolean     @default(false)
+  isDeleted     Boolean     @default(false)
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user          User        @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([bizType])
+  @@index([createdAt])
+}
+
+model MessageTemplate {
+  id          String      @id @default(uuid())
+  code        String      @unique
+  name        String
+  type        MessageType
+  title       String
+  content     String
+  bizType     String
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }

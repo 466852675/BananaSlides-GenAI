@@ -20,6 +20,7 @@ import pointsRoutes from './routes/points.routes';
 import orderRoutes from './routes/order.routes';
 import refundRoutes from './routes/refund.routes';
 import webhookRoutes from './routes/webhook.routes';
+import messageRoutes from './routes/message.routes';
 import productRoutes from './routes/product.routes';
 import growthRoutes from './routes/growth.routes';
 import leadRoutes from './routes/lead.routes';
