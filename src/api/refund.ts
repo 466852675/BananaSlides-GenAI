@@ -49,6 +49,7 @@ export interface AdminRefundFilters {
     endDate?: string;
     page?: number;
     limit?: number;
+    keyword?: string;
 }
 
 export async function checkRefundEligibility(orderId: string): Promise<RefundEligibility> {

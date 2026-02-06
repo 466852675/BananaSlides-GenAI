@@ -61,9 +61,10 @@ const skipLimiterForDev = (req: express.Request) => {
 };
 
 // 全局限流配置（更宽松）
+// 全局限流配置（更宽松）
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200, // 放宽到 200次/15分钟
+  max: 3000, // 放宽到 3000次/15分钟 (原 200次)
   skip: skipLimiterForDev,
   message: { error: '请求过于频繁，请稍后再试' },
   standardHeaders: true,
@@ -73,7 +74,7 @@ const generalLimiter = rateLimit({
 // 登录限流配置（开发友好）
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20, // 放宽到 20次/15分钟（开发测试需要）
+  max: 200, // 放宽到 200次/15分钟
   skip: skipLimiterForDev, // 开发环境跳过
   skipSuccessfulRequests: true,
   message: { error: '登录尝试次数过多，请15分钟后再试' },
@@ -82,7 +83,7 @@ const authLimiter = rateLimit({
 // 通知轮询专用限流（更宽松，因为前端轮询频繁）
 const pollLimiter = rateLimit({
   windowMs: 60 * 1000, // 1分钟窗口
-  max: 60, // 60次/分钟
+  max: 120, // 120次/分钟 (原 60次)
   skip: skipLimiterForDev,
   message: { error: '轮询请求过于频繁' },
   standardHeaders: true,
