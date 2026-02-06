@@ -1,13 +1,12 @@
-// src/components/user/MyOrdersModal.tsx
-// 我的订单弹窗：订单记录查看 + 充值入口
-
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShoppingBag, Loader2, CheckCircle, XCircle, Clock, Plus, Coins, ChevronRight } from 'lucide-react';
+import { X, ShoppingBag, Loader2, CheckCircle, XCircle, Clock, Plus, Coins, RefreshCcw, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import * as OrdersApi from '../../api/orders';
 import { PurchaseModal } from '../PurchaseModal';
 import { Product, getProducts } from '../../api/product';
+import { RefundModal } from './RefundModal';
+import { RefundHistoryModal } from './RefundHistoryModal';
 
 interface MyOrdersModalProps {
     isOpen: boolean;
@@ -19,21 +18,22 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.R
     PENDING: { label: '待支付', color: 'text-amber-600 bg-amber-50', icon: <Clock size={14} /> },
     PAID: { label: '已完成', color: 'text-green-600 bg-green-50', icon: <CheckCircle size={14} /> },
     CANCELLED: { label: '已取消', color: 'text-slate-500 bg-slate-100', icon: <XCircle size={14} /> },
-    REFUNDED: { label: '已退款', color: 'text-red-500 bg-red-50', icon: <XCircle size={14} /> },
+    REFUNDED: { label: '已退款', color: 'text-red-500 bg-red-50', icon: <RefreshCcw size={14} /> },
 };
 
 export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, onTopUp }) => {
     const [showPurchase, setShowPurchase] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [showRefundModal, setShowRefundModal] = useState(false);
+    const [showRefundHistory, setShowRefundHistory] = useState(false);
+    const [selectedOrder, setSelectedOrder] = useState<OrdersApi.Order | null>(null);
 
-    // 获取订单列表
     const { data: ordersData, isLoading, refetch } = useQuery({
         queryKey: ['myOrders'],
         queryFn: () => OrdersApi.getMyOrders(1, 20),
         enabled: isOpen,
     });
 
-    // 获取商品列表（用于充值入口）
     const { data: products } = useQuery({
         queryKey: ['products'],
         queryFn: getProducts,
@@ -48,7 +48,18 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
     const handlePurchaseSuccess = () => {
         setShowPurchase(false);
         setSelectedProduct(null);
-        refetch(); // 刷新订单列表
+        refetch();
+    };
+
+    const handleRefundClick = (order: OrdersApi.Order) => {
+        setSelectedOrder(order);
+        setShowRefundModal(true);
+    };
+
+    const handleRefundSuccess = () => {
+        setShowRefundModal(false);
+        setSelectedOrder(null);
+        refetch();
     };
 
     if (!isOpen) return null;
@@ -65,7 +76,6 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
                         className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
                     >
-                        {/* Header */}
                         <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-5 text-white flex-shrink-0">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -77,16 +87,23 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
                                         <p className="text-indigo-200 text-xs mt-0.5">共 {orders.length} 条记录</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={onClose}
-                                    className="text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"
-                                >
-                                    <X size={20} />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setShowRefundHistory(true)}
+                                        className="text-white/70 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors text-xs font-medium"
+                                    >
+                                        退款记录
+                                    </button>
+                                    <button
+                                        onClick={onClose}
+                                        className="text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Content */}
                         <div className="flex-1 overflow-y-auto p-4">
                             {isLoading ? (
                                 <div className="flex flex-col items-center justify-center py-16 gap-3">
@@ -105,6 +122,7 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
                                 <div className="space-y-3">
                                     {orders.map((order) => {
                                         const status = statusConfig[order.status] || statusConfig.PENDING;
+                                        const canRefund = order.status === 'PAID' && !order.fulfillmentAt;
                                         return (
                                             <div
                                                 key={order.id}
@@ -127,9 +145,20 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
                                                     </div>
                                                     <span className="text-slate-800 font-black">¥{order.finalPrice}</span>
                                                 </div>
-                                                <p className="text-xs text-slate-400 mt-2">
-                                                    {new Date(order.createdAt).toLocaleString('zh-CN')}
-                                                </p>
+                                                <div className="flex justify-between items-center mt-3">
+                                                    <p className="text-xs text-slate-400">
+                                                        {new Date(order.createdAt).toLocaleString('zh-CN')}
+                                                    </p>
+                                                    {canRefund && (
+                                                        <button
+                                                            onClick={() => handleRefundClick(order)}
+                                                            className="text-xs text-red-500 hover:text-red-600 font-medium flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                                                        >
+                                                            <RefreshCcw size={12} />
+                                                            申请退款
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
                                         );
                                     })}
@@ -137,7 +166,6 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
                             )}
                         </div>
 
-                        {/* Footer - 充值入口 */}
                         <div className="border-t border-slate-100 p-4 bg-slate-50/50 flex-shrink-0 flex items-center justify-between">
                             <div>
                                 <p className="text-xs text-slate-500 font-medium flex items-center gap-1 mb-0.5">
@@ -158,12 +186,23 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
                 </div>
             </AnimatePresence>
 
-            {/* 购买弹窗 */}
             <PurchaseModal
                 isOpen={showPurchase}
                 onClose={() => setShowPurchase(false)}
                 product={selectedProduct}
                 onSuccess={handlePurchaseSuccess}
+            />
+
+            <RefundModal
+                isOpen={showRefundModal}
+                onClose={() => setShowRefundModal(false)}
+                order={selectedOrder}
+                onSuccess={handleRefundSuccess}
+            />
+
+            <RefundHistoryModal
+                isOpen={showRefundHistory}
+                onClose={() => setShowRefundHistory(false)}
             />
         </>
     );

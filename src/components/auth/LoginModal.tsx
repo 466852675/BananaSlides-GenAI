@@ -85,7 +85,7 @@ export const LoginModal: React.FC = () => {
                                         {loginModalTab === 'forgot' && '重置密码'}
                                     </h2>
                                     <p className="text-sm text-slate-500 mt-1">
-                                        {loginModalTab === 'signin' && '登录以继续使用 BananaSlides'}
+                                        {loginModalTab === 'signin' && '登录以继续使用 智能PPT创作平台'}
                                         {loginModalTab === 'signup' && '免费注册，开启 AI 创作之旅'}
                                         {loginModalTab === 'forgot' && '输入邮箱接收重置链接'}
                                     </p>

@@ -18,6 +18,8 @@ import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
 import pointsRoutes from './routes/points.routes';
 import orderRoutes from './routes/order.routes';
+import refundRoutes from './routes/refund.routes';
+import webhookRoutes from './routes/webhook.routes';
 import productRoutes from './routes/product.routes';
 import growthRoutes from './routes/growth.routes';
 import leadRoutes from './routes/lead.routes';
@@ -121,6 +123,8 @@ app.use('/api/settings', settingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/points', pointsRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/refunds', refundRoutes);
+app.use('/webhooks', webhookRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/growth', growthRoutes);
@@ -148,7 +152,7 @@ if (fs.existsSync(envPath)) {
 }
 
 const server = app.listen(port, async () => {
-    console.log(`BananaSlides Server running at http://localhost:${port}`);
+    console.log(`YH-AI PPT Server running at http://localhost:${port}`);
     console.log(`Uploads Directory: ${uploadDir}`);
 
     // Sync Env Settings to DB on Startup

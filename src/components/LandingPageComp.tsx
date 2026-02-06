@@ -344,8 +344,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                                 </div>
                             </div>
                             <div>
-                                <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">BananaSlides</h1>
-                                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">GenAI PPT</span>
+                                <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">智能PPT创作平台</h1>
+                                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">YH-AI PPT</span>
                             </div>
                         </div>
 
@@ -934,8 +934,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                                     </div>
                                 </div>
                                 <div>
-                                    <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">BananaSlides</h1>
-                                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">GenAI PPT</span>
+                                    <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">智能PPT创作平台</h1>
+                                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">YH-AI PPT</span>
                                 </div>
                             </div>
                             <p className="text-slate-500 text-sm max-w-xs leading-relaxed">
@@ -977,7 +977,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                     </div>
                     <div className="pt-10 border-t border-slate-50 flex flex-col md:flex-row justify-between items-center gap-6">
                         <div className="text-slate-400 text-xs font-bold">
-                            © 2026 BananaSlides AI Inc. 保留所有权利。
+                            © 2026 智能PPT创作平台 保留所有权利。
                         </div>
                         <div className="flex items-center gap-4 text-xs font-bold text-slate-400">
                             <span className="flex items-center gap-1"><ShieldCheck size={14} /> 数据安全认证</span>

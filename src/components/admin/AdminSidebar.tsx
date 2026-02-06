@@ -14,10 +14,11 @@ import {
     Bot,
     TrendingUp,
     Sliders,
-    MessageSquare
+    MessageSquare,
+    RefreshCcw
 } from 'lucide-react';
 
-export type AdminPage = 'dashboard' | 'users' | 'orders' | 'leads' | 'points-rules' | 'roles' | 'ai-engine' | 'growth' | 'settings';
+export type AdminPage = 'dashboard' | 'users' | 'orders' | 'refunds' | 'leads' | 'points-rules' | 'roles' | 'ai-engine' | 'growth' | 'settings';
 
 interface AdminSidebarProps {
     currentPage: AdminPage;
@@ -29,6 +30,7 @@ const menuItems: { id: AdminPage; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: '控制台', icon: <LayoutDashboard size={18} /> },
     { id: 'users', label: '用户管理', icon: <Users size={18} /> },
     { id: 'orders', label: '订单管理', icon: <Receipt size={18} /> },
+    { id: 'refunds', label: '退款管理', icon: <RefreshCcw size={18} /> },
     { id: 'leads', label: '销售线索', icon: <MessageSquare size={18} /> },
     { id: 'points-rules', label: '积分规则', icon: <Coins size={18} /> },
     { id: 'growth', label: '产品管理', icon: <TrendingUp size={18} /> },
@@ -56,8 +58,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentPage, onPageC
                         <Sparkles size={24} className="text-white drop-shadow-md" />
                     </div>
                     <div>
-                        <div className="font-black text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">BananaSlides</div>
-                        <div className="text-[10px] font-bold text-violet-300 uppercase tracking-widest bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20 inline-block mt-1">Admin Panel</div>
+                        <div className="font-black text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">智能PPT创作平台</div>
+                        <div className="text-[10px] font-bold text-violet-300 uppercase tracking-widest bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20 inline-block mt-1">管理后台</div>
                     </div>
                 </div>
             </div>

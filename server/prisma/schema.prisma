@@ -47,6 +47,8 @@ model User {
   transactions       Transaction[]
   invitedBy          User?           @relation("Referrals", fields: [invitedById], references: [id])
   referrals          User[]          @relation("Referrals")
+  refundRequests     RefundRequest[]
+  refundStats        UserRefundStats?
 
   @@index([role])
   @@index([status])
@@ -136,6 +138,7 @@ model Order {
   beforeVipLevel Int?
   afterVipLevel  Int?
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refundRequests RefundRequest[]
 
   @@index([userId])
   @@index([status])
@@ -348,11 +351,99 @@ model AuditLog {
   reason    String?
   severity  String
   metadata  String?
-  ip        String?
-  createdAt DateTime @default(now())
+   ip        String?
+   createdAt DateTime @default(now())
 
+   @@index([userId])
+   @@index([type])
+   @@index([severity])
+   @@index([createdAt])
+}
+
+// ============================================================
+// 退款管理模块
+// ============================================================
+
+enum RefundStatus {
+  PENDING
+  PENDING_SECOND
+  PROCESSING
+  COMPLETED
+  REJECTED
+  FAILED
+  MANUAL_REQUIRED
+}
+
+model RefundRequest {
+  id                String       @id @default(uuid())
+  refundNo          String       @unique
+  userId            String
+  orderId           String
+  amount            Float
+  status            RefundStatus @default(PENDING)
+  reason            String
+  description       String?
+  remark            String?
+  
+  // 处理信息
+  processedAt       DateTime?
+  completedAt       DateTime?
+  processedBy       String?
+  secondApprovedBy  String?
+  
+  // 异常处理
+  failReason        String?
+  exceptionType     String?
+  requireManualAt   DateTime?
+  
+  // 退款交易信息
+  transactionId     String?
+  
+  // 时间戳
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  
+  // 关联
+  user              User         @relation(fields: [userId], references: [id])
+  order             Order        @relation(fields: [orderId], references: [id])
+  
   @@index([userId])
-  @@index([type])
-  @@index([severity])
+  @@index([orderId])
+  @@index([status])
   @@index([createdAt])
+}
+
+model UserRefundStats {
+  userId            String    @id
+  totalRequests     Int       @default(0)
+  approvedCount     Int       @default(0)
+  rejectedCount     Int       @default(0)
+  lastRequestAt     DateTime?
+  riskScore         Int       @default(0)
+  user              User      @relation(fields: [userId], references: [id])
+  
+  @@index([riskScore])
+}
+
+model RefundRetryLog {
+  id          String    @id @default(uuid())
+  refundId    String
+  retryCount  Int
+  error       String?
+  scheduledAt DateTime
+  executedAt  DateTime?
+  
+  @@index([refundId])
+  @@index([scheduledAt])
+}
+
+model BenefitRevokeLog {
+  id          String   @id @default(uuid())
+  userId      String
+  refundId    String
+  revokedAt   DateTime @default(now())
+  reason      String
+  
+  @@index([userId])
+  @@index([refundId])
 }

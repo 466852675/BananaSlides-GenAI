@@ -25,16 +25,16 @@ export function signToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
   const expiresInSeconds = getTokenExpiresIn();
   return jwt.sign(payload, JWT_SECRET!, {
     expiresIn: expiresInSeconds,
-    issuer: 'bananaslides',
-    audience: 'bananaslides-users',
+    issuer: 'yh-ai-ppt',
+    audience: 'yh-ai-ppt-users',
   });
 }
 
 export function verifyToken(token: string): JwtPayload | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET!, {
-      issuer: 'bananaslides',
-      audience: 'bananaslides-users',
+      issuer: 'yh-ai-ppt',
+      audience: 'yh-ai-ppt-users',
     }) as JwtPayload;
     return decoded;
   } catch (error) {

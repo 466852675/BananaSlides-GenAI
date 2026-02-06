@@ -147,19 +147,19 @@ export async function bootstrapPermissions(): Promise<void> {
     console.log('[Bootstrap] 检查权限配置...');
 
     const defaultPermissions = [
-        { code: 'admin.access', name: '访问管理后台', module: 'admin' },
-        { code: 'admin.users.read', name: '查看用户列表', module: 'users' },
-        { code: 'admin.users.write', name: '编辑用户', module: 'users' },
-        { code: 'admin.users.delete', name: '删除用户', module: 'users' },
-        { code: 'admin.orders.read', name: '查看订单', module: 'orders' },
-        { code: 'admin.orders.write', name: '编辑订单', module: 'orders' },
-        { code: 'admin.orders.refund', name: '订单退款', module: 'orders' },
-        { code: 'admin.points.read', name: '查看积分规则', module: 'points' },
-        { code: 'admin.points.write', name: '编辑积分规则', module: 'points' },
-        { code: 'admin.roles.read', name: '查看角色权限', module: 'roles' },
-        { code: 'admin.roles.write', name: '编辑角色权限', module: 'roles' },
-        { code: 'admin.system.read', name: '查看系统设置', module: 'system' },
-        { code: 'admin.system.write', name: '编辑系统设置', module: 'system' },
+        { code: 'admin.access', name: '访问管理后台', module: 'ADMIN' },
+        { code: 'admin.users.read', name: '查看用户列表', module: 'USERS' },
+        { code: 'admin.users.write', name: '编辑用户', module: 'USERS' },
+        { code: 'admin.users.delete', name: '删除用户', module: 'USERS' },
+        { code: 'admin.orders.read', name: '查看订单', module: 'ORDERS' },
+        { code: 'admin.orders.write', name: '编辑订单', module: 'ORDERS' },
+        { code: 'admin.orders.refund', name: '订单退款', module: 'ORDERS' },
+        { code: 'admin.points.read', name: '查看积分规则', module: 'POINTS' },
+        { code: 'admin.points.write', name: '编辑积分规则', module: 'POINTS' },
+        { code: 'admin.roles.read', name: '查看角色权限', module: 'ROLES' },
+        { code: 'admin.roles.write', name: '编辑角色权限', module: 'ROLES' },
+        { code: 'admin.system.read', name: '查看系统设置', module: 'SETTINGS' },
+        { code: 'admin.system.write', name: '编辑系统设置', module: 'SETTINGS' },
     ];
 
     for (const perm of defaultPermissions) {

@@ -67,7 +67,7 @@ export class AssetService {
                 responseType: 'arraybuffer',
                 timeout: 30000, // 30s timeout
                 headers: {
-                    'User-Agent': 'BananaSlides/1.0'
+                    'User-Agent': 'YH-AI-PPT/1.0'
                 }
             });
             

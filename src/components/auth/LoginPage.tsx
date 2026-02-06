@@ -138,8 +138,8 @@ export const LoginPage: React.FC = () => {
                     </div>
                 </div>
                 <div>
-                    <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">BananaSlides</h1>
-                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">GenAI PPT</span>
+                    <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">智能PPT创作平台</h1>
+                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">YH-AI PPT</span>
                 </div>
             </div>
 
