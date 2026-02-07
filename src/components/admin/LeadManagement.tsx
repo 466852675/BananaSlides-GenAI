@@ -26,6 +26,7 @@ import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { PermissionTooltip } from '../PermissionTooltip';
+import { LeadDetailDrawer } from './LeadDetailDrawer';
 
 const STATUS_LABELS: Record<string, string> = {
     'PENDING': '待处理',
@@ -77,6 +78,10 @@ export const LeadManagement: React.FC = () => {
         leadId: '',
         leadName: ''
     });
+
+    // 详情抽屉状态
+    const [selectedLead, setSelectedLead] = useState<AdminAPI.Lead | null>(null);
+    const [isDetailOpen, setIsDetailOpen] = useState(false);
 
     // 防抖函数
     const debounce = (fn: Function, delay: number) => {
@@ -282,9 +287,16 @@ export const LeadManagement: React.FC = () => {
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {leads.map((lead) => (
-                        <div key={lead.id} className="group relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-white/60 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 hover:-translate-y-1">
+                        <div 
+                            key={lead.id} 
+                            className="group bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col cursor-pointer"
+                            onClick={() => {
+                                setSelectedLead(lead);
+                                setIsDetailOpen(true);
+                            }}
+                        >
                             {/* Hover Actions - Top Right */}
                             {editingId !== lead.id && (
                                 <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 bg-white/95 backdrop-blur-sm p-1.5 rounded-xl shadow-lg border border-slate-100 z-20">
@@ -477,6 +489,29 @@ export const LeadManagement: React.FC = () => {
                 type="info"
                 confirmText="确认标记"
                 cancelText="取消"
+            />
+
+            {/* 线索详情抽屉 */}
+            <LeadDetailDrawer
+                lead={selectedLead}
+                isOpen={isDetailOpen}
+                onClose={() => setIsDetailOpen(false)}
+                onExpand={() => {
+                    console.log('展开全页:', selectedLead?.name);
+                    // TODO: 实现路由跳转到详情页
+                }}
+                onEdit={(lead) => {
+                    setIsDetailOpen(false);
+                    openEdit(lead);
+                }}
+                onDelete={(id, name) => {
+                    setIsDetailOpen(false);
+                    handleDelete(id, name);
+                }}
+                onMarkContacted={(lead) => {
+                    setIsDetailOpen(false);
+                    handleMarkContactedClick(lead);
+                }}
             />
         </div>
     );

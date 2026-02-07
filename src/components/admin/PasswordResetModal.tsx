@@ -1,5 +1,6 @@
 // src/components/admin/PasswordResetModal.tsx
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { X, Key, ShieldAlert, Mail, User as UserIcon } from 'lucide-react';
 import * as AdminAPI from '../../api/admin';
 
@@ -36,7 +37,7 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({ isOpen, 
         }
     };
 
-    return (
+    return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
             <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -106,6 +107,7 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({ isOpen, 
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

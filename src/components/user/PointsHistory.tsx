@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as PointsApi from '../../api/points';
 import { Loader2, X, Coins, Calendar, Search, Filter, ChevronLeft, ChevronRight, FileText, Image as ImageIcon, Sparkles, MonitorPlay } from 'lucide-react';
@@ -91,7 +92,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
 
     if (!isOpen) return null;
 
-    return (
+    return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[1400px] flex flex-col h-[90vh] overflow-hidden border border-slate-100">
 
@@ -417,6 +418,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

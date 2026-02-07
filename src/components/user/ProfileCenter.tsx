@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as AuthApi from '../../api/auth';
 import { useAuth } from '../../contexts/AuthContext';
@@ -89,7 +90,7 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose, o
 
     if (!isOpen) return null;
 
-    return (
+    return ReactDOM.createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
@@ -226,6 +227,7 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose, o
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
