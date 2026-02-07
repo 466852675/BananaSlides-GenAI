@@ -22,6 +22,7 @@ export interface RefundRequest {
     adminNote?: string;
     createdAt: string;
     processedAt?: string;
+    channel?: string;
 }
 
 export interface RefundListResponse {
@@ -50,6 +51,10 @@ export interface AdminRefundFilters {
     page?: number;
     limit?: number;
     keyword?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    channel?: string;
+    hasNote?: boolean;
 }
 
 export async function checkRefundEligibility(orderId: string): Promise<RefundEligibility> {

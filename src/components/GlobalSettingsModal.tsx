@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Settings, Cpu, Image as ImageIcon, Globe, Save, RotateCcw, Server, FileText, Eye } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { Settings, Cpu, Image as ImageIcon, Globe, Save, RotateCcw, Server, FileText, Eye, X, Zap, Sparkles, Database, Crown, Clock, ShieldAlert, Check, Layout, Code, Lock, CheckCircle } from 'lucide-react';
 import { AppSettings, AIProvider, ImageResolution, OutputLanguage, CustomComboConfig, EnvPreset } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useResetSettings } from '../api/settings';
@@ -191,45 +192,66 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
 
     const isCombo = settings.ai.provider === 'CustomCombo';
 
-    return (
-        <>
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-                <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    return ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[200] flex justify-end overflow-hidden">
+            {/* Backdrop */}
+            <div
+                className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
+                onClick={onClose}
+            />
 
-                    {/* Header */}
-                    <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
-                        <div className="flex items-center gap-2 text-slate-800">
-                            <div className="p-2 bg-slate-100 rounded-lg">
-                                <Settings size={20} className="text-slate-600" />
-                            </div>
-                            <h3 className="font-bold text-lg">全局配置</h3>
+            {/* Drawer Content */}
+            <div className={`relative w-full max-w-4xl bg-slate-50 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300 ${readOnly ? 'opacity-90' : ''}`}>
+
+                {/* Header */}
+                <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md sticky top-0 z-10">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100">
+                            <Settings size={24} />
                         </div>
-                        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 px-3 py-1 text-sm font-medium hover:bg-slate-50 rounded-lg transition-colors">
-                            关闭
-                        </button>
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800 tracking-tight">全局系统配置</h3>
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Global Engine Settings</span>
+                                {readOnly && (
+                                    <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black border border-amber-200/50 uppercase">
+                                        <Eye size={10} /> Read Only
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
 
-                    {/* Body - Scrollable */}
-                    <div className={`flex-1 overflow-y-auto custom-scrollbar bg-slate-50 p-6 space-y-6 ${readOnly ? 'pointer-events-none opacity-80' : ''}`}>
+                {/* Body - Scrollable */}
+                <div className="flex-1 overflow-y-auto p-8 space-y-10 pb-32 custom-scrollbar">
+                    {/* 1. Model Configuration */}
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600">
+                                <Server size={18} strokeWidth={2.5} />
+                            </div>
+                            <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-wider">AI 内核模型配置 (Infrastructure)</h4>
+                        </div>
 
-                        {/* 1. Model Configuration */}
-                        <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                            <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
-                                <Server size={18} className="text-indigo-500" /> 模型配置
-                            </h4>
-
+                        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm space-y-8">
                             {/* Provider Select */}
-                            <div className="mb-6">
-                                <label className="block text-sm font-medium text-slate-700 mb-2">AI 提供商</label>
+                            <div className="space-y-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">AI 核心供应商 (Primary Provider)</label>
                                 <div className="flex flex-wrap gap-2">
                                     {PROVIDERS.map(p => (
                                         <button
                                             key={p.value}
                                             onClick={() => handleProviderChange(p.value)}
-                                            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${settings.ai.provider === p.value
-                                                ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500'
-                                                : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-slate-50'
+                                            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all border-2 ${settings.ai.provider === p.value
+                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200'
+                                                : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-indigo-200 hover:text-indigo-500 hover:bg-white'
                                                 }`}
                                         >
                                             {p.label}
@@ -240,344 +262,394 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
 
                             {/* Config Area */}
                             {isCombo ? (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="md:col-span-3 bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-800">
-                                        💡 <b>自定义组合模式：</b> 您可以为不同任务指定独立的 API 终结点。若某项 Key 为空，将自动尝试使用上方填写的“全局 API Key”。
-                                    </div>
-                                    {/* Text Settings */}
-                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
-                                        <h5 className="font-bold text-slate-700 flex items-center gap-2 text-sm border-b border-slate-100 pb-2">
-                                            <FileText size={16} className="text-indigo-500" /> 文本生成 (Text)
-                                        </h5>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">API Base URL</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.customCombo?.text.baseUrl || ''}
-                                                onChange={(e) => updateComboSettings('text', 'baseUrl', e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none"
-                                                placeholder="https://api.openai.com/v1 或 http://localhost:8000/v1"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">API Key</label>
-                                            <input
-                                                type="password"
-                                                value={settings.ai.customCombo?.text.apiKey || ''}
-                                                onChange={(e) => updateComboSettings('text', 'apiKey', e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-mono"
-                                                placeholder="sk-..."
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">模型名称 (Model)</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.customCombo?.text.model || ''}
-                                                onChange={(e) => updateComboSettings('text', 'model', e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-bold text-slate-700"
-                                                placeholder="e.g. glm-4.7"
-                                            />
+                                <div className="space-y-6">
+                                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3">
+                                        <Zap className="text-amber-500 shrink-0 mt-0.5" size={18} />
+                                        <div className="text-xs text-amber-800 leading-relaxed">
+                                            <p className="font-black mb-1">自定义混合模式 (Mixed Mode Strategy)</p>
+                                            您正在使用高级路由策略。系统将为不同原子任务调度独立的 API 实例。
+                                            <span className="font-bold underline ml-1">注意：若单项配置留空，将自动降级至默认集群。</span>
                                         </div>
                                     </div>
 
-                                    {/* Image Settings */}
-                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
-                                        <h5 className="font-bold text-slate-700 flex items-center gap-2 text-sm border-b border-slate-100 pb-2">
-                                            <ImageIcon size={16} className="text-rose-500" /> 图像生成 (Image)
-                                        </h5>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">API Base URL</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.customCombo?.image.baseUrl || ''}
-                                                onChange={(e) => updateComboSettings('image', 'baseUrl', e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none"
-                                                placeholder="https://... 或 http://host.docker.internal:8045/v1"
-                                            />
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        {/* Text Settings */}
+                                        <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-4">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-white shadow-sm">
+                                                    <FileText size={16} />
+                                                </div>
+                                                <span className="text-xs font-black text-slate-800">文本层 (Text)</span>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Endpoint</span>
+                                                    <input
+                                                        type="text"
+                                                        value={settings.ai.customCombo?.text.baseUrl || ''}
+                                                        onChange={(e) => updateComboSettings('text', 'baseUrl', e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all"
+                                                        placeholder="URL..."
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Model</span>
+                                                    <input
+                                                        type="text"
+                                                        value={settings.ai.customCombo?.text.model || ''}
+                                                        onChange={(e) => updateComboSettings('text', 'model', e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all"
+                                                        placeholder="Model..."
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">API Key</label>
-                                            <input
-                                                type="password"
-                                                value={settings.ai.customCombo?.image.apiKey || ''}
-                                                onChange={(e) => updateComboSettings('image', 'apiKey', e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-mono"
-                                                placeholder="sk-..."
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">模型名称 (Model)</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.customCombo?.image.model || ''}
-                                                onChange={(e) => updateComboSettings('image', 'model', e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-bold text-slate-700"
-                                                placeholder="e.g. gemini-3-pro-image-preview"
-                                            />
-                                        </div>
-                                    </div>
 
-                                    {/* Vision Settings */}
-                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
-                                        <h5 className="font-bold text-slate-700 flex items-center gap-2 text-sm border-b border-slate-100 pb-2">
-                                            <Eye size={16} className="text-green-500" /> 图片识别 (Vision)
-                                        </h5>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">API Base URL</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.customCombo?.vision.baseUrl || ''}
-                                                onChange={(e) => updateComboSettings('vision', 'baseUrl', e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none"
-                                                placeholder="https://... 或 http://localhost:8000/v1"
-                                            />
+                                        {/* Image Settings */}
+                                        <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-4">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <div className="w-8 h-8 rounded-lg bg-rose-500 flex items-center justify-center text-white shadow-sm">
+                                                    <ImageIcon size={16} />
+                                                </div>
+                                                <span className="text-xs font-black text-slate-800">渲染层 (Image)</span>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Endpoint</span>
+                                                    <input
+                                                        type="text"
+                                                        value={settings.ai.customCombo?.image.baseUrl || ''}
+                                                        onChange={(e) => updateComboSettings('image', 'baseUrl', e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-4 focus:ring-rose-500/5 focus:border-rose-500 outline-none transition-all"
+                                                        placeholder="URL..."
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Model</span>
+                                                    <input
+                                                        type="text"
+                                                        value={settings.ai.customCombo?.image.model || ''}
+                                                        onChange={(e) => updateComboSettings('image', 'model', e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-4 focus:ring-rose-500/5 focus:border-rose-500 outline-none transition-all"
+                                                        placeholder="Model..."
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">API Key</label>
-                                            <input
-                                                type="password"
-                                                value={settings.ai.customCombo?.vision.apiKey || ''}
-                                                onChange={(e) => updateComboSettings('vision', 'apiKey', e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-mono"
-                                                placeholder="sk-..."
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-500 mb-1">模型名称 (Model)</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.customCombo?.vision.model || ''}
-                                                onChange={(e) => updateComboSettings('vision', 'model', e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-indigo-200 focus:outline-none font-bold text-slate-700"
-                                                placeholder="e.g. GLM-4V"
-                                            />
+
+                                        {/* Vision Settings */}
+                                        <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-4">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white shadow-sm">
+                                                    <Eye size={16} />
+                                                </div>
+                                                <span className="text-xs font-black text-slate-800">感知层 (Vision)</span>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Endpoint</span>
+                                                    <input
+                                                        type="text"
+                                                        value={settings.ai.customCombo?.vision.baseUrl || ''}
+                                                        onChange={(e) => updateComboSettings('vision', 'baseUrl', e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-4 focus:ring-emerald-500/5 focus:border-emerald-500 outline-none transition-all"
+                                                        placeholder="URL..."
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase ml-1">Model</span>
+                                                    <input
+                                                        type="text"
+                                                        value={settings.ai.customCombo?.vision.model || ''}
+                                                        onChange={(e) => updateComboSettings('vision', 'model', e.target.value)}
+                                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-4 focus:ring-emerald-500/5 focus:border-emerald-500 outline-none transition-all"
+                                                        placeholder="Model..."
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* API Credentials */}
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">API Base URL</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.baseUrl || ''}
-                                                onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, baseUrl: e.target.value } }))}
-                                                placeholder="https://api.example.com/v1"
-                                                className="w-full p-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                                            />
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                                    <div className="space-y-6">
+                                        <div className="space-y-4">
+                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">API 基础路径 (Base URL)</label>
+                                            <div className="relative group">
+                                                <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                                                <input
+                                                    type="text"
+                                                    value={settings.ai.baseUrl || ''}
+                                                    onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, baseUrl: e.target.value } }))}
+                                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all"
+                                                    placeholder="https://api.example.com/v1"
+                                                />
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">API Key</label>
-                                            <input
-                                                type="password"
-                                                value={settings.ai.apiKey || ''}
-                                                onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, apiKey: e.target.value } }))}
-                                                placeholder={settings.ai.provider === 'Gemini' ? "(默认使用内置 Key，无需填写)" : "sk-..."}
-                                                className="w-full p-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 font-mono"
-                                            />
+                                        <div className="space-y-4">
+                                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">验证凭证 (API Key)</label>
+                                            <div className="relative group">
+                                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-rose-500 transition-colors" size={18} />
+                                                <input
+                                                    type="password"
+                                                    value={settings.ai.apiKey || ''}
+                                                    onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, apiKey: e.target.value } }))}
+                                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-rose-500 focus:ring-4 focus:ring-rose-500/5 outline-none transition-all font-mono"
+                                                    placeholder={settings.ai.provider === 'Gemini' ? "使用内置密钥" : "sk-..."}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 
-                                    {/* Model Names */}
-                                    <div className="space-y-4 bg-slate-50 p-4 rounded-lg border border-slate-100">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">文本生成模型 (Text)</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.models.text || ''}
-                                                onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, models: { ...s.ai.models, text: e.target.value } } }))}
-                                                className="w-full p-2 border border-slate-200 rounded text-sm focus:outline-none focus:border-indigo-400"
-                                                placeholder="例如: gpt-4-turbo, glm-4..."
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">图像生成模型 (Image)</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.models.image || ''}
-                                                onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, models: { ...s.ai.models, image: e.target.value } } }))}
-                                                className="w-full p-2 border border-slate-200 rounded text-sm focus:outline-none focus:border-indigo-400"
-                                                placeholder="例如: dall-e-3, cogview-3..."
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">图片识别模型 (Vision)</label>
-                                            <input
-                                                type="text"
-                                                value={settings.ai.models.vision || ''}
-                                                onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, models: { ...s.ai.models, vision: e.target.value } } }))}
-                                                className="w-full p-2 border border-slate-200 rounded text-sm focus:outline-none focus:border-indigo-400"
-                                                placeholder="例如: gpt-4-vision-preview, glm-4v..."
-                                            />
+                                    <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-5">
+                                        <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 px-1">集群映射 (Model Mapping)</h5>
+                                        <div className="space-y-4">
+                                            <div className="grid grid-cols-3 items-center gap-4">
+                                                <span className="text-[11px] font-bold text-slate-500">
+                                                    <FileText size={14} className="inline mr-2 text-indigo-400" />
+                                                    文本生成
+                                                </span>
+                                                <input
+                                                    type="text"
+                                                    value={settings.ai.models.text || ''}
+                                                    onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, models: { ...s.ai.models, text: e.target.value } } }))}
+                                                    className="col-span-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-500 outline-none"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-3 items-center gap-4">
+                                                <span className="text-[11px] font-bold text-slate-500">
+                                                    <ImageIcon size={14} className="inline mr-2 text-rose-400" />
+                                                    图像创作
+                                                </span>
+                                                <input
+                                                    type="text"
+                                                    value={settings.ai.models.image || ''}
+                                                    onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, models: { ...s.ai.models, image: e.target.value } } }))}
+                                                    className="col-span-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-500 outline-none"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-3 items-center gap-4">
+                                                <span className="text-[11px] font-bold text-slate-500">
+                                                    <Eye size={14} className="inline mr-2 text-emerald-400" />
+                                                    多模态感知
+                                                </span>
+                                                <input
+                                                    type="text"
+                                                    value={settings.ai.models.vision || ''}
+                                                    onChange={(e) => setSettings(s => ({ ...s, ai: { ...s.ai, models: { ...s.ai.models, vision: e.target.value } } }))}
+                                                    className="col-span-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:border-indigo-500 outline-none"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             )}
-                        </section>
+                        </div>
+                    </div>
 
-                        {/* 1.5 Document Parser Configuration (MinerU) */}
-                        <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                            <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
-                                <FileText size={18} className="text-orange-500" /> 文档解析配置 (MinerU)
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="md:col-span-2 bg-orange-50 border border-orange-100 p-3 rounded-lg text-xs text-orange-800 flex items-start gap-2">
-                                    <span className="text-lg">💡</span>
-                                    <div>
-                                        <b>MinerU (Magic-PDF)</b> 是开源的高精度 PDF 转 Markdown 工具。配置后，系统将优先使用 MinerU 解析 PDF 文档，从而解决部分 AI 模型无法直接读取 PDF 的问题。
-                                        <a href="https://mineru.net" target="_blank" rel="noreferrer" className="underline ml-1 font-bold">官网获取 Token &gt;</a>
-                                    </div>
+                    {/* 2. Document Parser (MinerU) */}
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-600">
+                                <Code size={18} strokeWidth={2.5} />
+                            </div>
+                            <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-wider">结构化文档解析 (Doc Parser)</h4>
+                        </div>
+
+                        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="md:col-span-2 flex items-start gap-4 p-4 bg-orange-50/50 rounded-2xl border border-orange-100/50">
+                                <div className="w-10 h-10 shrink-0 bg-white rounded-xl shadow-sm flex items-center justify-center text-orange-500">
+                                    <Sparkles size={20} />
                                 </div>
-                                <div className="md:col-span-2">
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">MinerU API Base</label>
-                                    <input
-                                        type="text"
-                                        value={settings.docParser?.baseUrl || 'https://mineru.net'}
-                                        onChange={(e) => setSettings(s => ({
-                                            ...s,
-                                            docParser: { ...s.docParser, baseUrl: e.target.value, provider: 'MinerU' }
-                                        }))}
-                                        placeholder="https://mineru.net"
-                                        className="w-full p-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
-                                    />
-                                    <p className="text-[10px] text-slate-400 mt-1">默认为 https://mineru.net，私有部署请填写您的 API 地址</p>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">MinerU Token</label>
-                                    <input
-                                        type="password"
-                                        value={settings.docParser?.apiKey || ''}
-                                        onChange={(e) => setSettings(s => ({
-                                            ...s,
-                                            docParser: { ...s.docParser, apiKey: e.target.value, provider: 'MinerU' }
-                                        }))}
-                                        placeholder="sk-..."
-                                        className="w-full p-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 font-mono"
-                                    />
+                                <div className="text-xs text-orange-800 leading-relaxed">
+                                    <p className="font-black mb-1">使用 MinerU (Magic-PDF) 解析器</p>
+                                    工业级 PDF 转 Markdown 工具。配置后将启用结构化提取，极大提升长文本解析精度。
+                                    <a href="https://mineru.net" target="_blank" rel="noreferrer" className="font-bold underline ml-2 hover:text-orange-600 transition-colors">获取 API Token &gt;</a>
                                 </div>
                             </div>
-                        </section>
+                            <div className="space-y-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Parser Endpoint</label>
+                                <input
+                                    type="text"
+                                    value={settings.docParser?.baseUrl || 'https://mineru.net'}
+                                    onChange={(e) => setSettings(s => ({
+                                        ...s,
+                                        docParser: { ...s.docParser, baseUrl: e.target.value, provider: 'MinerU' }
+                                    }))}
+                                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-orange-500 outline-none transition-all font-mono"
+                                    placeholder="https://mineru.net"
+                                />
+                            </div>
+                            <div className="space-y-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">MinerU Token</label>
+                                <input
+                                    type="password"
+                                    value={settings.docParser?.apiKey || ''}
+                                    onChange={(e) => setSettings(s => ({
+                                        ...s,
+                                        docParser: { ...s.docParser, apiKey: e.target.value, provider: 'MinerU' }
+                                    }))}
+                                    className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-orange-500 outline-none transition-all font-mono"
+                                    placeholder="sk-..."
+                                />
+                            </div>
+                        </div>
+                    </div>
 
-                        {/* 2. Image Generation Config */}
-                        <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                            <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
-                                <ImageIcon size={18} className="text-rose-500" /> 图像生成配置
-                            </h4>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-3">生成分辨率</label>
-                                <div className="flex gap-4">
-                                    {RESOLUTIONS.map(res => (
-                                        <label key={res.value} className={`flex-1 relative cursor-pointer group`}>
-                                            <input
-                                                type="radio"
-                                                name="resolution"
-                                                value={res.value}
-                                                checked={settings.imageGeneration.resolution === res.value}
-                                                onChange={() => setSettings(s => ({ ...s, imageGeneration: { resolution: res.value } }))}
-                                                className="peer sr-only"
-                                            />
-                                            <div className="p-4 rounded-xl border-2 border-slate-200 bg-slate-50 peer-checked:border-rose-500 peer-checked:bg-rose-50 peer-checked:text-rose-700 transition-all text-center">
-                                                <div className="font-bold text-lg mb-1">{res.label}</div>
-                                                <div className="text-xs text-slate-500 peer-checked:text-rose-600/80">{res.desc}</div>
+                    {/* 3. Multimedia & Generation */}
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600">
+                                <ImageIcon size={18} strokeWidth={2.5} />
+                            </div>
+                            <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-wider">图像生成分辨率 (Resolution)</h4>
+                        </div>
+
+                        <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
+                            <div className="grid grid-cols-3 gap-4">
+                                {RESOLUTIONS.map(res => {
+                                    const isSelected = settings.imageGeneration.resolution === res.value;
+                                    return (
+                                        <button
+                                            key={res.value}
+                                            onClick={() => setSettings(s => ({ ...s, imageGeneration: { resolution: res.value } }))}
+                                            className={`relative group p-6 rounded-[2rem] border-2 transition-all text-left overflow-hidden ${isSelected
+                                                ? 'bg-rose-50 border-rose-500 shadow-md shadow-rose-100'
+                                                : 'bg-slate-50 border-slate-100 hover:border-rose-200 hover:bg-white'
+                                                }`}
+                                        >
+                                            <div className="relative z-10">
+                                                <div className={`text-lg font-black mb-1 ${isSelected ? 'text-rose-700' : 'text-slate-700'}`}>{res.label}</div>
+                                                <div className={`text-[10px] font-bold ${isSelected ? 'text-rose-500' : 'text-slate-400'}`}>{res.desc}</div>
                                             </div>
-                                        </label>
-                                    ))}
-                                </div>
+                                            {isSelected && (
+                                                <div className="absolute top-4 right-4 text-rose-500">
+                                                    <CheckCircle size={20} />
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
                             </div>
-                        </section>
+                        </div>
+                    </div>
 
-                        {/* 3. Performance & Language */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Performance */}
-                            <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                                <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
-                                    <Cpu size={18} className="text-blue-500" /> 性能配置
-                                </h4>
+                    {/* 4. Performance & Localization */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Performance */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600">
+                                    <Cpu size={18} strokeWidth={2.5} />
+                                </div>
+                                <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-wider">并发与性能 (Concurrency)</h4>
+                            </div>
+                            <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm space-y-6">
                                 <div className="space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-sm font-medium text-slate-700">描述生成最大并发数</label>
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">文本管线并发 (Text)</label>
+                                        <span className="text-[10px] font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">RECOMMENDED: 10</span>
+                                    </div>
+                                    <div className="relative group">
+                                        <Database className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                         <input
-                                            type="number" min={1} max={50}
+                                            type="number"
                                             value={settings.performance.textConcurrency ?? ''}
                                             onChange={(e) => {
                                                 const val = e.target.value === '' ? undefined : parseInt(e.target.value);
                                                 setSettings(s => ({ ...s, performance: { ...s.performance, textConcurrency: val } }))
                                             }}
-                                            placeholder="无限制"
-                                            className="w-24 p-2 border border-slate-200 rounded text-center text-sm font-bold placeholder:font-normal placeholder:text-slate-400"
+                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-blue-500 outline-none transition-all"
+                                            placeholder="无限制 (Unlimited)"
                                         />
                                     </div>
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-sm font-medium text-slate-700">图像生成最大并发数</label>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">图像管线并发 (Image)</label>
+                                        <span className="text-[10px] font-black text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">STABLE: 2</span>
+                                    </div>
+                                    <div className="relative group">
+                                        <ImageIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                         <input
-                                            type="number" min={1} max={20}
+                                            type="number"
                                             value={settings.performance.imageConcurrency ?? ''}
                                             onChange={(e) => {
                                                 const val = e.target.value === '' ? undefined : parseInt(e.target.value);
                                                 setSettings(s => ({ ...s, performance: { ...s.performance, imageConcurrency: val } }))
                                             }}
+                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-rose-500 outline-none transition-all"
                                             placeholder="无限制"
-                                            className="w-24 p-2 border border-slate-200 rounded text-center text-sm font-bold placeholder:font-normal placeholder:text-slate-400"
                                         />
                                     </div>
                                 </div>
-                            </section>
-
-                            {/* Language */}
-                            <section className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-                                <h4 className="flex items-center gap-2 font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">
-                                    <Globe size={18} className="text-green-500" /> 输出语言设置
-                                </h4>
-                                <div className="space-y-3">
-                                    {LANGUAGES.map(lang => (
-                                        <label key={lang.value} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="radio"
-                                                    name="language"
-                                                    value={lang.value}
-                                                    checked={settings.language === lang.value}
-                                                    onChange={() => setSettings(s => ({ ...s, language: lang.value }))}
-                                                    className="text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                                <span className="text-sm font-medium text-slate-700">{lang.label}</span>
-                                            </div>
-                                            {settings.language === lang.value && <div className="w-2 h-2 rounded-full bg-green-500"></div>}
-                                        </label>
-                                    ))}
-                                </div>
-                            </section>
+                            </div>
                         </div>
 
-                    </div>
-
-                    {/* Footer */}
-                    <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
-                        {readOnly ? (
-                            <div className="flex items-center gap-2 text-slate-500 text-sm w-full justify-center">
-                                <Eye size={16} />
-                                <span>只读模式 - 预览历史版本配置</span>
+                        {/* Language */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                                    <Globe size={18} strokeWidth={2.5} />
+                                </div>
+                                <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-wider">输出语言偏好 (Localization)</h4>
                             </div>
-                        ) : (
-                            <>
-                                <button
-                                    onClick={handleResetClick}
-                                    className="flex items-center gap-2 px-4 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 rounded-lg transition-colors text-sm font-medium"
-                                >
-                                    <RotateCcw size={16} /> 重置默认
-                                </button>
-                                <button
-                                    onClick={handleSaveClick}
-                                    className="flex items-center gap-2 px-8 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg shadow-indigo-200 transition-all font-bold active:scale-95"
-                                >
-                                    <Save size={18} /> 保存配置
-                                </button>
-                            </>
-                        )}
+                            <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm space-y-3">
+                                {LANGUAGES.map(lang => {
+                                    const isSelected = settings.language === lang.value;
+                                    return (
+                                        <button
+                                            key={lang.value}
+                                            onClick={() => setSettings(s => ({ ...s, language: lang.value }))}
+                                            className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${isSelected
+                                                ? 'bg-emerald-50 border-emerald-500 shadow-sm'
+                                                : 'bg-slate-50 border-slate-100 hover:border-emerald-200 hover:bg-white'
+                                                }`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] ${isSelected ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                                    {lang.value.toUpperCase()}
+                                                </div>
+                                                <span className={`text-sm font-bold ${isSelected ? 'text-emerald-700' : 'text-slate-600'}`}>{lang.label}</span>
+                                            </div>
+                                            {isSelected && (
+                                                <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white">
+                                                    <Check size={14} strokeWidth={3} />
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
+                </div>
+
+                {/* Footer - Sticky */}
+                <div className="px-8 py-6 border-t border-slate-100 bg-white/80 backdrop-blur-xl flex items-center justify-between gap-4 shrink-0 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] sticky bottom-0 z-10 rounded-t-[2.5rem]">
+                    {readOnly ? (
+                        <div className="flex items-center gap-3 text-slate-400 font-black uppercase tracking-widest text-xs w-full justify-center py-2">
+                            <ShieldAlert size={18} className="text-amber-500" />
+                            <span>Preview Only - Modifying Disabled</span>
+                        </div>
+                    ) : (
+                        <>
+                            <button
+                                onClick={handleResetClick}
+                                className="flex-1 py-4 px-6 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-slate-200 transition-all text-sm tracking-widest uppercase flex items-center justify-center gap-2"
+                            >
+                                <RotateCcw size={18} />
+                                重置默认
+                            </button>
+                            <button
+                                onClick={handleSaveClick}
+                                className="flex-[2] py-4 px-6 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-2xl font-black hover:shadow-xl hover:shadow-indigo-500/25 transition-all text-sm tracking-widest uppercase flex items-center justify-center gap-2"
+                            >
+                                <Save size={18} strokeWidth={3} />
+                                保存当前生效配置
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -591,6 +663,7 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                 onCancel={() => setConfirmAction({ ...confirmAction, isOpen: false })}
                 type={confirmAction.type === 'save' ? 'info' : 'danger'}
             />
-        </>
+        </div>,
+        document.body
     );
 };

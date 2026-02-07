@@ -1,5 +1,5 @@
-
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 interface ConfirmDialogProps {
@@ -32,7 +32,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     inputPlaceholder
 }) => {
     if (!isOpen) return null;
-    return (
+    return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/20 backdrop-blur-[1px]" onClick={onCancel} />
             <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6 transform transition-all scale-100 animate-in fade-in zoom-in duration-200">
@@ -67,6 +67,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };

@@ -2,6 +2,7 @@
 // 邀请有礼弹窗组件
 
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { X, Gift } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ReferralCard } from './ReferralCard';
@@ -12,7 +13,7 @@ interface InviteModalProps {
 }
 
 export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose }) => {
-    return (
+    return ReactDOM.createPortal(
         <AnimatePresence>
             {isOpen && (
                 <>
@@ -61,6 +62,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose }) => 
                     </motion.div>
                 </>
             )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body
     );
 };
