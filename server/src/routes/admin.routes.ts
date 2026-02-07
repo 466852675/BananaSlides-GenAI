@@ -13,6 +13,15 @@ router.use(authenticate);
 router.use(requireAdmin);
 
 // ============================================================
+// AI 引擎规则管理
+// ============================================================
+router.get('/ai-engine-rules', requireSuperAdmin, AdminController.listEngineRules);
+router.post('/ai-engine-rules', requireSuperAdmin, AdminController.createEngineRule);
+router.put('/ai-engine-rules/:id', requireSuperAdmin, AdminController.updateEngineRule);
+router.post('/ai-engine-rules/:id/activate', requireSuperAdmin, AdminController.activateEngineRule);
+router.delete('/ai-engine-rules/:id', requireSuperAdmin, AdminController.deleteEngineRule);
+
+// ============================================================
 // 用户管理
 // ============================================================
 router.get('/users', AdminController.listUsers);
@@ -49,6 +58,7 @@ router.delete('/products/:id', authenticate, requireSuperAdmin, requirePermissio
 // 角色权限管理
 // ============================================================
 router.get('/roles', AdminController.listRoles);
+router.get('/roles/my-permissions', AdminController.getMyPermissions);
 router.get('/permissions', AdminController.listPermissions);
 router.get('/roles/:role/permissions', requireSuperAdmin, AdminController.getRolePermissions);
 router.put('/roles/:role/permissions', requireSuperAdmin, AdminController.updateRolePermissions);
@@ -69,9 +79,13 @@ router.get('/refunds', authenticate, requireAdmin, requirePermission('admin.refu
         const keyword = req.query.keyword as string;
         const startDate = req.query.startDate as string;
         const endDate = req.query.endDate as string;
+        const minAmount = req.query.minAmount ? parseFloat(req.query.minAmount as string) : undefined;
+        const maxAmount = req.query.maxAmount ? parseFloat(req.query.maxAmount as string) : undefined;
+        const paymentMethod = req.query.channel as string; // 前端传的是 channel
+        const hasNote = req.query.hasNote === 'true' ? true : req.query.hasNote === 'false' ? false : undefined;
 
         const result = await RefundService.listRefunds(
-            { status, keyword, startDate, endDate },
+            { status, keyword, startDate, endDate, minAmount, maxAmount, paymentMethod, hasNote },
             { page, limit }
         );
 
@@ -107,7 +121,8 @@ router.get('/refunds/stats', authenticate, requireAdmin, requirePermission('admi
 router.get('/refunds/:id', authenticate, requireAdmin, requirePermission('admin.refunds.view'), async (req, res) => {
     try {
         const id = req.params.id as string;
-        const result = await RefundService.getRefundById(id);
+        // [智能决策座舱] 使用聚合详情 API
+        const result = await RefundService.getAdminRefundDetailAggregated(id);
 
         if (!result) {
             return res.status(404).json({
@@ -164,7 +179,7 @@ router.post('/refunds/:id/audit', authenticate, requireAdmin, requirePermission(
 router.get('/refunds/metrics', authenticate, requireAdmin, requirePermission('admin.refunds.view'), async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
-        
+
         const where: any = {};
         if (startDate || endDate) {
             where.createdAt = {};
@@ -202,8 +217,8 @@ router.get('/refunds/metrics', authenticate, requireAdmin, requirePermission('ad
         ]);
 
         const completedCountNum = completedCount + rejectedCount;
-        const successRateNum = completedCountNum > 0 
-            ? Math.round((completedCount / completedCountNum) * 100) 
+        const successRateNum = completedCountNum > 0
+            ? Math.round((completedCount / completedCountNum) * 100)
             : 0;
 
         const avgTime = avgProcessingTime.length > 0

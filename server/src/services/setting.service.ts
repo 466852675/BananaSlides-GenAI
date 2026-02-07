@@ -160,8 +160,8 @@ export class SettingService {
                 resolution: getEnv('IMG_RESOLUTION') || '2048x2048'
             },
             performance: {
-                textConcurrency: getEnvNum('PERF_TEXT_CONCURRENCY') || 10,
-                imageConcurrency: getEnvNum('PERF_IMAGE_CONCURRENCY')
+                textConcurrency: getEnvNum('PERF_TEXT_CONCURRENCY') || 1,
+                imageConcurrency: getEnvNum('PERF_IMAGE_CONCURRENCY') || 1
             },
             language: getEnv('OUTPUT_LANGUAGE') || 'zh'
         };
@@ -235,10 +235,16 @@ export class SettingService {
         return presets;
     }
 
-    // Sync Env to Database on Startup
+    // Sync Env to Database on Startup (Non-destructive)
     static async syncEnvToDatabase() {
-        console.log('[SettingService] Syncing .env to Database...');
-        await this.resetToEnv();
+        const existingSettings = await this.getSettings();
+        if (!existingSettings) {
+            console.log('[SettingService] No settings found in database. Initializing with .env defaults...');
+            const envSettings = this.loadFromEnv();
+            await this.updateSettings(envSettings);
+        } else {
+            console.log('[SettingService] Settings already exist in database. Skipping .env overwrite to preserve user changes.');
+        }
     }
 
     static async updateSettings(config: any) {

@@ -44,8 +44,61 @@ const getPageTypeLabel = (type: PageType) => {
     }
 }
 
-// Full Markdown Renderer Component with react-markdown
+/**
+ * 专门用于渲染解析后内容的预览器
+ * 混合渲染器：支持标准 Markdown 与 HTML 表格（如 MinerU 输出的格式）
+ */
+const ContentPreview: React.FC<{ content: string; className?: string }> = ({ content, className }) => {
+    // 渲染混合内容的函数
+    const renderMixedContent = (text: string) => {
+        if (!text) return null;
 
+        // 正则表达式：匹配 HTML 表格块
+        const tableRegex = /(<table[\s\S]*?<\/table>)/gi;
+        const parts = text.split(tableRegex);
+
+        return parts.map((part, index) => {
+            if (part.match(tableRegex)) {
+                // 如果是表格，使用 dangerouslySetInnerHTML 渲染，并包装一层以支持横向滚动
+                return (
+                    <div
+                        key={index}
+                        className="my-6 overflow-x-auto shadow-sm rounded-lg border border-slate-200 bg-white"
+                        dangerouslySetInnerHTML={{ __html: part }}
+                    />
+                );
+            } else if (part.trim()) {
+                // 如果是非表格内容，使用 ReactMarkdown 渲染
+                return <ReactMarkdown key={index}>{part}</ReactMarkdown>;
+            }
+            return null;
+        });
+    };
+
+    return (
+        <div
+            className={`w-full h-full p-6 overflow-y-auto bg-slate-50 rounded-xl text-slate-700 leading-relaxed break-words scrollbar-thin scrollbar-thumb-slate-200 ${className}`}
+        >
+            <style>
+                {`
+                    .bs-preview-content table { border-collapse: collapse; width: 100%; font-size: 0.875rem; border: none; }
+                    .bs-preview-content th, .bs-preview-content td { border: 1px solid #e2e8f0; padding: 0.75rem; text-align: left; vertical-align: middle; }
+                    .bs-preview-content th { background-color: #f8fafc; font-weight: 600; color: #334155; }
+                    .bs-preview-content h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; color: #1e293b; }
+                    .bs-preview-content h2 { font-size: 1.25rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #334155; }
+                    .bs-preview-content p { margin-bottom: 0.75rem; }
+                    .bs-preview-content ul, .bs-preview-content ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+                    .bs-preview-content li { margin-bottom: 0.4rem; list-style-type: disc; }
+                    .bs-preview-content tr:nth-child(even) { background-color: #f8fafc; }
+                    .bs-preview-content td[colspan], .bs-preview-content th[colspan] { text-align: left; }
+                `}
+            </style>
+            <div className="bs-preview-content max-w-4xl mx-auto">
+                {renderMixedContent(content)}
+            </div>
+        </div>
+    );
+}
 
 export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onClose, onFinish, initialTopic = "", config, appSettings, onShowToast, projectId }) => {
     const { user, refreshUser, isLoading: isAuthLoading } = useAuth();
@@ -55,6 +108,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
     const [topic, setTopic] = useState(initialTopic);
     // Tab 2 input state (Isolated)
     const [fileParsedContent, setFileParsedContent] = useState("");
+    const [isPreviewing, setIsPreviewing] = useState(false);
 
     const [isRefining, setIsRefining] = useState(false);
     const [isGeneratingOutline, setIsGeneratingOutline] = useState(false);
@@ -620,9 +674,10 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 handleUpdateOutlineItem(id, { fullContent: detail, status: 'success' });
             }
             onShowToast("此页内容生成成功", 'success');
-        } catch (e) {
+        } catch (e: any) {
             handleUpdateOutlineItem(id, { status: 'error' });
-            onShowToast("生成内容失败", 'error');
+            const errorMsg = e instanceof Error ? e.message : "生成内容失败";
+            onShowToast(errorMsg, 'error');
             throw e;
         }
     };
@@ -648,42 +703,50 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         const providerName = getProviderName('text');
         onShowToast(`批量调用 ${providerName} API 生成详细描述中...`, 'loading');
 
-        const pendingItems = outlineItems;
+        // Use concurrency from settings, default to 1 for API rate limit safety
+        const CONCURRENCY = appSettings.performance.textConcurrency || 1;
+        const pendingItems = [...outlineItems];
+        console.log(`[Batch Generation] Starting with concurrency ${CONCURRENCY} for ${pendingItems.length} items`);
 
-        // Use concurrency from settings, default to 5 for API rate limit safety
-        const CONCURRENCY = appSettings.performance.textConcurrency || 10;
-        const activePromises = new Set<Promise<void>>();
         let failureCount = 0;
-        let successCount = 0; // Track actual generations
+        let successCount = 0;
 
-        for (const item of pendingItems) {
-            // If NOT forced, skip already successful items
-            if (!force && item.status === 'success' && item.fullContent) continue;
+        // 创建任务副本队列
+        const queue = [...pendingItems];
 
-            while (activePromises.size >= CONCURRENCY) {
-                await Promise.race(activePromises);
+        // 创建并发执行器销
+        const workers = Array.from({ length: CONCURRENCY }).map(async (_, workerIndex) => {
+            while (queue.length > 0) {
+                const item = queue.shift();
+                if (!item) break;
+
+                // 如果非强制且已成功，跳过
+                if (!force && item.status === 'success' && item.fullContent) {
+                    console.log(`[Worker ${workerIndex}] Skipping already successful item: ${item.id}`);
+                    continue;
+                }
+
+                try {
+                    await generateDetailForId(item.id);
+                    successCount++;
+                } catch (err) {
+                    console.error(`[Worker ${workerIndex}] Failed item ${item.id}:`, err);
+                    failureCount++;
+                }
             }
+        });
 
-            const p = generateDetailForId(item.id).then(() => {
-                successCount++;
-                activePromises.delete(p);
-            }).catch(() => {
-                failureCount++;
-                activePromises.delete(p);
-            });
-            activePromises.add(p);
-        }
+        await Promise.all(workers);
+        console.log(`[Batch Generation] Finished. Success: ${successCount}, Failures: ${failureCount}`);
 
-        await Promise.all(activePromises);
         setIsGeneratingDetails(false);
 
         if (failureCount > 0) {
-            onShowToast(`调用 ${providerName} API 完成，但有 ${failureCount} 页失败`, 'error');
+            onShowToast(`批量生成已完成，但有 ${failureCount} 页遇到问题`, 'error');
         } else if (successCount === 0 && !force) {
-            // Should not happen if logic is correct, but safe check
             onShowToast(`没有需要生成的页面`, 'info');
         } else {
-            onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+            onShowToast(`所有页面内容已生成完毕`, 'success');
         }
     };
 
@@ -691,9 +754,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         const hasPending = outlineItems.some(i => i.status !== 'success' || !i.fullContent);
 
         if (hasPending) {
-            // Normal mode: only generate missing ones
             setIsGeneratingDetails(true);
-            // Fetch fresh balance and cost for warning (using slide_content rule)
             try {
                 const [rule, balance] = await Promise.all([
                     getPointsRule('full_content_generation', true),
@@ -706,9 +767,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 onShowToast(`AI 正在批量生成详细内容。本次预计扣除 ${totalCost} 积分 ${logicTip}，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
             } catch (e) {
                 console.warn('Failed to fetch real-time points info', e);
-                onShowToast('AI 正在批量生成详细内容... 正在调用服务，请稍候。', 'loading');
+                onShowToast('AI 正在批量生成内容详情...', 'loading');
             }
-            executeBatchGeneration(false);
+            await executeBatchGeneration(false);
         } else {
             // All done mode: ask for confirmation to regenerate all
             setConfirmState({
@@ -1012,19 +1073,39 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                         ) : (
                                             /* Editor Area - Show ONLY when file IS attached (Replaces Upload Area) */
                                             <>
-                                                <AIGlowContainer
-                                                    isActive={isRefining || isGeneratingOutline}
-                                                    className="flex-1 min-h-0 rounded-xl"
-                                                    colorFrom="#4f46e5"
-                                                    colorTo="#8b5cf6"
-                                                >
-                                                    <textarea
-                                                        value={fileParsedContent}
-                                                        onChange={(e) => setFileParsedContent(e.target.value)}
-                                                        placeholder="解析后的文档内容将显示在这里，您可以进行二次编辑..."
-                                                        className="w-full h-full p-4 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl bg-slate-50 border border-slate-100 focus:bg-white transition-colors"
-                                                    />
-                                                </AIGlowContainer>
+                                                <div className="flex-1 min-h-0 relative">
+                                                    {/* Preview Toggle Button */}
+                                                    <div className="absolute top-3 right-3 z-10 flex gap-1">
+                                                        <button
+                                                            onClick={() => setIsPreviewing(!isPreviewing)}
+                                                            title={isPreviewing ? "编辑内容" : "渲染预览"}
+                                                            className={`flex items-center justify-center p-2 rounded-lg transition-all shadow-sm border
+                                                                ${isPreviewing
+                                                                    ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                                                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                                        >
+                                                            {isPreviewing ? <Edit3 size={16} /> : <Eye size={16} />}
+                                                        </button>
+                                                    </div>
+
+                                                    <AIGlowContainer
+                                                        isActive={isRefining || isGeneratingOutline}
+                                                        className="w-full h-full rounded-xl"
+                                                        colorFrom="#4f46e5"
+                                                        colorTo="#8b5cf6"
+                                                    >
+                                                        {isPreviewing ? (
+                                                            <ContentPreview content={fileParsedContent} />
+                                                        ) : (
+                                                            <textarea
+                                                                value={fileParsedContent}
+                                                                onChange={(e) => setFileParsedContent(e.target.value)}
+                                                                placeholder="解析后的文档内容将显示在这里，您可以进行二次编辑..."
+                                                                className="w-full h-full p-4 pr-32 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl bg-slate-50 border border-slate-100 focus:bg-white transition-colors"
+                                                            />
+                                                        )}
+                                                    </AIGlowContainer>
+                                                </div>
 
                                                 <div className="flex justify-between items-center shrink-0">
                                                     <span className="text-xs text-slate-400">系统将按照全局设置的 {config.targetPageCount} 页结构生成</span>

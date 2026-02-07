@@ -10,41 +10,41 @@ interface RefundHistoryModalProps {
 }
 
 const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ReactNode }> = {
-    PENDING: { 
-        label: '待审核', 
-        color: 'text-amber-600', 
+    PENDING: {
+        label: '待审核',
+        color: 'text-amber-600',
         bgColor: 'bg-amber-50',
-        icon: <Clock size={14} /> 
+        icon: <Clock size={14} />
     },
-    PROCESSING: { 
-        label: '处理中', 
-        color: 'text-blue-600', 
+    PROCESSING: {
+        label: '处理中',
+        color: 'text-blue-600',
         bgColor: 'bg-blue-50',
-        icon: <RefreshCcw size={14} className="animate-spin" /> 
+        icon: <RefreshCcw size={14} className="animate-spin" />
     },
-    COMPLETED: { 
-        label: '已退款', 
-        color: 'text-green-600', 
+    COMPLETED: {
+        label: '已退款',
+        color: 'text-green-600',
         bgColor: 'bg-green-50',
-        icon: <CheckCircle size={14} /> 
+        icon: <CheckCircle size={14} />
     },
-    REJECTED: { 
-        label: '已拒绝', 
-        color: 'text-red-600', 
+    REJECTED: {
+        label: '已拒绝',
+        color: 'text-red-600',
         bgColor: 'bg-red-50',
-        icon: <XCircle size={14} /> 
+        icon: <XCircle size={14} />
     },
-    FAILED: { 
-        label: '退款失败', 
-        color: 'text-red-600', 
+    FAILED: {
+        label: '退款失败',
+        color: 'text-red-600',
         bgColor: 'bg-red-50',
-        icon: <AlertCircle size={14} /> 
+        icon: <AlertCircle size={14} />
     },
-    MANUAL_REQUIRED: { 
-        label: '需人工处理', 
-        color: 'text-purple-600', 
+    MANUAL_REQUIRED: {
+        label: '需人工处理',
+        color: 'text-purple-600',
         bgColor: 'bg-purple-50',
-        icon: <AlertCircle size={14} /> 
+        icon: <AlertCircle size={14} />
     },
 };
 
@@ -218,10 +218,10 @@ export const RefundHistoryModal: React.FC<RefundHistoryModalProps> = ({ isOpen, 
                                         </p>
                                     </div>
 
-                                    {selectedRefund.adminNote && (
+                                    {selectedRefund.remark && (
                                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                                             <p className="text-sm font-medium text-blue-800 mb-1">客服备注</p>
-                                            <p className="text-sm text-blue-600">{selectedRefund.adminNote}</p>
+                                            <p className="text-sm text-blue-600">{selectedRefund.remark}</p>
                                         </div>
                                     )}
 

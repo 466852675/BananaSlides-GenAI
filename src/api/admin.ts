@@ -671,3 +671,149 @@ export async function deleteLead(id: string): Promise<void> {
         throw new Error(result.error?.message || '删除线索失败');
     }
 }
+
+// ============================================================
+// AI 引擎规则管理 API
+// ============================================================
+
+export interface AiEngineRule {
+    id: string;
+    name: string;
+    provider: 'Gemini' | 'Volcengine' | 'OpenAI' | 'CustomCombo' | string;
+    config: string; // JSON 字符串
+    isActive: boolean;
+    description: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface AiEngineRuleConfig {
+    apiKey: string;
+    baseUrl?: string;
+    textModel?: string;
+    imageModel?: string;
+    visionModel?: string;
+    // CustomCombo 分离配置
+    combo?: {
+        text?: { baseUrl: string; apiKey: string; model: string };
+        image?: { baseUrl: string; apiKey: string; model: string };
+        vision?: { baseUrl: string; apiKey: string; model: string };
+    };
+}
+
+// 全局基础配置 (单一存储在 AppSettings 中)
+export interface GlobalAiConfig {
+    docParser: {
+        provider: string;  // MinerU, etc.
+        apiKey: string;
+        baseUrl: string;
+    };
+    imageResolution: string;  // "2048x2048"
+    textConcurrency: number;  // 1-10
+    imageConcurrency: number;  // 1-5
+    outputLanguage: 'zh' | 'en' | 'ja' | 'auto';
+}
+
+// 厂商预设
+export const PROVIDER_PRESETS = [
+    { value: 'Gemini', label: 'Google Gemini', color: 'violet', icon: '🔮' },
+    { value: 'Volcengine', label: '火山引擎 (Doubao)', color: 'orange', icon: '🌋' },
+    { value: 'OpenAI', label: 'OpenAI', color: 'emerald', icon: '🤖' },
+    { value: 'Zhipu', label: '智谱清言 (GLM)', color: 'blue', icon: '🧠' },
+    { value: 'SiliconFlow', label: '硅基流动', color: 'cyan', icon: '💎' },
+    { value: 'ModelScope', label: '魔搭社区', color: 'purple', icon: '🔬' },
+    { value: 'Custom', label: '自定义', color: 'slate', icon: '⚙️' },
+    { value: 'CustomCombo', label: '自定义组合', color: 'amber', icon: '🧩' },
+] as const;
+
+// 分辨率预设
+export const RESOLUTION_PRESETS = [
+    '1024x1024',
+    '2048x2048',
+    '4096x4096',
+] as const;
+
+export const RESOLUTION_OPTIONS = [
+    { value: '1024x1024', label: '1024x1024 (1K)' },
+    { value: '2048x2048', label: '2048x2048 (2K)' },
+    { value: '4096x4096', label: '4096x4096 (4K)' },
+];
+
+// 语言预设
+export const LANGUAGE_PRESETS = [
+    { value: 'zh', label: '中文' },
+    { value: 'en', label: 'English' },
+    { value: 'ja', label: '日本語' },
+    { value: 'auto', label: '自动检测' },
+] as const;
+
+/**
+ * 获取所有 AI 引擎规则
+ */
+export async function getAiEngineRules(): Promise<AiEngineRule[]> {
+    const result = await client.get('/admin/ai-engine-rules') as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取 AI 引擎规则失败');
+}
+
+/**
+ * 创建 AI 引擎规则
+ */
+export async function createAiEngineRule(data: {
+    name: string;
+    provider: string;
+    config: AiEngineRuleConfig;
+    description?: string;
+}): Promise<AiEngineRule> {
+    const result = await client.post('/admin/ai-engine-rules', {
+        ...data,
+        config: JSON.stringify(data.config)
+    }) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '创建 AI 引擎规则失败');
+}
+
+/**
+ * 更新 AI 引擎规则
+ */
+export async function updateAiEngineRule(id: string, data: {
+    name?: string;
+    provider?: string;
+    config?: AiEngineRuleConfig;
+    description?: string;
+}): Promise<AiEngineRule> {
+    const payload: any = { ...data };
+    if (data.config) {
+        payload.config = JSON.stringify(data.config);
+    }
+    const result = await client.put(`/admin/ai-engine-rules/${id}`, payload) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '更新 AI 引擎规则失败');
+}
+
+/**
+ * 激活 AI 引擎规则
+ */
+export async function activateAiEngineRule(id: string): Promise<AiEngineRule> {
+    const result = await client.post(`/admin/ai-engine-rules/${id}/activate`) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '激活 AI 引擎规则失败');
+}
+
+/**
+ * 删除 AI 引擎规则
+ */
+export async function deleteAiEngineRule(id: string): Promise<void> {
+    const result = await client.delete(`/admin/ai-engine-rules/${id}`) as any;
+    if (!result.success) {
+        throw new Error(result.error?.message || '删除 AI 引擎规则失败');
+    }
+}

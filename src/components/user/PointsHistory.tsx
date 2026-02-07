@@ -272,7 +272,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                                         subCategory: item.subcategory || '-',
                                         detail: item.description || '-',
                                         triggerTime: item.triggerTime || item.createdAt,
-                                        successTime: item.completedAt || item.createdAt
+                                        successTime: item.completedAt || null
                                     };
 
                                     // 如果字段为空，尝试解析旧的 JSON description (Fallback)
@@ -285,7 +285,7 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                                                 subCategory: json.subcategory || '-',
                                                 detail: json.details || json.text || '-',
                                                 triggerTime: json.triggerTime || item.createdAt,
-                                                successTime: item.completedAt || json.successTime || item.createdAt
+                                                successTime: item.completedAt || json.successTime || null
                                             };
                                         } catch (e) {
                                             // Ignore parse error

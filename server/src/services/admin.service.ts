@@ -450,6 +450,17 @@ export async function listPermissions() {
  * 获取角色的权限
  */
 export async function getRolePermissions(role: UserRole) {
+    // [V9.0] 超级管理员特权：自动拥有系统中所有定义的权限
+    if (role === UserRole.SUPER_ADMIN) {
+        const allPermissions = await prisma.permission.findMany();
+        // 包装成 RolePermission 结构返回，保持接口兼容性
+        return allPermissions.map(p => ({
+            role: UserRole.SUPER_ADMIN,
+            permissionId: p.id,
+            permission: p
+        }));
+    }
+
     return await prisma.rolePermission.findMany({
         where: { role },
         include: { permission: true }
@@ -583,5 +594,80 @@ export async function getVipDistribution() {
         name: levelNames[d.vipLevel] || `等级 ${d.vipLevel}`,
         count: d._count.id
     })).sort((a, b) => b.level - a.level);
+}
+
+// ============================================================
+// 模型引擎规则管理
+// ============================================================
+
+/**
+ * 获取所有引擎规则
+ */
+export async function listEngineRules() {
+    return await prisma.aiEngineRule.findMany({
+        orderBy: { createdAt: 'desc' }
+    });
+}
+
+/**
+ * 创建引擎规则
+ */
+export async function createEngineRule(data: {
+    name: string;
+    provider: string;
+    config: string;
+    description?: string;
+}) {
+    // 如果是首个规则，默认开启
+    const count = await prisma.aiEngineRule.count();
+
+    return await prisma.aiEngineRule.create({
+        data: {
+            ...data,
+            isActive: count === 0
+        }
+    });
+}
+
+/**
+ * 更新引擎规则
+ */
+export async function updateEngineRule(id: string, data: any) {
+    return await prisma.aiEngineRule.update({
+        where: { id },
+        data
+    });
+}
+
+/**
+ * 激活引擎规则 (互斥逻辑)
+ */
+export async function activateEngineRule(id: string) {
+    return await prisma.$transaction(async (tx) => {
+        // 1. 全部取消激活
+        await tx.aiEngineRule.updateMany({
+            data: { isActive: false }
+        });
+
+        // 2. 激活目标
+        return await tx.aiEngineRule.update({
+            where: { id },
+            data: { isActive: true }
+        });
+    });
+}
+
+/**
+ * 删除引擎规则
+ */
+export async function deleteEngineRule(id: string) {
+    const rule = await prisma.aiEngineRule.findUnique({ where: { id } });
+    if (rule?.isActive) {
+        throw new Error('无法删除当前正在启用的规则，请先切换到其他规则');
+    }
+
+    return await prisma.aiEngineRule.delete({
+        where: { id }
+    });
 }
 

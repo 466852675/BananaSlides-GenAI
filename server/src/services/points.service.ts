@@ -206,15 +206,18 @@ export async function deductPoints(
 
     try {
         const result = await prisma.$transaction(async (tx) => {
-            const user = await tx.$queryRaw<{ points: number }[]>`
-                SELECT points FROM User WHERE id = ${userId} FOR UPDATE
-            `;
+            // [Fix] SQLite incompatible "FOR UPDATE". Use standard Prisma query.
+            // Prisma transactions provide sufficient isolation.
+            const user = await tx.user.findUnique({
+                where: { id: userId },
+                select: { points: true }
+            });
 
-            if (!user || user.length === 0) {
+            if (!user) {
                 throw new Error('用户不存在');
             }
 
-            const currentPoints = user[0].points;
+            const currentPoints = user.points;
 
             if (currentPoints < totalCost) {
                 return {
@@ -352,6 +355,32 @@ export async function addPoints(
     console.log(`[Points] 用户 ${userId} 增加 ${amount} 积分 (${type})，新余额 ${newBalance}`);
 
     return { success: true, newBalance };
+}
+
+/**
+ * 退还用户积分 (用于系统执行失败时的回滚)
+ */
+export async function refundPoints(
+    userId: string,
+    amount: number,
+    originalTransactionId?: string,
+    reason: string = '系统执行失败'
+): Promise<boolean> {
+    try {
+        await addPoints(
+            userId,
+            amount,
+            'adjust',
+            `积分退还: ${reason}`,
+            'SYSTEM',
+            originalTransactionId
+        );
+        console.log(`[Points] Refunded ${amount} points to user ${userId} for transaction ${originalTransactionId}`);
+        return true;
+    } catch (error) {
+        console.error(`[Points] Failed to refund points to ${userId}:`, error);
+        return false;
+    }
 }
 
 /**

@@ -115,8 +115,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
         resolution: '2048x2048'
     },
     performance: {
-        textConcurrency: 10, // Default to 10 for better performance
-        imageConcurrency: undefined // Unlimited by default
+        textConcurrency: 1, // Default to 1 for maximum stability (prevents ModelScope 401s)
+        imageConcurrency: 2 // Safe default for image generation
     },
     language: 'zh'
 };
@@ -468,7 +468,10 @@ export const GlobalSettingsModal: React.FC<GlobalSettingsModalProps> = ({ isOpen
                                 </div>
                             </div>
                             <div className="space-y-4">
-                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Parser Endpoint</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest ml-1 flex justify-between">
+                                    Parser Endpoint
+                                    <span className="text-[10px] text-slate-400 normal-case font-normal">(支持粘贴官方完整接口地址，系统将自动清洗)</span>
+                                </label>
                                 <input
                                     type="text"
                                     value={settings.docParser?.baseUrl || 'https://mineru.net'}

@@ -41,6 +41,16 @@ export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) 
             (res as any).transactionId = deductResult.transactionId;
         }
 
+        // FIX: Resolve relative upload path (e.g. /uploads/image.png) to absolute path
+        if (input && typeof input === 'object' && input.path && typeof input.path === 'string' && input.path.startsWith('/uploads/')) {
+            const path = require('path');
+            const originalPath = input.path;
+            input.path = path.resolve(process.cwd(), input.path.slice(1));
+            console.log('[AnalyzeTemplateConcept] Resolved Path:', { original: originalPath, resolved: input.path, cwd: process.cwd() });
+        } else {
+            console.log('[AnalyzeTemplateConcept] Input Path Check:', { inputType: typeof input, isObject: typeof input === 'object', path: input?.path });
+        }
+
         const settings = await getServerSettings();
         const result = await AIService.analyzeTemplateConcept(input, settings);
 
@@ -52,6 +62,9 @@ export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) 
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         console.error('[handleAnalyzeTemplateConcept] Error:', error);
+        if (req.user && (res as any).deductedPoints > 0) {
+            await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -106,6 +119,9 @@ export const handleGenerateStyleReference = async (req: Request, res: Response) 
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         console.error('[handleGenerateStyleReference] Error:', error);
+        if (req.user && (res as any).deductedPoints > 0) {
+            await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -150,6 +166,9 @@ export const handleSmartRefine = async (req: Request, res: Response) => {
 
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
+        if (req.user && (res as any).deductedPoints > 0) {
+            await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -184,6 +203,7 @@ export const handleExtractText = async (req: Request, res: Response) => {
                 return;
             }
             (res as any).deductedPoints = deductResult.deductedAmount;
+            (res as any).transactionId = deductResult.transactionId;
         }
 
         // FIX: Resolve relative upload path (e.g. /uploads/file.pdf) to absolute path for MinerU/FS
@@ -211,6 +231,9 @@ export const handleExtractText = async (req: Request, res: Response) => {
             pointsDeducted: (res as any).deductedPoints
         });
     } catch (error: any) {
+        if (req.user && (res as any).deductedPoints > 0) {
+            await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -241,6 +264,7 @@ export const handleGenerateOutline = async (req: Request, res: Response) => {
                 return;
             }
             (res as any).deductedPoints = deductResult.deductedAmount;
+            (res as any).transactionId = deductResult.transactionId;
         }
 
         const settings = await getServerSettings();
@@ -248,6 +272,9 @@ export const handleGenerateOutline = async (req: Request, res: Response) => {
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         console.error('[handleGenerateOutline] Error:', error);
+        if (req.user && (res as any).deductedPoints > 0) {
+            await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -278,12 +305,16 @@ export const handleGenerateSingleOutlineItem = async (req: Request, res: Respons
                 return;
             }
             (res as any).deductedPoints = deductResult.deductedAmount;
+            (res as any).transactionId = deductResult.transactionId;
         }
 
         const settings = await getServerSettings();
         const result = await AIService.generateSingleOutlineItem(topic, index, total, settings);
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
+        if (req.user && (res as any).deductedPoints > 0) {
+            await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -327,6 +358,9 @@ export const handleGenerateSlideDetail = async (req: Request, res: Response) => 
 
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
+        if (req.user && (res as any).deductedPoints > 0) {
+            await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -412,6 +446,9 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         console.error('[handleGenerateSlideVariant] Error:', error.message);
+        if (req.user && (res as any).deductedPoints > 0) {
+            await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 };

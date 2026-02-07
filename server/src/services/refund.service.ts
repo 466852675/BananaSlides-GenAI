@@ -19,6 +19,10 @@ export interface RefundListFilters {
     keyword?: string;
     startDate?: string;
     endDate?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    paymentMethod?: string;
+    hasNote?: boolean;
 }
 
 export interface Pagination {
@@ -348,6 +352,280 @@ export async function getRefundById(refundId: string, userId?: string) {
     return refund;
 }
 
+// ============================================================
+// [智能决策座舱] 管理员退款详情聚合接口
+// ============================================================
+
+/**
+ * 管理员退款详情聚合接口 - 智能决策座舱核心 API
+ * 聚合返回：退款基础信息、用户画像、风险评估、消费历史、建议退款额
+ */
+export async function getAdminRefundDetailAggregated(refundId: string) {
+    // 1. 获取退款基础信息
+    const refund = await prisma.refundRequest.findUnique({
+        where: { id: refundId },
+        include: {
+            order: {
+                select: {
+                    id: true,
+                    orderNo: true,
+                    productName: true,
+                    productType: true,
+                    finalPrice: true,
+                    status: true,
+                    paidAt: true,
+                    createdAt: true,
+                    quantity: true,
+                },
+            },
+            user: {
+                select: {
+                    id: true,
+                    email: true,
+                    nickname: true,
+                    createdAt: true,
+                    points: true,
+                    pointsUsed: true,
+                    vipLevel: true,
+                    vipExpiresAt: true,
+                    riskScore: true,
+                },
+            },
+        },
+    });
+
+    if (!refund) {
+        return null;
+    }
+
+    const userId = refund.userId;
+    const orderId = refund.orderId;
+    const orderPaidAt = refund.order.paidAt || refund.order.createdAt;
+
+    // 2. 并行获取所有聚合数据
+    const [
+        userRefundStats,
+        riskAssessment,
+        consumptionHistory,
+        projectsCreatedAfterOrder,
+        last24hActivity,
+    ] = await Promise.all([
+        // 用户退款统计
+        prisma.userRefundStats.findUnique({
+            where: { userId },
+        }),
+        // 风险评估
+        checkAutoApprovalEligibility(userId, refund.amount),
+        // 订单支付后的消费历史
+        prisma.transaction.findMany({
+            where: {
+                userId,
+                type: 'consume',
+                createdAt: { gte: orderPaidAt },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+            select: {
+                id: true,
+                amount: true,
+                ruleCode: true,
+                description: true,
+                createdAt: true,
+                projectId: true,
+            },
+        }),
+        // 订单支付后创建的项目数
+        prisma.project.count({
+            where: {
+                userId,
+                createdAt: { gte: orderPaidAt },
+            },
+        }),
+        // 退款申请前 24h 内的活动
+        prisma.transaction.findMany({
+            where: {
+                userId,
+                type: 'consume',
+                createdAt: {
+                    gte: new Date(refund.createdAt.getTime() - 24 * 60 * 60 * 1000),
+                    lte: refund.createdAt,
+                },
+            },
+            select: {
+                id: true,
+                amount: true,
+                ruleCode: true,
+                description: true,
+                createdAt: true,
+            },
+        }),
+    ]);
+
+    // 3. 计算资产核销数据
+    const totalConsumedPoints = consumptionHistory.reduce(
+        (sum, tx) => sum + Math.abs(tx.amount),
+        0
+    );
+
+    // 假设积分兑换率：10 积分 = ¥1 (可根据实际业务调整)
+    const pointsToYuanRate = 0.1;
+    const consumedValue = totalConsumedPoints * pointsToYuanRate;
+    const suggestedRefundAmount = Math.max(0, refund.amount - consumedValue);
+
+    // 4. 计算用户账户年龄
+    const accountAgeDays = Math.floor(
+        (Date.now() - refund.user.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    // 5. 构建聚合响应
+    return {
+        // 基础退款信息
+        refund: {
+            id: refund.id,
+            refundNo: refund.refundNo,
+            amount: refund.amount,
+            status: refund.status,
+            reason: refund.reason,
+            description: refund.description,
+            remark: refund.remark,
+            createdAt: refund.createdAt,
+            processedAt: refund.processedAt,
+            completedAt: refund.completedAt,
+            processedBy: refund.processedBy,
+        },
+
+        // 订单信息
+        order: refund.order,
+
+        // 用户画像
+        userProfile: {
+            id: refund.user.id,
+            email: refund.user.email,
+            nickname: refund.user.nickname,
+            accountAgeDays,
+            currentPoints: refund.user.points,
+            totalPointsUsed: refund.user.pointsUsed,
+            vipLevel: refund.user.vipLevel,
+            vipExpiresAt: refund.user.vipExpiresAt,
+            riskScore: refund.user.riskScore,
+        },
+
+        // 退款历史统计
+        refundHistory: {
+            totalRequests: userRefundStats?.totalRequests || 0,
+            approvedCount: userRefundStats?.approvedCount || 0,
+            rejectedCount: userRefundStats?.rejectedCount || 0,
+            userRiskScore: userRefundStats?.riskScore || 0,
+            lastRequestAt: userRefundStats?.lastRequestAt,
+        },
+
+        // 风险雷达
+        riskRadar: {
+            canAutoApprove: riskAssessment.canAutoApprove,
+            reason: riskAssessment.reason,
+            riskFactors: riskAssessment.riskFactors,
+            riskLevel: riskAssessment.riskFactors.length === 0
+                ? 'LOW'
+                : riskAssessment.riskFactors.length <= 2
+                    ? 'MEDIUM'
+                    : 'HIGH',
+        },
+
+        // 资产核销仪表盘
+        equityAudit: {
+            orderAmount: refund.order.finalPrice,
+            // 积分授予量：基于订单数量计算（积分类产品数量即积分数）
+            pointsGranted: refund.order.productType === 'points' ? refund.order.quantity : 0,
+            totalConsumedPoints,
+            consumedValue,
+            suggestedRefundAmount,
+            projectsCreatedAfterOrder,
+        },
+
+        // 行为特征溯源
+        behaviorContext: {
+            consumptionHistory: consumptionHistory.map(tx => ({
+                id: tx.id,
+                action: tx.ruleCode,
+                description: tx.description,
+                points: Math.abs(tx.amount),
+                timestamp: tx.createdAt,
+                projectId: tx.projectId,
+            })),
+            last24hActivityCount: last24hActivity.length,
+            last24hConsumedPoints: last24hActivity.reduce(
+                (sum, tx) => sum + Math.abs(tx.amount),
+                0
+            ),
+            hasHighFrequencyActivity: last24hActivity.length >= 10,
+        },
+
+        // 智能建议
+        aiSuggestion: generateAiSuggestion(
+            riskAssessment,
+            projectsCreatedAfterOrder,
+            last24hActivity.length,
+            consumedValue,
+            refund.amount
+        ),
+    };
+}
+
+/**
+ * 生成 AI 智能建议
+ */
+function generateAiSuggestion(
+    riskAssessment: AutoApprovalResult,
+    projectsCreated: number,
+    last24hActivityCount: number,
+    consumedValue: number,
+    refundAmount: number
+): { verdict: string; confidence: string; explanation: string } {
+    const consumedRatio = refundAmount > 0 ? consumedValue / refundAmount : 0;
+
+    // 高信任用户 + 未使用服务
+    if (riskAssessment.canAutoApprove && projectsCreated === 0 && consumedRatio < 0.1) {
+        return {
+            verdict: '建议快速通过',
+            confidence: 'HIGH',
+            explanation: '用户信用良好，未创建项目，资源消耗极少。符合自动审批条件。',
+        };
+    }
+
+    // 高信任用户 + 少量使用
+    if (riskAssessment.canAutoApprove && consumedRatio < 0.3) {
+        return {
+            verdict: '建议通过（可考虑部分退款）',
+            confidence: 'MEDIUM',
+            explanation: `用户信用良好，但已消耗 ¥${consumedValue.toFixed(2)} 价值的资源。建议按比例退款。`,
+        };
+    }
+
+    // 高频活动警告
+    if (last24hActivityCount >= 10) {
+        return {
+            verdict: '需人工核实',
+            confidence: 'LOW',
+            explanation: `退款申请前 24 小时内有 ${last24hActivityCount} 次操作记录，存在"薅完就跑"嫌疑。建议核实具体消费内容。`,
+        };
+    }
+
+    // 存在风险因素
+    if (riskAssessment.riskFactors.length > 0) {
+        return {
+            verdict: '需人工审核',
+            confidence: 'MEDIUM',
+            explanation: `存在 ${riskAssessment.riskFactors.length} 项风险因素：${riskAssessment.riskFactors.join('、')}`,
+        };
+    }
+
+    return {
+        verdict: '建议人工综合判断',
+        confidence: 'LOW',
+        explanation: '情况较复杂，建议结合用户历史行为和客服沟通记录综合判断。',
+    };
+}
+
 export async function getMyRefunds(
     userId: string,
     pagination: Pagination
@@ -421,15 +699,55 @@ export async function listRefunds(
                 { reason: { contains: keyword } },
                 { order: { orderNo: { contains: keyword } } },
                 { user: { email: { contains: keyword } } },
+                { user: { nickname: { contains: keyword } } },
             ],
         });
     }
 
     if (startDate || endDate) {
         const dateFilter: Prisma.DateTimeFilter = {};
-        if (startDate) dateFilter.gte = new Date(startDate);
-        if (endDate) dateFilter.lte = new Date(endDate);
+        if (startDate) {
+            const date = new Date(startDate);
+            date.setHours(0, 0, 0, 0); // 开始日期的 00:00:00
+            dateFilter.gte = date;
+        }
+        if (endDate) {
+            const date = new Date(endDate);
+            date.setHours(23, 59, 59, 999); // 截止日期的 23:59:59
+            dateFilter.lte = date;
+        }
         andConditions.push({ createdAt: dateFilter });
+    }
+
+    if (filters.minAmount !== undefined || filters.maxAmount !== undefined) {
+        const amountFilter: Prisma.FloatFilter = {};
+        if (filters.minAmount !== undefined) amountFilter.gte = filters.minAmount;
+        if (filters.maxAmount !== undefined) amountFilter.lte = filters.maxAmount;
+        andConditions.push({ amount: amountFilter });
+    }
+
+    if (filters.paymentMethod) {
+        andConditions.push({ order: { paymentMethod: filters.paymentMethod } });
+    }
+
+    if (filters.hasNote !== undefined) {
+        if (filters.hasNote) {
+            // 有备注：不为 null 且不为空字符串
+            andConditions.push({
+                AND: [
+                    { remark: { not: null } },
+                    { remark: { not: '' } }
+                ]
+            });
+        } else {
+            // 无备注：为 null 或为空字符串
+            andConditions.push({
+                OR: [
+                    { remark: null },
+                    { remark: '' }
+                ]
+            });
+        }
     }
 
     const where = andConditions.length > 0 ? { AND: andConditions } : {};
@@ -445,6 +763,7 @@ export async function listRefunds(
                         productName: true,
                         finalPrice: true,
                         status: true,
+                        paymentMethod: true,
                     },
                 },
                 user: {
@@ -452,6 +771,7 @@ export async function listRefunds(
                         id: true,
                         email: true,
                         nickname: true,
+                        riskScore: true,
                     },
                 },
             },
@@ -462,8 +782,27 @@ export async function listRefunds(
         prisma.refundRequest.count({ where }),
     ]);
 
+    // 扁平化映射并计算风险等级
+    const flattenedItems = items.map(item => {
+        const riskScore = item.user.riskScore || 0;
+        let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+        if (riskScore >= 70) riskLevel = 'HIGH';
+        else if (riskScore >= 30) riskLevel = 'MEDIUM';
+
+        return {
+            ...item,
+            productName: item.order.productName,
+            orderNo: item.order.orderNo,
+            userNickname: item.user.nickname,
+            userEmail: item.user.email,
+            userRiskScore: riskScore,
+            riskLevel,
+            paymentMethod: item.order.paymentMethod,
+        };
+    });
+
     return {
-        items,
+        items: flattenedItems,
         pagination: {
             page,
             limit,

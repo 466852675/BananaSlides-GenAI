@@ -46,7 +46,7 @@ const analyzeStyleImage = async (
     pageType: string,
     settings?: AppSettings
 ): Promise<string> => {
-    const config = getTaskConfig(settings, 'vision');
+    const config = await resolveActiveConfig(settings, 'vision');
     const base64 = await resourceToBase64(imageResource);
 
     // 全流派适用: 通用设计语言提取 Prompt
@@ -213,8 +213,9 @@ const buildImageGenerationPrompt = (params: {
     allSlideTitles?: string[]; // 新增: 所有页面标题,用于目录页生成参考
     styleKeywords?: string;  // 新增: Vision 模型解析出的风格特征
     designSuggestion?: string; // 新增: 用户明确的设计建议
+    isZhipu?: boolean; // 新增: 是否为智谱模型，用于 Prompt 复杂度优化
 }): string => {
-    const { pageType, title, content, styleName, colorPalette, requirements, aspectRatio, styleMatchType, allSlideTitles, styleKeywords, designSuggestion } = params;
+    const { pageType, title, content, styleName, colorPalette, requirements, aspectRatio, styleMatchType, allSlideTitles, styleKeywords, designSuggestion, isZhipu } = params;
 
     let prompt = '';
 
@@ -222,23 +223,28 @@ const buildImageGenerationPrompt = (params: {
     const effectiveRequirements = extractPageSpecificRequirements(requirements, pageType);
 
     // ============================================================
-    // 🚨 核心指令：严格的内容隔离规则
+    // 🚨 核心指令：严禁显示技术规格
     // ============================================================
-    prompt += `【🚨 最高优先级指令 - 内容隔离规则】\n`;
-    prompt += `以下规则必须严格遵守，否则视为生成失败：\n`;
-    prompt += `1. [禁止渲染区] 本 Prompt 中的所有"技术规格"和"风格参数"仅供您内部处理参考，严禁在图片中渲染！\n`;
-    prompt += `2. [禁止渲染清单] 以下内容绝对不能出现在生成的图片中：\n`;
-    prompt += `   - 任何颜色代码（如 #0052D4, #1C1C1, #0A192B, RGB值等）\n`;
-    prompt += `   - 任何字体名称（如 思源体, Arial, 微软雅黑等）\n`;
-    prompt += `   - 任何宽高比标注（如 16:9, 4:3, 1:1等）\n`;
-    prompt += `   - 任何调色板名称（如 琥珀金, 冷色调, 渐变等）\n`;
-    prompt += `   - 任何风格术语（如 扁平化, 极简主义, 科技感等）\n`;
-    prompt += `   - 任何设计规范文档中的术语和描述\n`;
-    prompt += `3. [PPT标点规范] PPT不是文档，文字结尾严禁使用中文句末标点：\n`;
-    prompt += `   - 禁止使用：。；，！？、\n`;
-    prompt += `   - 列表项结尾不加任何标点\n`;
-    prompt += `   - 标题结尾不加任何标点\n`;
-    prompt += `4. [唯一可渲染内容] 图片中只能出现【业务任务内容】部分的标题和正文！\n\n`;
+    if (isZhipu) {
+        // 智谱版精简指令：减少嵌套，防止 StackOverflow
+        prompt += `【🚨 重要指令】图片中严禁出现任何颜色代码、字体名称、宽高比等技术参数。文字结尾严禁使用标点符号。图片中只能出现【业务内容】部分的标题和正文！\n\n`;
+    } else {
+        prompt += `【🚨 最高优先级指令 - 内容隔离规则】\n`;
+        prompt += `以下规则必须严格遵守，否则视为生成失败：\n`;
+        prompt += `1. [禁止渲染区] 本 Prompt 中的所有"技术规格"和"风格参数"仅供您内部处理参考，严禁在图片中渲染！\n`;
+        prompt += `2. [禁止渲染清单] 以下内容绝对不能出现在生成的图片中：\n`;
+        prompt += `   - 任何颜色代码（如 #0052D4, #1C1C1, #0A192B, RGB值等）\n`;
+        prompt += `   - 任何字体名称（如 思源体, Arial, 微软雅黑等）\n`;
+        prompt += `   - 任何宽高比标注（如 16:9, 4:3, 1:1等）\n`;
+        prompt += `   - 任何调色板名称（如 琥珀金, 冷色调, 渐变等）\n`;
+        prompt += `   - 任何风格术语（如 扁平化, 极简主义,科技感等）\n`;
+        prompt += `   - 任何设计规范文档中的术语和描述\n`;
+        prompt += `3. [PPT标点规范] PPT不是文档，文字结尾严禁使用中文句末标点：\n`;
+        prompt += `   - 禁止使用：。；，！？、\n`;
+        prompt += `   - 列表项结尾不加任何标点\n`;
+        prompt += `   - 标题结尾不加任何标点\n`;
+        prompt += `4. [唯一可渲染内容] 图片中只能出现【业务任务内容】部分的标题和正文！\n\n`;
+    }
 
     // 第一部分: 视觉调性定义 (Visual Language - "HOW to draw")
     // 注意：这部分是内部风格参考，不渲染到图片
@@ -260,7 +266,8 @@ const buildImageGenerationPrompt = (params: {
 
     // Inject filtered requirements here (作为风格参考，不作为内容)
     if (effectiveRequirements) {
-        prompt += `- 详细设计规范(仅供风格参考):\n${effectiveRequirements}\n`;
+        const requirementsToUse = isZhipu ? (effectiveRequirements.length > 500 ? effectiveRequirements.substring(0, 500) + '...' : effectiveRequirements) : effectiveRequirements;
+        prompt += `- 详细设计规范(仅供风格参考):\n${requirementsToUse}\n`;
     }
 
     // 第二部分: 业务任务核心 (Business Core - "WHAT to draw")
@@ -276,22 +283,30 @@ const buildImageGenerationPrompt = (params: {
 
         // 针对内容页的特殊优化指令
         if (pageType === 'content') {
-            prompt += `\n【🌟 内容页排版与文案提炼指令 (CRITICAL)】\n`;
-            prompt += `- [文案适度丰富]: 画面不仅仅是标题堆砌！请增加信息密度，通过多层级结构展示内容的丰富度。\n`;
-            prompt += `- [智能提炼与细化]: 对每个核心板块，除标题外，必须展示 1-2 行简短说明（约 15-20 字）或关键数据，不能只有空洞的大字。\n`;
-            prompt += `- [视觉层级增强]:\n`;
-            prompt += `    1. 核心模块 (Main): 必须包含“主图标 (Hero Icon) + 标题 + 关键句 + 数据展示”。\n`;
-            prompt += `    2. 装饰元素 (Decor): 必须在每个模块内部及其周边，增加 2-3 个装饰性小标签 (Tags)、状态胶囊 (Capsules) 或数据角标 (Badges)。\n`;
-            prompt += `    3. 微型图标 (Micro-Icons): 在关键词旁自动配对微型含义图标（如：齿轮、闪电、对钩、Wifi信号），让画面细节极其丰富。\n`;
-            prompt += `    4. 子级列表 (Sub-items): 列表项必须带有 Bullet Icon 或数字序号。\n`;
-            prompt += `    5. 具象化枚举 (Concrete Items): 如果内容提到多个具体对象（如"图片、音频、视频"），严禁只画一个通用图标！必须在卡片内平行罗列这几个对象，形式可选【小图标矩阵 (Icon Row)】或【关键词标签 (Text Capsules)】。\n`;
-            prompt += `- [排版规范]: 保持模块化卡片布局，但卡片内部内容要充实。避免大片空白，用微小的 UI 元素（线条、点阵、小字）填充视觉空隙。\n`;
-            prompt += `- [逻辑可视化]: 继续保持清晰的逻辑连接（箭头/流程），但节点本身要内容丰富。\n`;
-            prompt += `- [核心金句 (One-liner)]: 必须在画面留白处（如标题下方、底部或侧边栏）展示一句【核心总结】。\n`;
-            prompt += `    - 内容: 从业务描述中提炼出最有价值的一个观点（不超过 15 字）。\n`;
-            prompt += `    - 样式: 使用引用样式 (Quote)、高亮背景条或从主视觉中独立出来的醒目文字。\n`;
-            prompt += `    - 目的: 用户看一眼这句话就知道本页想表达什么\n`;
-            prompt += `- [参考范式]: 类似于高密度的科技仪表盘或商业分析报告，信息量充足但井井有条。\n`;
+            if (isZhipu) {
+                // 智谱版精简指令：仅保留核心逻辑
+                prompt += `\n【🌟 排版增强指令】\n`;
+                prompt += `- 信息密度：增加模块对比，每个核心板块展示“图标+标题+短句”。\n`;
+                prompt += `- 装饰细节：增加微型标签和状态胶囊填补空隙。列表带序号。\n`;
+                prompt += `- 逻辑连接：使用箭头或环形展示逻辑，页面留白处提炼一句核心金句。\n`;
+            } else {
+                prompt += `\n【🌟 内容页排版与文案提炼指令 (CRITICAL)】\n`;
+                prompt += `- [文案适度丰富]: 画面不仅仅是标题堆砌！请增加信息密度，通过多层级结构展示内容的丰富度。\n`;
+                prompt += `- [智能提炼与细化]: 对每个核心板块，除标题外，必须展示 1-2 行简短说明（约 15-20 字）或关键数据，不能只有空洞的大字。\n`;
+                prompt += `- [视觉层级增强]:\n`;
+                prompt += `    1. 核心模块 (Main): 必须包含“主图标 (Hero Icon) + 标题 + 关键句 + 数据展示”。\n`;
+                prompt += `    2. 装饰元素 (Decor): 必须在每个模块内部及其周边，增加 2-3 个装饰性小标签 (Tags)、状态胶囊 (Capsules) 或数据角标 (Badges)。\n`;
+                prompt += `    3. 微型图标 (Micro-Icons): 在关键词旁自动配对微型含义图标（如：齿轮、闪电、对钩、Wifi信号），让画面细节极其丰富。\n`;
+                prompt += `    4. 子级列表 (Sub-items): 列表项必须带有 Bullet Icon 或数字序号。\n`;
+                prompt += `    5. 具象化枚举 (Concrete Items): 如果内容提到多个具体对象（如"图片、音频、视频"），严禁只画一个通用图标！必须在卡片内平行罗列这几个对象，形式可选【小图标矩阵 (Icon Row)】或【关键词标签 (Text Capsules)】。\n`;
+                prompt += `- [排版规范]: 保持模块化卡片布局，但卡片内部内容要充实。避免大片空白，用微小的 UI 元素（线条、点阵、小字）填充视觉空隙。\n`;
+                prompt += `- [逻辑可视化]: 继续保持清晰的逻辑连接（箭头/流程），但节点本身要内容丰富。\n`;
+                prompt += `- [核心金句 (One-liner)]: 必须在画面留白处（如标题下方、底部或侧边栏）展示一句【核心总结】。\n`;
+                prompt += `    - 内容: 从业务描述中提炼出最有价值的一个观点（不超过 15 字）。\n`;
+                prompt += `    - 样式: 使用引用样式 (Quote)、高亮背景条或从主视觉中独立出来的醒目文字。\n`;
+                prompt += `    - 目的: 用户看一眼这句话就知道本页想表达什么\n`;
+                prompt += `- [参考范式]: 类似于高密度的科技仪表盘或商业分析报告，信息量充足但井井有条。\n`;
+            }
         }
     }
 
@@ -334,10 +349,11 @@ const createGoogleClient = (config: ModelConnection) => {
 };
 
 const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image' | 'vision'): ModelConnection => {
-    // console.log(`[getTaskConfig] Task: ${task}, Provider: ${settings?.ai?.provider || 'default'}`);
+    // [V10.0] 优先从数据库中读取当前激活的系统规则
+    // 注意：由于 getTaskConfig 是辅助函数，建议在业务层（AIService 导出方法）注入配置或在 Service 初始化时加载。
+    // 为了最小化原有逻辑侵入，我们在 AIService 导出的方法中会优先拉取数据库配置。
 
     if (!settings) {
-        // console.log(`[getTaskConfig] No settings provided, using defaults`);
         return {
             apiKey: DEFAULT_GEMINI_KEY,
             baseUrl: DEFAULT_GEMINI_BASE_URL,
@@ -349,7 +365,6 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
 
     // Priority 1: Use customCombo if it has configuration for this task AND provider is CustomCombo
     if (settings.ai.provider === 'CustomCombo' && settings.ai.customCombo && settings.ai.customCombo[task] && settings.ai.customCombo[task].model) {
-        // console.log(`[getTaskConfig] Using CustomCombo for ${task}:`, JSON.stringify(settings.ai.customCombo[task], null, 2));
         connection = { ...settings.ai.customCombo[task] };
         if (!connection.apiKey) connection.apiKey = settings.ai.apiKey;
         if (!connection.baseUrl) connection.baseUrl = settings.ai.baseUrl;
@@ -374,16 +389,74 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
     }
 
     // Runtime Fix for Model Names
-    if (connection.model.includes('gemini-3-pro-image-2k-16x9') || connection.model.includes('gemini-3-pro-image-preview')) {
+    if (connection.model?.includes('gemini-3-pro-image-2k-16x9') || connection.model?.includes('gemini-3-pro-image-preview')) {
         connection.model = 'gemini-3-pro-image';
     }
 
-    // console.log(`[getTaskConfig] Final config: baseUrl=${connection.baseUrl}, model=${connection.model}, hasApiKey=${!!connection.apiKey}`);
     return connection;
 };
 
+/**
+ * [V10.0] 全局配置解析器：整合数据库活跃规则与旧版 settings
+ */
+async function resolveActiveConfig(settings?: AppSettings, task: 'text' | 'image' | 'vision' = 'text'): Promise<ModelConnection> {
+    try {
+        const { prisma } = await import('../db');
+        const activeRule = await prisma.aiEngineRule.findFirst({
+            where: { isActive: true }
+        });
+
+        if (activeRule) {
+            const config = JSON.parse(activeRule.config);
+            console.log('[resolveActiveConfig] Active Rule:', {
+                id: activeRule.id,
+                provider: activeRule.provider,
+                task,
+                hasCombo: !!config.combo,
+                comboKeys: config.combo ? Object.keys(config.combo) : []
+            });
+
+            // 1. Check for Custom Combo configuration for this specific task
+            if (activeRule.provider === 'CustomCombo' && config.combo && config.combo[task] && config.combo[task].model) {
+                const comboConfig = config.combo[task];
+                console.log(`[resolveActiveConfig] Using CustomCombo for ${task}:`, comboConfig.model);
+                return {
+                    apiKey: comboConfig.apiKey || config.apiKey,
+                    baseUrl: comboConfig.baseUrl || config.baseUrl || settings?.ai.baseUrl || DEFAULT_GEMINI_BASE_URL,
+                    model: comboConfig.model
+                };
+            }
+
+            // 2. Fallback to Standard/Multi-Model configuration
+            // 规则配置结构: { textModel, imageModel, visionModel, apiKey, baseUrl }
+            const taskModelMap = {
+                text: config.textModel || config.model,
+                image: config.imageModel,
+                vision: config.visionModel || 'gemini-1.5-flash'
+            };
+
+            console.log('[resolveActiveConfig] Using Standard Config for', task, taskModelMap[task]);
+
+            return {
+                apiKey: config.apiKey,
+                baseUrl: config.baseUrl || settings?.ai.baseUrl || DEFAULT_GEMINI_BASE_URL,
+                model: taskModelMap[task]
+            };
+        }
+    } catch (e) {
+        console.warn('[AIService] Failed to load active rule from DB, falling back to legacy settings.', e);
+    }
+
+    return getTaskConfig(settings, task);
+}
+
 const shouldUseGeminiNative = (config: ModelConnection, settings?: AppSettings): boolean => {
-    const url = config.baseUrl.toLowerCase().trim();
+    if (!config) {
+        console.warn('shouldUseGeminiNative received null/undefined config');
+        return false;
+    }
+    const url = (config.baseUrl && typeof config.baseUrl === 'string') ? config.baseUrl.toLowerCase().trim() : '';
+    const model = (config.model && typeof config.model === 'string') ? config.model.toLowerCase() : '';
 
     // Priority 1: Official Google APIs use Gemini Native
     if (url.includes('googleapis.com') || url.includes('generativelanguage')) {
@@ -391,25 +464,31 @@ const shouldUseGeminiNative = (config: ModelConnection, settings?: AppSettings):
         return true;
     }
 
-    // Priority 2: URLs with /v1 endpoint are OpenAI compatible (even if model name contains 'gemini')
-    if (url.includes('/v1')) {
-        console.log(`[shouldUseGeminiNative] OpenAI compatible endpoint detected (/v1), using OpenAI API`);
+    // Priority 2: Trusted OpenAI Compatible patterns (v1, v3, or Volcengine/Ark)
+    if (url.includes('/v1') || url.includes('/v3') || url.includes('volces.com')) {
+        console.log(`[shouldUseGeminiNative] OpenAI/Volcengine compatible endpoint detected, using OpenAI API`);
         return false;
     }
 
-    // Priority 3: Check if model name indicates Gemini (e.g., gemini-3-pro-image, gemini-3-flash)
-    if (config.model && config.model.toLowerCase().includes('gemini')) {
-        console.log(`[shouldUseGeminiNative] Gemini model detected (${config.model}), using Gemini Native API`);
+    // Priority 3: Any other custom URL (Non-Google, Non-Empty) -> Assume OpenAI Compatible
+    // This handles OneAPI, custom proxies, etc.
+    if (url.length > 5 && !url.includes('google')) {
+        console.log(`[shouldUseGeminiNative] Custom URL detected (${url}), assuming OpenAI Compatible API`);
+        return false;
+    }
+
+    // Priority 4: If URL is default/empty, check model name
+    if (model.includes('gemini') || model.includes('googlegemini')) {
+        console.log(`[shouldUseGeminiNative] Gemini model detected (${config.model}) on default config, using Gemini Native API`);
         return true;
     }
 
-    // Priority 4: Check provider setting
+    // Priority 5: Check global provider setting
     if (settings?.ai.provider === 'Gemini') {
-        console.log(`[shouldUseGeminiNative] Provider is Gemini, using Gemini Native API`);
+        console.log(`[shouldUseGeminiNative] Global Provider is Gemini, using Gemini Native API`);
         return true;
     }
 
-    // All other URLs use OpenAI compatible API
     console.log(`[shouldUseGeminiNative] Using OpenAI compatible API for ${url}`);
     return false;
 };
@@ -429,42 +508,47 @@ const getClosestSupportedRatio = (inputRatio: string): string => {
 
 // --- API Callers ---
 
-const calculateFinalResolution = (qualitySetting: string | undefined, aspectRatio: string): string => {
-    // 1. Identify Quality Tier based on the "Flagship" resolution set in Global Config
-    // 1K Tier: '1024x1024' (or '1280x720')
-    // 2K Tier: '2048x2048' (or '1920x1080')
-    // 4K Tier: '3840x2160' (or '4096x4096')
-
+const calculateFinalResolution = (qualitySetting: string | undefined, aspectRatio: string, isZhipu: boolean = false): string => {
     let tier = '4K'; // Default
     if (qualitySetting?.includes('1024') || qualitySetting?.includes('1280')) tier = '1K';
     else if (qualitySetting?.includes('2048') || qualitySetting?.includes('1920')) tier = '2K';
     else tier = '4K';
 
-    // 2. Map Tier + Ratio to Final Resolution
     const ratio = getClosestSupportedRatio(aspectRatio);
 
-    // Dictionary: [Tier][Ratio]
+    const zhipuMap: Record<string, string> = {
+        '16:9': '1728x960',
+        '4:3': '1344x1024',
+        '1:1': '1280x1280',
+        '3:4': '1024x1344',
+        '9:16': '960x1728'
+    };
+
+    if (isZhipu) {
+        return zhipuMap[ratio] || '1280x1280';
+    }
+
     const map: Record<string, Record<string, string>> = {
         '1K': {
-            '16:9': '1280x720',
+            '16:9': '1280x736',
             '4:3': '1024x768',
             '1:1': '1024x1024',
             '3:4': '768x1024',
-            '9:16': '720x1280'
+            '9:16': '736x1280'
         },
         '2K': {
-            '16:9': '1920x1080',
-            '4:3': '2048x1536', // Standard 4:3 2K-ish
+            '16:9': '1920x1088',
+            '4:3': '2048x1536',
             '1:1': '2048x2048',
             '3:4': '1536x2048',
-            '9:16': '1080x1920'
+            '9:16': '1088x1920'
         },
         '4K': {
-            '16:9': '3840x2160',
-            '4:3': '4096x3072', // High res 4:3
-            '1:1': '2160x2160', // Matching 4K height pixel density, (or 4096x4096 if model supports) -> limit to 2160 for safety/balance
+            '16:9': '3840x2176',
+            '4:3': '4096x3072',
+            '1:1': '2176x2176',
             '3:4': '3072x4096',
-            '9:16': '2160x3840'
+            '9:16': '2176x3840'
         }
     };
 
@@ -484,6 +568,8 @@ async function callOpenAICompatible(
         // [Debug] Aggressive Sanitization
         const safeKey = config.apiKey.replace(/[^ -~]/g, "");
         headers['Authorization'] = `Bearer ${safeKey}`;
+        // Extra detail to debug "Incorrect API key" under load
+        console.log(`[OpenAI Compatible] Using API Key: ${safeKey.substring(0, 6)}... (Length: ${safeKey.length})`);
     }
 
     const body: any = {
@@ -503,7 +589,7 @@ async function callOpenAICompatible(
 
     console.log(`[OpenAI Compatible] Calling: ${url}, Model: ${config.model}`);
 
-    let retries = 3;
+    let retries = 5; // Increased to 5 for better resilience
     while (retries > 0) {
         try {
             console.log(`[OpenAI Compatible] Calling: ${url}, Model: ${config.model} (Attempts left: ${retries})`);
@@ -518,20 +604,40 @@ async function callOpenAICompatible(
             const statusCode = error.response?.status;
             console.error(`[OpenAI Compatible] Attempt failed: ${errMsg} (Status: ${statusCode})`);
 
-            // Only retry on specific status codes or network errors
-            const shouldRetry = !statusCode || [500, 502, 503, 504].includes(statusCode);
+            // ModelScope specific logic: Intermittent 401s are observed even with valid keys.
+            // We retry 401 only if it's ModelScope.
+            const isModelScope = url.includes('modelscope.cn');
+            const isQuotaExceeded = errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('exceeded') || errMsg.includes('额度');
+
+            // ModelScope specific logic: Intermittent 401s are observed even with valid keys.
+            const shouldRetry = !statusCode ||
+                ([429, 500, 502, 503, 504].includes(statusCode) && !isQuotaExceeded) ||
+                (isModelScope && statusCode === 401);
 
             if (shouldRetry && retries > 1) {
                 retries--;
-                console.log(`[OpenAI Compatible] Retrying in 2 seconds...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // For 429 or ModelScope 401, wait longer
+                const isHeavyError = statusCode === 429 || (isModelScope && statusCode === 401);
+                const baseDelay = isHeavyError ? 3000 : 1000;
+                // Add exponential factor to delay
+                const multiplier = (5 - retries);
+                const delay = (baseDelay * multiplier) + Math.random() * 3000;
+                console.log(`[OpenAI Compatible] Retrying ${url} in ${delay.toFixed(0)} ms due to ${statusCode || 'Network Error'}... (Attempts left: ${retries})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
                 continue;
             }
 
             if (error.response?.data) {
                 console.error(`[OpenAI Compatible] Full error response:`, JSON.stringify(error.response.data, null, 2));
             }
-            throw new Error(`API Request Failed: ${errMsg} (Status: ${statusCode})`);
+
+            // Localize common quota errors for Better User Experience
+            let finalMsg = errMsg;
+            if (isQuotaExceeded) {
+                finalMsg = `今日 AI 请求额度已耗尽 (ModelScope)。请尝试：1. 切换到“火山引擎 (Doubao)”等其他模型；2. 或明天再试。`;
+            }
+
+            throw new Error(`API Request Failed: ${finalMsg} (Status: ${statusCode})`);
         }
     }
     throw new Error("API Request Failed after retries");
@@ -572,50 +678,45 @@ async function callOpenAIImageGeneration(
         "9:16": "1024x1792"
     };
 
-    // 火山引擎（即梦/Doubao-Image）特殊处理：最低像素要求 3686400（约 1920x1920）
-    // 检测方式：baseUrl 包含 volces.com 或 volcengine
-    const isVolcengine = config.baseUrl.toLowerCase().includes('volces.com') ||
-        config.baseUrl.toLowerCase().includes('volcengine');
+    // 智谱 AI (Zhipu BigModel) 特殊处理：支持 URL、GLM 模型名以及 CogView 系列
+    const isZhipu = config.baseUrl.toLowerCase().includes('bigmodel.cn') ||
+        config.model.toLowerCase().includes('glm') ||
+        config.model.toLowerCase().includes('cogview') ||
+        config.model.toLowerCase().includes('zhipu');
+    // 火山引擎（即梦/Doubao-Image）特性检测
+    const isVolcengine = config.baseUrl.toLowerCase().includes('volces.com') || config.baseUrl.toLowerCase().includes('volcengine');
 
     let size = resolution ? resolution : (sizeMap[aspectRatio] || "1792x1024");
 
+    // 智谱模式下，显式调用 calculateFinalResolution 以获取官方推荐值
+    if (isZhipu && !resolution) {
+        size = calculateFinalResolution(config.model, aspectRatio, true);
+    }
+
     if (isVolcengine) {
-        // 火山引擎最低像素要求：3686400 像素
-        const VOLCENGINE_MIN_PIXELS = 3686400;
-
-        // 计算当前分辨率的像素数
-        const [w, h] = size.split('x').map(Number);
-        const currentPixels = w * h;
-
-        // 火山引擎各画质档位的分辨率映射（尊重用户画质选择，但确保不低于最低要求）
         const volcengineResolutionMap: Record<string, Record<string, string>> = {
-            // 最低档位（满足 3686400 像素要求）
             'min': {
-                "16:9": "2560x1440",  // 3686400 像素
-                "4:3": "2240x1680",   // 3763200 像素
-                "1:1": "1920x1920",   // 3686400 像素
-                "3:4": "1680x2240",   // 3763200 像素
-                "9:16": "1440x2560"   // 3686400 像素
+                "16:9": "2560x1440",
+                "4:3": "2240x1696",
+                "1:1": "1920x1920",
+                "3:4": "1696x2240",
+                "9:16": "1440x2560"
             },
-            // 2K 档位（高于最低要求）
             '2K': {
-                "16:9": "2560x1440",  // 3686400 像素
-                "4:3": "2240x1680",   // 3763200 像素
-                "1:1": "2048x2048",   // 4194304 像素
-                "3:4": "1680x2240",   // 3763200 像素
-                "9:16": "1440x2560"   // 3686400 像素
+                "16:9": "2560x1440",
+                "4:3": "2240x1696",
+                "1:1": "2048x2048",
+                "3:4": "1696x2240",
+                "9:16": "1440x2560"
             },
-            // 4K 档位（最高画质）
             '4K': {
-                "16:9": "3840x2160",  // 8294400 像素
-                "4:3": "3072x2304",   // 7077888 像素
-                "1:1": "2560x2560",   // 6553600 像素
-                "3:4": "2304x3072",   // 7077888 像素
-                "9:16": "2160x3840"   // 8294400 像素
+                "16:9": "3840x2176",
+                "4:3": "3072x2304",
+                "1:1": "2560x2560",
+                "3:4": "2304x3072",
+                "9:16": "2176x3840"
             }
         };
-
-        // 判断用户选择的画质档位
         let userTier = 'min';
         if (resolution) {
             const [rw, rh] = resolution.split('x').map(Number);
@@ -623,17 +724,14 @@ async function callOpenAIImageGeneration(
             if (requestedPixels >= 8000000) userTier = '4K';
             else if (requestedPixels >= 4000000) userTier = '2K';
         }
-
-        // 如果用户选择的分辨率低于最低要求，使用最低档位；否则尊重用户选择
-        if (currentPixels < VOLCENGINE_MIN_PIXELS) {
-            size = volcengineResolutionMap['min'][aspectRatio] || "1920x1920";
-            console.log(`[OpenAI Image] Volcengine: User resolution ${w}x${h} (${currentPixels}px) below minimum, upgrading to ${size}`);
-        } else {
-            // 用户选择的分辨率已满足要求，使用对应档位的分辨率
-            size = volcengineResolutionMap[userTier][aspectRatio] || size;
-            console.log(`[OpenAI Image] Volcengine: Using ${userTier} tier resolution: ${size}`);
-        }
+        size = volcengineResolutionMap[userTier][aspectRatio] || size;
     }
+
+    // 确保 W/H 是 32 的倍数 (针对所有非原生模型)
+    let [finalW, finalH] = size.split('x').map(Number);
+    finalW = Math.round(finalW / 32) * 32;
+    finalH = Math.round(finalH / 32) * 32;
+    size = `${finalW}x${finalH}`;
 
     console.log(`[OpenAI Image] Calling: ${config.baseUrl}/images/generations, Model: ${config.model}, Size: ${size}`);
 
@@ -642,36 +740,41 @@ async function callOpenAIImageGeneration(
         prompt: prompt,
         n: 1,
         size: size,
-        response_format: "b64_json" // Request base64 directly
     };
 
-    // 火山引擎特殊参数
+    if (isZhipu) {
+        body.quality = "hd"; // Zhipu CogView-3-plus 推荐使用 hd
+        body.watermark_enabled = false; // 官方 V4 接口标准参数
+        body.watermark = false;        // 部分中转或旧版参数
+        body.has_watermark = false;    // 额外探测参数
+        body.watermark_type = 0;       // 部分中转接口参数 (0 表示不开启水印)
+    }
+
+    if ((isVolcengine || config.baseUrl.includes('openai.com')) && !isZhipu) {
+        body.response_format = "b64_json";
+    }
+
     if (isVolcengine) {
-        // 1. 添加 seed 以提高同一项目内风格一致性
         const promptHash = prompt.substring(0, 200).split('').reduce((acc, char) => {
             return ((acc << 5) - acc) + char.charCodeAt(0) | 0;
         }, 0);
         const seed = Math.abs(promptHash) % 2147483647;
         body.seed = seed;
-
-        // 2. 图生图模式：如果有风格参考图，直接传给即梦 API
-        // 2. 图生图模式：如果有风格参考图，直接传给即梦 API
         if (styleImageUrl) {
-            // 修正：API 需要完整的 Data URL (data:image/png;base64,...) 或 HTTP URL
-            // 之前的代码去掉了前缀导致 "invalid url specified" 错误
             body.image = styleImageUrl;
-            console.log(`[OpenAI Image] Volcengine: Using style reference (URL or Data URL)`);
-
             body.sequential_image_generation = "disabled";
         } else {
             body.sequential_image_generation = "disabled";
         }
-
-        // 3. 火山引擎特有参数
-        body.watermark = false;  // 关闭水印
+        body.watermark = false;
         body.stream = false;
+    }
 
-        console.log(`[OpenAI Image] Volcengine: seed=${seed}, hasStyleRef=${!!styleImageUrl}`);
+    // ModelScope (Tongyi) specific handling
+    const isModelScope = config.baseUrl.includes('modelscope.cn');
+    if (isModelScope) {
+        // Error message explicitly requested 'true'
+        headers['X-ModelScope-Async-Mode'] = 'true';
     }
 
     let baseUrl = config.baseUrl.trim();
@@ -682,19 +785,106 @@ async function callOpenAIImageGeneration(
     while (retries > 0) {
         try {
             console.log(`[OpenAI Image] Calling: ${url}, Model: ${config.model}, Size: ${size} (Attempts left: ${retries})`);
-            const response = await axios.post(url, body, { headers, timeout: 600000 });
-            const data = response.data?.data?.[0];
+            console.log(`[OpenAI Image] Body:`, JSON.stringify(body));
+            console.log(`[OpenAI Image] Headers:`, JSON.stringify(headers));
 
-            if (data?.b64_json) {
-                const base64 = `data:image/png;base64,${data.b64_json}`;
+            // Standard Sync Call (or Async Initiation for ModelScope)
+            const response = await axios.post(url, body, { headers, timeout: 600000 });
+
+            if (response.data && !isModelScope) {
+                console.log(`[OpenAI Image] Response Summary: Status ${response.status}, Data Keys: ${Object.keys(response.data).join(', ')}`);
+                if (response.data.data && Array.isArray(response.data.data)) {
+                    console.log(`[OpenAI Image] Data Items: ${response.data.data.length}`);
+                }
+            }
+
+            // --- ModelScope Async Handling ---
+            if (isModelScope && response.data && (response.data.task_id || response.data.output?.task_id)) {
+                console.log(`[OpenAI Image] ModelScope Async Response:`, JSON.stringify(response.data));
+                const taskId = response.data.task_id || response.data.output?.task_id;
+                console.log(`[OpenAI Image] ModelScope Async Task Started: ${taskId}, polling...`);
+
+                let polls = 0;
+                // Poll every 2 seconds, timeout after ~5 minutes (150 polls)
+                while (polls < 150) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    polls++;
+
+                    // Construct Polling URL: .../v1/tasks/{id}
+                    const pollUrl = `${baseUrl}/tasks/${taskId}`;
+                    console.log(`[OpenAI Image] Polling URL: ${pollUrl}`);
+
+                    try {
+                        // FIX: ModelScope requires Task-Type header for polling
+                        const taskResp = await axios.get(pollUrl, {
+                            headers: {
+                                'Authorization': headers['Authorization'],
+                                'X-ModelScope-Task-Type': 'image_generation'
+                            }
+                        });
+
+                        // Parse status: SUCCEED (ModelScope), SUCCEEDED (Standard), FAILED, RUNNING, PENDING
+                        const taskData = taskResp.data.output || taskResp.data;
+                        const taskStatus = taskData.task_status;
+
+                        console.log(`[OpenAI Image] ModelScope Poll ${polls}: ${taskStatus}`);
+
+                        if (taskStatus === 'SUCCEEDED' || taskStatus === 'SUCCEED') {
+                            // Extract Image URL
+                            // Variant 1: results structure: [{ url: "..." }]
+                            // Variant 2: output_images: ["url..."] (from python example)
+                            let imageUrl: string | undefined;
+
+                            if (taskData.results && taskData.results[0]?.url) {
+                                imageUrl = taskData.results[0].url;
+                            } else if (taskData.output_images && Array.isArray(taskData.output_images) && taskData.output_images.length > 0) {
+                                imageUrl = taskData.output_images[0];
+                            }
+
+                            if (imageUrl) {
+                                console.log(`[OpenAI Image] ModelScope Success! Downloading: ${imageUrl}`);
+                                const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                                const base64 = `data:image/png;base64,${Buffer.from(imageResponse.data, 'binary').toString('base64')}`;
+                                return await saveBase64Image(base64, 'gen_ai');
+                            }
+                            throw new Error(`ModelScope succeeded but no image URL found. Data: ${JSON.stringify(taskData)}`);
+                        } else if (taskStatus === 'FAILED') {
+                            throw new Error(`ModelScope Task Failed: ${JSON.stringify(taskData)}`);
+                        }
+                        // Continue polling if RUNNING or PENDING
+                    } catch (pollErr: any) {
+                        console.warn("[OpenAI Image] Polling error (retrying):", pollErr.message);
+                        if (pollErr.response?.status === 500 || pollErr.response?.status === 404) {
+                            console.warn("[OpenAI Image] Task not found or Server Error, likely invalid ID or Task Type.");
+                        }
+                    }
+                }
+                throw new Error("ModelScope AsyncTask Timed Out (5 mins)");
+            }
+            // -------------------------------
+
+            // 增强型数据提取逻辑：部分中转或智谱新接口可能把数据放在 output 或其它字段
+            const results = response.data?.data || response.data?.output || (response.data?.results && Array.isArray(response.data?.results) ? response.data.results : null);
+            const firstResult = Array.isArray(results) ? results[0] : (results && typeof results === 'object' ? results : null);
+
+            if (firstResult?.b64_json) {
+                const base64 = `data:image/png;base64,${firstResult.b64_json}`;
                 return await saveBase64Image(base64, 'gen_ai');
-            } else if (data?.url) {
+            } else if (firstResult?.url) {
                 // If URL is returned, fetch and convert to base64 then save
-                const imageResponse = await axios.get(data.url, { responseType: 'arraybuffer' });
+                const imageResponse = await axios.get(firstResult.url, { responseType: 'arraybuffer' });
                 const base64 = `data:image/png;base64,${Buffer.from(imageResponse.data, 'binary').toString('base64')}`;
                 return await saveBase64Image(base64, 'gen_ai');
             }
-            throw new Error("No image data returned from API"); // Should be caught by catch block
+
+            // 最后的兜底：检查 response.data 本身是否就是 base64 或包含 URL
+            if (response.data?.url) {
+                const imageResponse = await axios.get(response.data.url, { responseType: 'arraybuffer' });
+                const base64 = `data:image/png;base64,${Buffer.from(imageResponse.data, 'binary').toString('base64')}`;
+                return await saveBase64Image(base64, 'gen_ai');
+            }
+
+            throw new Error(`No image data returned from API. Raw Response: ${JSON.stringify(response.data).substring(0, 500)}`); // Should be caught by catch block
         } catch (error: any) {
             let errMsg = error.response?.data?.error?.message || error.response?.data?.message || error.message;
             const statusCode = error.response?.status;
@@ -710,6 +900,8 @@ async function callOpenAIImageGeneration(
                             errMsg = `Upstream: ${parsed.error.message}`;
                         } else if (parsed.message) {
                             errMsg = `Upstream: ${parsed.message}`;
+                        } else if (parsed.errors?.message) {
+                            errMsg = `Upstream: ${parsed.errors.message}`;
                         }
                     } else {
                         // Use raw string if short
@@ -722,13 +914,14 @@ async function callOpenAIImageGeneration(
 
             console.error(`[OpenAI Image] Attempt failed: ${errMsg} (Status: ${statusCode})`);
 
-            // Only retry on specific status codes or network errors
-            const shouldRetry = !statusCode || [500, 502, 503, 504].includes(statusCode);
+            // Only retry on specific status codes or network errors (including 429 Rate Limit)
+            const shouldRetry = !statusCode || [429, 500, 502, 503, 504].includes(statusCode);
 
             if (shouldRetry && retries > 1) {
                 retries--;
-                console.log(`[OpenAI Image] Retrying in 2 seconds...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                const delay = statusCode === 429 ? 3000 : 2000;
+                console.log(`[OpenAI Image] Retrying in ${delay / 1000} seconds due to ${statusCode || 'Network Error'}...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
                 continue;
             }
 
@@ -780,7 +973,7 @@ export const AIService = {
         }
         const cleanText = sanitized.cleanedText;
 
-        const config = getTaskConfig(settings, 'text');
+        const config = await resolveActiveConfig(settings, 'text');
         let prompt = '';
         if (type === 'requirement_polish') {
             prompt = `
@@ -879,7 +1072,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             if (!ctx.trim()) return '常规保存';
             return '常规保存';
         }
-        const config = getTaskConfig(settings, 'text');
+        const config = await resolveActiveConfig(settings, 'text');
         const prompt = `
             Task: Summarize the changes in a presentation project based on the provided diff context.
             Context: "${diffContext}"
@@ -907,35 +1100,79 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
     },
 
     async extractTextFromFile(resourcePath: string, fileType: string, settings?: AppSettings): Promise<{ content: string, fallback?: boolean, provider?: string }> {
-        // Handle PDF via MinerU with Fallback
-        if (fileType === 'application/pdf') {
-            const mineruKey = settings?.docParser?.apiKey;
+        const mineruKey = settings?.docParser?.apiKey;
+        const extension = path.extname(resourcePath).toLowerCase();
 
-            if (mineruKey) {
+        // 1. MinerU (Remote) - Universal Support
+        if (mineruKey) {
+            const isMinerUSupported = [
+                '.pdf', '.docx', '.doc', '.pptx', '.ppt',
+                '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
+                '.html', '.htm'
+            ].includes(extension) || fileType.includes('pdf') || fileType.includes('word') || fileType.includes('presentation');
+
+            if (isMinerUSupported) {
                 try {
                     const { MinerUService } = await import('./mineru.service');
+                    const modelVersion = (extension === '.html' || extension === '.htm' || fileType.includes('html')) ? 'MinerU-HTML' : 'vlm';
 
-                    console.log('[AIService] Attempting MinerU PDF Parsing...');
+                    console.log(`[AIService] Attempting MinerU Parsing (${modelVersion}) for ${extension || fileType}...`);
                     const markdown = await MinerUService.parseFile(resourcePath, {
                         apiKey: mineruKey,
                         baseUrl: settings?.docParser?.baseUrl || 'https://mineru.openxlab.org.cn',
                         provider: 'MinerU'
-                    });
+                    }, modelVersion);
 
                     console.log('[AIService] MinerU Success.');
                     return { content: markdown, provider: 'MinerU' };
-
                 } catch (mineruError: any) {
-                    console.warn(`[AIService] MinerU Failed (Falling back to Vision): ${mineruError.message}`);
-                    // Proceed to Vision Model logic below, but mark as fallback
-                    // We continue execution...
+                    console.warn(`[AIService] MinerU Failed: ${mineruError.message}`);
+                    // Fall through to local parsing
                 }
-            } else {
-                console.log('[AIService] MinerU API Key missing. Skipping to Vision Model.');
             }
         }
 
-        const config = getTaskConfig(settings, 'vision');
+        // 2. Specific Local Fallbacks
+        if (fileType === 'application/pdf' || extension === '.pdf') {
+
+            // 2. Local Fallback (pdf-parse)
+            try {
+                console.log('[AIService] Attempting Local PDF Parsing (pdf-parse)...');
+                // Deeply examine the module structure to handle various export patterns (CJS/ESM/Default)
+                const pdfLib = require('pdf-parse');
+                console.log('[AIService] pdf-parse module type:', typeof pdfLib);
+
+                let pdf: any;
+                if (typeof pdfLib === 'function') {
+                    pdf = pdfLib;
+                } else if (pdfLib && typeof pdfLib.default === 'function') {
+                    pdf = pdfLib.default;
+                } else if (pdfLib && typeof pdfLib.pdf === 'function') {
+                    pdf = pdfLib.pdf;
+                }
+
+                if (typeof pdf !== 'function') {
+                    console.error('[AIService] pdf-parse loading failed: resolve result is not a function. Structure keys:', Object.keys(pdfLib || {}));
+                    throw new Error('pdf-parse is not a function after resolution');
+                }
+
+                const buffer = await readResourceBuffer(resourcePath);
+                const data = await pdf(buffer);
+
+                if (data && data.text && data.text.length > 50) {
+                    console.log('[AIService] Local PDF Parse Success.');
+                    return { content: data.text, provider: 'Local PDF' };
+                } else {
+                    console.warn('[AIService] Local PDF Parse Result too short or empty.');
+                }
+            } catch (localError: any) {
+                console.warn(`[AIService] Local PDF Failed: ${localError.message}`);
+            }
+
+            console.warn('[AIService] All Text Parsing failed for PDF. Checking Vision capabilities...');
+        }
+
+        const config = await resolveActiveConfig(settings, 'vision');
 
         // Simple Text
         if (fileType === 'text/plain' || resourcePath.endsWith('.md') || resourcePath.endsWith('.txt')) {
@@ -950,13 +1187,22 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             if (result.value.trim()) return { content: result.value, provider: 'Local' };
         }
 
-        // AI Vision
-        const base64 = await resourceToBase64(resourcePath);
-
         // Determine whether this was a fallback from PDF
         const isFallback = (fileType === 'application/pdf');
 
-        if (shouldUseGeminiNative(config, settings)) {
+        // 🚨 CRITICAL CHECK: Vision Model Compatibility for PDF
+        // OpenAI/Volcengine (Doubao) Vision models DO NOT support application/pdf in image_url.
+        // Only Gemini Native supports it via inlineData.
+        const isGeminiNative = shouldUseGeminiNative(config, settings);
+
+        if (isFallback && !isGeminiNative) {
+            throw new Error("当前使用的模型（OpenAI/火山引擎）不支持直接分析 PDF 文件。请先将 PDF 转换为图片，或切换至 Google Gemini 模型，或配置 MinerU 解析服务。");
+        }
+
+        // AI Vision
+        const base64 = await resourceToBase64(resourcePath);
+
+        if (isGeminiNative) {
             const ai = createGoogleClient(config);
             const contents = [
                 { inlineData: { mimeType: fileType, data: base64 } },
@@ -972,7 +1218,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                 provider: 'Gemini Vision'
             };
         } else {
-            // OpenAI Vision
+            // OpenAI Vision (Images Only)
             const messages = [
                 {
                     role: "user",
@@ -1020,7 +1266,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                 status: 'idle'
             }));
         }
-        const config = getTaskConfig(settings, 'text');
+        const config = await resolveActiveConfig(settings, 'text');
 
         const { targetPageCount, pageStructure } = configStyle;
         const structure = { ...(pageStructure || { cover: 1, directory: 1, transition: 0, content: 7, end: 1 }) };
@@ -1099,11 +1345,73 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                 });
                 jsonStr = response.text?.trim() || "[]";
             } else {
-                const messages = [{ role: "user", content: prompt }];
-                jsonStr = await callOpenAICompatible(config, messages, 0.7, true);
+                const systemPrompt = `Role: PPT大纲规划师，擅长根据主题和风格要求，生成结构清晰、内容详尽的PPT大纲。
+                Requirements:
+                1. Structure: Generate an outline with approximately ${targetPageCount} main sections/slides.
+                2. Content: Each section should have a clear 'title' and a concise 'brief' (summary).
+                3. Language: Strictly Simplified Chinese (简体中文).
+                4. Output Format: valid JSON array only. No Markdown.
+                `;
+
+                const userPrompt = `Task: 为主题 "${topic}" 生成一个PPT大纲。
+                Style Requirements:
+                - ${configStyle?.styleName ? `风格: ${configStyle.styleName}` : '风格: 默认专业风格'}
+
+                【Output Format】:
+                Return a JSON array, the length must be ${targetPageCount}.
+                Each object must handle: title, brief, pageType ("cover"|"directory"|"transition"|"content"|"end").
+                `;
+
+                const messages = [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ];
+                // Disable jsonMode (false) to avoid 401/400 errors with providers like ModelScope that may not support response_format
+                jsonStr = await callOpenAICompatible(config, messages, 0.7, false);
             }
             jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
-            const parsed = JSON.parse(jsonStr);
+
+            console.log('[GenerateOutline] Raw AI Response:', jsonStr);
+
+            let parsed: any;
+            try {
+                parsed = JSON.parse(jsonStr);
+            } catch (e: any) {
+                // Fallback: Try to find a JSON array pattern in the string if strict parse fails
+                const match = jsonStr.match(/\[.*\]/s);
+                if (match) {
+                    try {
+                        parsed = JSON.parse(match[0]);
+                    } catch (err: any) {
+                        throw new Error(`Failed to parse extracted JSON array: ${err.message}`);
+                    }
+                } else {
+                    throw new Error(`Invalid JSON format: ${e.message}`);
+                }
+            }
+
+            // Robustness: If result is an object but not an array (e.g. { "outline": [...] }), try to extract the array
+            if (!Array.isArray(parsed) && typeof parsed === 'object' && parsed !== null) {
+                console.warn('[GenerateOutline] Received Object instead of Array, attempting to extract array...');
+                // 1. Check for common keys
+                const candidateKeys = ['outline', 'pages', 'slides', 'chapters', 'items', 'list'];
+                let foundKey = candidateKeys.find(key => Array.isArray((parsed as any)[key]));
+
+                // 2. If not found, just take the first value that is an array
+                if (!foundKey) {
+                    foundKey = Object.keys(parsed).find(key => Array.isArray((parsed as any)[key]));
+                }
+
+                if (foundKey) {
+                    console.log(`[GenerateOutline] Extracted array from key: '${foundKey}'`);
+                    parsed = (parsed as any)[foundKey];
+                }
+            }
+
+            if (!Array.isArray(parsed)) {
+                throw new Error(`AI Response is not a valid array. Type: ${typeof parsed}`);
+            }
+
             return parsed.map((item: any, index: number) => ({
                 id: Math.random().toString(36).substr(2, 9),
                 index: index + 1,
@@ -1112,14 +1420,14 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                 pageType: item.pageType || 'content',
                 status: 'idle'
             }));
-        } catch (e) {
+        } catch (e: any) {
             console.error("Outline Gen Error", e);
-            throw new Error("Failed to generate outline");
+            throw new Error(`Failed to generate outline: ${e.message}`);
         }
     },
 
     async generateSingleOutlineItem(topic: string, index: number, total: number, settings?: AppSettings): Promise<{ title: string, brief: string }> {
-        const config = getTaskConfig(settings, 'text');
+        const config = await resolveActiveConfig(settings, 'text');
         const prompt = `
             Context: Generating a PowerPoint outline for topic "${topic}".
             Task: Create a single slide entry for Slide #${index} out of ${total}.
@@ -1154,7 +1462,8 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                     { role: "system", content: "You are a JSON generator. Return only valid JSON object." },
                     { role: "user", content: prompt }
                 ];
-                jsonStr = await callOpenAICompatible(config, messages, 0.7, true);
+                // Disable jsonMode to avoid 401/400 errors with ModelScope
+                jsonStr = await callOpenAICompatible(config, messages, 0.7, false);
                 jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
             }
             return JSON.parse(jsonStr);
@@ -1178,7 +1487,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             const b = brief === undefined || brief === null ? '' : String(brief);
             return `- ${t || '要点'}\n- ${b || '示例内容（用于 E2E 测试）'}\n\n---DESIGN_SUGGESTION_START---\n**设计建议：** 采用左右分栏布局：左侧标题与要点列表，右侧使用图标/流程箭头表达逻辑。`;
         }
-        const config = getTaskConfig(settings, 'text');
+        const config = await resolveActiveConfig(settings, 'text');
         const prompt = `Topic Context: ${topicContext}
             Slide Title: ${title}
             Slide Intent: ${brief}
@@ -1252,7 +1561,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
         if (process.env.MOCK_AI === '1') {
             return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PtPhVwAAAABJRU5ErkJggg==';
         }
-        const config = getTaskConfig(settings, 'image');
+        const config = await resolveActiveConfig(settings, 'image');
         const targetRatio = configStyle.aspectRatio || "16:9";
 
         // 1. 智能拾取最佳风格参考图
@@ -1307,7 +1616,11 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             styleMatchType: matchType,
             allSlideTitles: allSlideTitles,
             styleKeywords: styleKeywords,
-            designSuggestion: designSuggestion
+            designSuggestion: designSuggestion,
+            isZhipu: config.baseUrl.toLowerCase().includes('bigmodel.cn') ||
+                config.model.toLowerCase().includes('glm') ||
+                config.model.toLowerCase().includes('cogview') ||
+                config.model.toLowerCase().includes('zhipu')
         });
 
         // 4. 执行模型请求
@@ -1424,7 +1737,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             }
         }
 
-        const config = getTaskConfig(settings, isVisionMode ? 'vision' : 'text');
+        const config = await resolveActiveConfig(settings, isVisionMode ? 'vision' : 'text');
 
         // 2. 构建 Prompt
         const prompt = `
@@ -1523,7 +1836,8 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                         image_url: { url: `data:${visionPart.mimeType};base64,${visionPart.data}` }
                     });
                 }
-                jsonStr = await callOpenAICompatible(config, messages, 0.7, true);
+                // Disable jsonMode to avoid 401/400 errors with ModelScope
+                jsonStr = await callOpenAICompatible(config, messages, 0.7, false);
             }
 
             // Clean & Parse JSON

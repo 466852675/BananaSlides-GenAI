@@ -85,8 +85,46 @@ export const RefundDetailPage: React.FC<RefundDetailPageProps> = ({ refundId, on
         );
     }
 
-    const { refund, user, originalOrder, auditHistory, riskAssessment } = result;
+    // 从新 API 响应结构映射数据到旧组件期望的格式
+    const { refund, order, userProfile, riskRadar, aiSuggestion } = result;
     const status = statusConfig[refund.status] || statusConfig.PENDING;
+
+    // 映射用户数据到 RefundUserProfile 格式
+    const user = {
+        id: userProfile.id,
+        email: userProfile.email || undefined,
+        nickname: userProfile.nickname || undefined,
+        vipLevel: `Lv.${userProfile.vipLevel}`,
+        createdAt: new Date(Date.now() - userProfile.accountAgeDays * 24 * 60 * 60 * 1000).toISOString(),
+        totalOrders: 0, // 暂无数据
+        totalSpent: userProfile.totalPointsUsed * 0.1, // 估算
+        refundCount: result.refundHistory?.totalRequests || 0,
+    };
+
+    // 映射订单数据到 RefundOriginalOrder 格式
+    const originalOrder = {
+        id: order.id,
+        orderNo: order.orderNo,
+        productName: order.productName,
+        productType: order.productType,
+        finalPrice: order.finalPrice,
+        amount: order.finalPrice,
+        paidAt: order.paidAt || order.createdAt,
+        status: order.status,
+        paymentMethod: 'unknown',
+    };
+
+    // 映射风险评估数据
+    const riskAssessment = {
+        level: riskRadar.riskLevel,
+        score: riskRadar.riskFactors.length * 25,
+        factors: riskRadar.riskFactors,
+        autoApprove: riskRadar.canAutoApprove,
+        suggestion: aiSuggestion.verdict,
+    };
+
+    // 暂无审核历史数据，使用空数组
+    const auditHistory: any[] = [];
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -118,9 +156,9 @@ export const RefundDetailPage: React.FC<RefundDetailPageProps> = ({ refundId, on
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* 左侧列 - 金额和用户 */}
                 <div className="space-y-6">
-                    <RefundAmountCard 
-                        refundAmount={refund.amount} 
-                        originalOrderAmount={originalOrder.amount} 
+                    <RefundAmountCard
+                        refundAmount={refund.amount}
+                        originalOrderAmount={originalOrder.amount}
                     />
                     <RefundUserCard user={user} />
                 </div>
@@ -134,8 +172,8 @@ export const RefundDetailPage: React.FC<RefundDetailPageProps> = ({ refundId, on
                 {/* 右侧列 - 风险、建议和操作 */}
                 <div className="space-y-6">
                     <RefundRiskBadge assessment={riskAssessment} />
-                    <RefundSuggestion suggestion={riskAssessment.suggestion} />
-                    
+                    <RefundSuggestion suggestion={aiSuggestion.verdict} />
+
                     {/* 操作按钮 */}
                     {refund.status === 'PENDING' && (
                         <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">

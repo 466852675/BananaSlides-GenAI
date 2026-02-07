@@ -265,6 +265,23 @@ model GlobalConfig {
   updatedAt DateTime @updatedAt
 }
 
+model AiEngineRule {
+  id          String   @id @default(uuid())
+  name        String   // 规则名称
+  provider    String   // 厂商: Gemini, Volcengine, OpenAI, CustomCombo
+  
+  // 核心配置 (JSON 字符串存储，包含 baseUrl, apiKey 等)
+  config      String   
+  
+  isActive    Boolean  @default(false)
+  description String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 model Product {
   id            String    @id @default(uuid())
   type          String
