@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as RefundApi from '../../api/refund';
 import {
@@ -24,46 +25,49 @@ import {
     Receipt,
     SquareCheck,
     Trash2,
-    MoreHorizontal
+    MoreHorizontal,
+    Wallet,
+    FileText,
+    MessageSquare
 } from 'lucide-react';
 import { ConfirmDialog } from '../ConfirmDialog';
 
 const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ReactNode }> = {
-    PENDING: { 
-        label: '待审核', 
-        color: 'text-amber-600', 
+    PENDING: {
+        label: '待审核',
+        color: 'text-amber-600',
         bgColor: 'bg-amber-50',
-        icon: <AlertCircle size={14} /> 
+        icon: <AlertCircle size={14} />
     },
-    PROCESSING: { 
-        label: '处理中', 
-        color: 'text-blue-600', 
+    PROCESSING: {
+        label: '处理中',
+        color: 'text-blue-600',
         bgColor: 'bg-blue-50',
-        icon: <RefreshCcw size={14} className="animate-spin" /> 
+        icon: <RefreshCcw size={14} className="animate-spin" />
     },
-    COMPLETED: { 
-        label: '已退款', 
-        color: 'text-emerald-600', 
+    COMPLETED: {
+        label: '已退款',
+        color: 'text-emerald-600',
         bgColor: 'bg-emerald-50',
-        icon: <CheckCircle size={14} /> 
+        icon: <CheckCircle size={14} />
     },
-    REJECTED: { 
-        label: '已拒绝', 
-        color: 'text-rose-600', 
+    REJECTED: {
+        label: '已拒绝',
+        color: 'text-rose-600',
         bgColor: 'bg-rose-50',
-        icon: <XCircle size={14} /> 
+        icon: <XCircle size={14} />
     },
-    FAILED: { 
-        label: '退款失败', 
-        color: 'text-red-600', 
+    FAILED: {
+        label: '退款失败',
+        color: 'text-red-600',
         bgColor: 'bg-red-50',
-        icon: <AlertCircle size={14} /> 
+        icon: <AlertCircle size={14} />
     },
-    MANUAL_REQUIRED: { 
-        label: '需人工处理', 
-        color: 'text-purple-600', 
+    MANUAL_REQUIRED: {
+        label: '需人工处理',
+        color: 'text-purple-600',
         bgColor: 'bg-purple-50',
-        icon: <Shield size={14} /> 
+        icon: <Shield size={14} />
     },
 };
 
@@ -74,6 +78,13 @@ export const RefundManagement: React.FC = () => {
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
     const [keyword, setKeyword] = useState('');
+    // 退款金额范围筛选
+    const [minAmount, setMinAmount] = useState<string>('');
+    const [maxAmount, setMaxAmount] = useState<string>('');
+    // 申请渠道筛选
+    const [channelFilter, setChannelFilter] = useState<string>('');
+    // 是否有备注筛选
+    const [hasNoteFilter, setHasNoteFilter] = useState<string>('');
     const [selectedRefund, setSelectedRefund] = useState<RefundApi.RefundRequest | null>(null);
     const [auditDialog, setAuditDialog] = useState<{
         isOpen: boolean;
@@ -94,7 +105,7 @@ export const RefundManagement: React.FC = () => {
     });
 
     const { data, isLoading } = useQuery({
-        queryKey: ['admin-refunds', page, statusFilter, startDate, endDate, keyword],
+        queryKey: ['admin-refunds', page, statusFilter, startDate, endDate, keyword, minAmount, maxAmount, channelFilter, hasNoteFilter],
         queryFn: () => RefundApi.getAdminRefunds({
             page,
             limit: 10,
@@ -102,6 +113,10 @@ export const RefundManagement: React.FC = () => {
             startDate: startDate || undefined,
             endDate: endDate || undefined,
             keyword: keyword || undefined,
+            minAmount: minAmount ? parseFloat(minAmount) : undefined,
+            maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
+            channel: channelFilter || undefined,
+            hasNote: hasNoteFilter === 'yes' ? true : hasNoteFilter === 'no' ? false : undefined,
         }),
     });
 
@@ -172,6 +187,10 @@ export const RefundManagement: React.FC = () => {
         setStartDate('');
         setEndDate('');
         setKeyword('');
+        setMinAmount('');
+        setMaxAmount('');
+        setChannelFilter('');
+        setHasNoteFilter('');
         setSelectedIds(new Set());
         setSelectAll(false);
     };
@@ -200,187 +219,6 @@ export const RefundManagement: React.FC = () => {
     const refunds = data?.items || [];
     const pagination = data?.pagination;
 
-    // 详情视图
-    if (selectedRefund) {
-        const status = statusConfig[selectedRefund.status] || statusConfig.PENDING;
-        return (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-3xl p-6 text-white shadow-xl shadow-violet-500/20 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
-                    <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                        <div className="flex items-center gap-6">
-                            <button
-                                onClick={() => setSelectedRefund(null)}
-                                className="p-2.5 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white hover:bg-white/20 transition-colors"
-                            >
-                                <ArrowLeft size={24} />
-                            </button>
-                            <div>
-                                <h2 className="text-2xl font-black tracking-tight mb-1">退款详情</h2>
-                                <p className="text-indigo-100 font-medium opacity-90 whitespace-nowrap">
-                                    订单号: {selectedRefund.orderNo}
-                                </p>
-                            </div>
-                        </div>
-                        <span className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 ${status.color} ${status.bgColor} shadow-sm`}>
-                            {status.icon}
-                            {status.label}
-                        </span>
-                    </div>
-                </div>
-
-                {/* Content Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Left Column - Details */}
-                    <div className="lg:col-span-2 space-y-6">
-                        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden">
-                            <div className="px-6 py-4 border-b border-slate-100/60 bg-slate-50/50">
-                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    <Receipt size={18} className="text-violet-500" />
-                                    退款信息
-                                </h3>
-                            </div>
-                            <div className="p-6">
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">商品名称</label>
-                                            <p className="text-sm font-bold text-slate-800 mt-1">{selectedRefund.productName}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">退款金额</label>
-                                            <p className="text-2xl font-black text-violet-600 mt-1">¥{selectedRefund.amount.toFixed(2)}</p>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">申请时间</label>
-                                            <p className="text-sm font-bold text-slate-800 mt-1">
-                                                {new Date(selectedRefund.createdAt).toLocaleString('zh-CN')}
-                                            </p>
-                                        </div>
-                                        {selectedRefund.processedAt && (
-                                            <div>
-                                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">处理时间</label>
-                                                <p className="text-sm font-bold text-slate-800 mt-1">
-                                                    {new Date(selectedRefund.processedAt).toLocaleString('zh-CN')}
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="mt-6 pt-6 border-t border-slate-100">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">退款原因</label>
-                                    <div className="mt-2 p-4 bg-slate-50 rounded-xl text-sm text-slate-700 font-medium">
-                                        {selectedRefund.reason}
-                                    </div>
-                                </div>
-
-                                {selectedRefund.adminNote && (
-                                    <div className="mt-4">
-                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">客服备注</label>
-                                        <div className="mt-2 p-4 bg-blue-50 rounded-xl text-sm text-blue-800 font-medium border border-blue-100">
-                                            {selectedRefund.adminNote}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Right Column - Actions */}
-                    <div className="space-y-6">
-                        {/* Action Card */}
-                        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden">
-                            <div className="px-6 py-4 border-b border-slate-100/60 bg-slate-50/50">
-                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                    <Shield size={16} className="text-violet-500" />
-                                    审核操作
-                                </h3>
-                            </div>
-                            <div className="p-6">
-                                {selectedRefund.status === 'PENDING' ? (
-                                    <div className="space-y-3">
-                                        <button
-                                            onClick={() => handleAudit('approve')}
-                                            disabled={auditMutation.isPending}
-                                            className="w-full py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <Check size={18} />
-                                            同意退款
-                                        </button>
-                                        <button
-                                            onClick={() => handleAudit('reject')}
-                                            disabled={auditMutation.isPending}
-                                            className="w-full py-3 px-4 bg-white border-2 border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <X size={18} />
-                                            拒绝退款
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ${statusConfig[selectedRefund.status]?.bgColor || 'bg-slate-100'}`}>
-                                            {statusConfig[selectedRefund.status]?.icon || <AlertCircle size={24} className="text-slate-400" />}
-                                        </div>
-                                        <p className="text-slate-500 font-medium">该退款申请已{statusConfig[selectedRefund.status]?.label || '处理'}</p>
-                                        <p className="text-xs text-slate-400 mt-1">无需进一步操作</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Stats Card */}
-                        <div className="bg-gradient-to-br from-violet-600 to-indigo-700 rounded-3xl p-6 text-white shadow-xl shadow-violet-500/20 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
-                            <h3 className="font-bold mb-4 flex items-center gap-2">
-                                <RefreshCcw size={18} />
-                                退款统计
-                            </h3>
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-indigo-100 text-sm">今日退款</span>
-                                    <span className="font-bold text-lg">{stats?.todayRefunds || 0} <span className="text-sm font-normal text-indigo-200">笔</span></span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-indigo-100 text-sm">待审核</span>
-                                    <span className="font-bold text-lg text-amber-300">{stats?.pendingRefunds || 0} <span className="text-sm font-normal text-indigo-200">笔</span></span>
-                                </div>
-                                <div className="pt-3 border-t border-white/20">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-indigo-100 text-sm">累计退款金额</span>
-                                        <span className="font-bold text-xl">¥{(stats?.totalAmount || 0).toFixed(2)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Audit Dialog */}
-                <ConfirmDialog
-                    isOpen={auditDialog.isOpen}
-                    onCancel={() => setAuditDialog({ isOpen: false, action: null, adminNote: '' })}
-                    onConfirm={confirmAudit}
-                    title={auditDialog.action === 'approve' ? '确认同意退款' : '确认拒绝退款'}
-                    message={
-                        auditDialog.action === 'approve'
-                            ? `同意退款后，系统将自动处理退款，¥${selectedRefund.amount} 将原路返回给用户。是否继续？`
-                            : '拒绝退款后，用户将收到拒绝通知。'
-                    }
-                    confirmText={auditDialog.action === 'approve' ? '确认同意' : '确认拒绝'}
-                    cancelText="取消"
-                    type={auditDialog.action === 'approve' ? 'info' : 'danger'}
-                    showInput={true}
-                    inputValue={auditDialog.adminNote}
-                    onInputChange={(value) => setAuditDialog(prev => ({ ...prev, adminNote: value }))}
-                    inputPlaceholder={auditDialog.action === 'approve' ? '可选：添加备注信息...' : '请输入拒绝原因...'}
-                />
-            </div>
-        );
-    }
 
     // List View
     return (
@@ -456,6 +294,64 @@ export const RefundManagement: React.FC = () => {
                                 onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
                                 className="pl-7 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[100px]"
                             />
+                        </div>
+                    </div>
+
+                    {/* 退款金额范围筛选 */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="relative group">
+                            <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
+                            <input
+                                type="number"
+                                placeholder="最小金额"
+                                value={minAmount}
+                                onChange={(e) => { setMinAmount(e.target.value); setPage(1); }}
+                                className="pl-6 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[80px]"
+                            />
+                        </div>
+                        <span className="text-slate-300 font-bold text-[10px]">-</span>
+                        <div className="relative group">
+                            <input
+                                type="number"
+                                placeholder="最大金额"
+                                value={maxAmount}
+                                onChange={(e) => { setMaxAmount(e.target.value); setPage(1); }}
+                                className="pl-2 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[80px]"
+                            />
+                        </div>
+                    </div>
+
+                    {/* 申请渠道筛选 */}
+                    <div className="relative flex-shrink-0">
+                        <Wallet className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+                        <select
+                            value={channelFilter}
+                            onChange={(e) => { setChannelFilter(e.target.value); setPage(1); }}
+                            className="pl-7 pr-6 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[90px]"
+                        >
+                            <option value="">全部渠道</option>
+                            <option value="wechat">微信</option>
+                            <option value="alipay">支付宝</option>
+                        </select>
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Filter size={8} />
+                        </div>
+                    </div>
+
+                    {/* 是否有备注筛选 */}
+                    <div className="relative flex-shrink-0">
+                        <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+                        <select
+                            value={hasNoteFilter}
+                            onChange={(e) => { setHasNoteFilter(e.target.value); setPage(1); }}
+                            className="pl-7 pr-6 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[90px]"
+                        >
+                            <option value="">备注状态</option>
+                            <option value="yes">有备注</option>
+                            <option value="no">无备注</option>
+                        </select>
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Filter size={8} />
                         </div>
                     </div>
 
@@ -578,8 +474,17 @@ export const RefundManagement: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-3 py-3 text-right">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    {refund.status === 'PENDING' ? (
+                                                <div className="flex items-center justify-end gap-1 transition-all">
+                                                    {/* 查看详情按钮 - 所有状态都显示 */}
+                                                    <button
+                                                        onClick={() => setSelectedRefund(refund)}
+                                                        className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm"
+                                                        title="查看详情"
+                                                    >
+                                                        <Eye size={14} />
+                                                    </button>
+                                                    {/* 待审核状态：显示同意/拒绝按钮 */}
+                                                    {refund.status === 'PENDING' && (
                                                         <>
                                                             <button
                                                                 onClick={() => {
@@ -587,10 +492,10 @@ export const RefundManagement: React.FC = () => {
                                                                     setAuditDialog({ isOpen: true, action: 'approve', adminNote: '' });
                                                                 }}
                                                                 disabled={auditMutation.isPending}
-                                                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors disabled:opacity-50"
+                                                                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm disabled:opacity-50"
+                                                                title="同意退款"
                                                             >
-                                                                <Check size={12} />
-                                                                同意
+                                                                <Check size={14} />
                                                             </button>
                                                             <button
                                                                 onClick={() => {
@@ -598,20 +503,12 @@ export const RefundManagement: React.FC = () => {
                                                                     setAuditDialog({ isOpen: true, action: 'reject', adminNote: '' });
                                                                 }}
                                                                 disabled={auditMutation.isPending}
-                                                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors disabled:opacity-50"
+                                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-slate-100/50 shadow-sm disabled:opacity-50"
+                                                                title="拒绝退款"
                                                             >
-                                                                <X size={12} />
-                                                                拒绝
+                                                                <X size={14} />
                                                             </button>
                                                         </>
-                                                    ) : (
-                                                        <button
-                                                            onClick={() => setSelectedRefund(refund)}
-                                                            className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-lg transition-colors"
-                                                        >
-                                                            <Eye size={12} />
-                                                            查看
-                                                        </button>
                                                     )}
                                                 </div>
                                             </td>
@@ -624,33 +521,216 @@ export const RefundManagement: React.FC = () => {
                 </div>
 
                 {/* Pagination */}
-                {pagination && pagination.totalPages > 1 && (
+                {pagination && (
                     <div className="flex items-center justify-between px-8 py-5 border-t border-slate-100/60 bg-slate-50/30">
+                        {/* 统计信息 - 始终显示 */}
                         <div className="text-sm text-slate-500 font-medium">
                             显示第 <span className="font-bold text-slate-800">{(page - 1) * 10 + 1}</span> 到 <span className="font-bold text-slate-800">{Math.min(page * 10, pagination.total || 0)}</span> 条，共 <span className="font-bold text-slate-800">{pagination.total || 0}</span> 条
                         </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-white hover:border-violet-200 hover:text-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-                                disabled={page <= 1}
-                                onClick={() => setPage(p => p - 1)}
-                            >
-                                <ChevronLeft size={16} />
-                            </button>
-                            <span className="px-4 py-2 bg-white rounded-xl border border-slate-200 text-sm font-bold text-slate-700 shadow-sm">
-                                {page} / {pagination.totalPages || 1}
-                            </span>
-                            <button
-                                className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-white hover:border-violet-200 hover:text-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-                                disabled={page >= (pagination.totalPages || 1)}
-                                onClick={() => setPage(p => p + 1)}
-                            >
-                                <ChevronRight size={16} />
-                            </button>
-                        </div>
+                        {/* 分页控件 - 多页时才显示 */}
+                        {pagination.totalPages > 1 && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-white hover:border-violet-200 hover:text-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                                    disabled={page <= 1}
+                                    onClick={() => setPage(p => p - 1)}
+                                >
+                                    <ChevronLeft size={16} />
+                                </button>
+                                <span className="px-4 py-2 bg-white rounded-xl border border-slate-200 text-sm font-bold text-slate-700 shadow-sm">
+                                    {page} / {pagination.totalPages || 1}
+                                </span>
+                                <button
+                                    className="w-9 h-9 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-white hover:border-violet-200 hover:text-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                                    disabled={page >= (pagination.totalPages || 1)}
+                                    onClick={() => setPage(p => p + 1)}
+                                >
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
+
+            {/* Refund Detail Side Drawer */}
+            {selectedRefund && ReactDOM.createPortal(
+                <div className="fixed inset-0 z-[200] flex justify-end overflow-hidden">
+                    {/* Backdrop */}
+                    <div
+                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
+                        onClick={() => setSelectedRefund(null)}
+                    />
+
+                    {/* Drawer Content */}
+                    <div className="relative w-full max-w-2xl bg-slate-50 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300">
+                        {/* Header */}
+                        <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md sticky top-0 z-10">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100">
+                                    <RotateCcw size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-800 tracking-tight">退款申请详情</h3>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Refund Request details</span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border uppercase ${statusConfig[selectedRefund.status]?.color} ${statusConfig[selectedRefund.status]?.bgColor} border-current/10`}>
+                                            {statusConfig[selectedRefund.status]?.label}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setSelectedRefund(null)}
+                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Body - Scrollable */}
+                        <div className="flex-1 overflow-y-auto p-8 space-y-8 pb-32 custom-scrollbar">
+                            {/* Summary Card */}
+                            <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[2.5rem] p-8 text-white shadow-xl shadow-indigo-200 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
+                                <div className="relative z-10">
+                                    <div className="text-xs font-bold text-indigo-100 uppercase tracking-[0.2em] mb-4 opacity-70">Transaction Summary</div>
+                                    <div className="flex items-baseline gap-2 mb-2">
+                                        <span className="text-4xl font-black tracking-tighter">¥{selectedRefund.amount.toFixed(2)}</span>
+                                        <span className="text-indigo-200 text-sm font-bold tracking-widest uppercase">Refund Amount</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-4 mt-6">
+                                        <div className="bg-white/10 backdrop-blur-md rounded-2xl px-4 py-3 border border-white/10 min-w-[140px]">
+                                            <div className="text-[10px] text-indigo-200 font-bold uppercase mb-1">Order No</div>
+                                            <div className="text-sm font-mono font-bold tracking-tight">{selectedRefund.orderNo}</div>
+                                        </div>
+                                        <div className="bg-white/10 backdrop-blur-md rounded-2xl px-4 py-3 border border-white/10 min-w-[140px]">
+                                            <div className="text-[10px] text-indigo-200 font-bold uppercase mb-1">Product</div>
+                                            <div className="text-sm font-bold tracking-tight">{selectedRefund.productName}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Info Sections */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Details */}
+                                <div className="bg-white rounded-[2rem] border border-slate-200 p-6 shadow-sm space-y-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600">
+                                            <Receipt size={18} strokeWidth={2.5} />
+                                        </div>
+                                        <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">申请详情 (Request)</h4>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">申请渠道</span>
+                                            <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl text-xs font-black text-slate-700 border border-slate-100">
+                                                <Wallet size={14} className="text-slate-400" />
+                                                {selectedRefund.channel === 'wechat' ? '微信支付' : '支付宝'}
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">申请时间</span>
+                                            <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl text-xs font-black text-slate-700 border border-slate-100">
+                                                <Clock size={14} className="text-slate-400" />
+                                                {new Date(selectedRefund.createdAt).toLocaleString('zh-CN')}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Status History */}
+                                <div className="bg-white rounded-[2rem] border border-slate-200 p-6 shadow-sm space-y-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-600">
+                                            <Shield size={18} strokeWidth={2.5} />
+                                        </div>
+                                        <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">审核状态 (Process)</h4>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">当前状态</span>
+                                            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black border ${statusConfig[selectedRefund.status]?.bgColor} ${statusConfig[selectedRefund.status]?.color} border-current/10`}>
+                                                {statusConfig[selectedRefund.status]?.icon}
+                                                {statusConfig[selectedRefund.status]?.label}
+                                            </div>
+                                        </div>
+                                        {selectedRefund.processedAt && (
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">处理时间</span>
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl text-xs font-black text-slate-700 border border-slate-100">
+                                                    <Calendar size={14} className="text-slate-400" />
+                                                    {new Date(selectedRefund.processedAt).toLocaleString('zh-CN')}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Reason & Notes */}
+                            <div className="space-y-6">
+                                <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm space-y-4">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                                            <FileText size={18} strokeWidth={2.5} />
+                                        </div>
+                                        <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">退款原因 (Reason)</h4>
+                                    </div>
+                                    <div className="p-4 bg-slate-50 rounded-2xl text-sm text-slate-700 font-medium leading-relaxed border border-slate-100">
+                                        {selectedRefund.reason}
+                                    </div>
+                                </div>
+
+                                {selectedRefund.adminNote && (
+                                    <div className="bg-blue-50/50 rounded-[2rem] border border-blue-100 p-8 space-y-4 animate-in fade-in zoom-in-95 duration-300">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-8 h-8 rounded-xl bg-blue-500 flex items-center justify-center text-white shadow-sm">
+                                                <MessageSquare size={16} />
+                                            </div>
+                                            <h4 className="text-[11px] font-black text-blue-800 uppercase tracking-widest">客服审核备注 (Admin Feedback)</h4>
+                                        </div>
+                                        <div className="p-4 bg-white rounded-2xl text-sm text-blue-900 font-bold leading-relaxed border border-blue-200 shadow-sm">
+                                            {selectedRefund.adminNote}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Footer - Sticky */}
+                        <div className="px-8 py-6 border-t border-slate-100 bg-white/80 backdrop-blur-xl flex items-center gap-4 shrink-0 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] sticky bottom-0 z-10 rounded-t-[2.5rem]">
+                            {selectedRefund.status === 'PENDING' ? (
+                                <>
+                                    <button
+                                        onClick={() => handleAudit('reject')}
+                                        disabled={auditMutation.isPending}
+                                        className="flex-1 py-4 px-6 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-rose-50 hover:text-rose-600 transition-all text-sm tracking-widest uppercase flex items-center justify-center gap-2"
+                                    >
+                                        <X size={18} />
+                                        拒绝退款
+                                    </button>
+                                    <button
+                                        onClick={() => handleAudit('approve')}
+                                        disabled={auditMutation.isPending}
+                                        className="flex-[2] py-4 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-black hover:shadow-xl hover:shadow-emerald-500/25 transition-all text-sm tracking-widest uppercase flex items-center justify-center gap-2"
+                                    >
+                                        <Check size={18} strokeWidth={3} />
+                                        同意并立即原路退回
+                                    </button>
+                                </>
+                            ) : (
+                                <div className="flex items-center gap-3 text-slate-400 font-black uppercase tracking-widest text-xs w-full justify-center py-2">
+                                    <Shield size={18} className="text-slate-400" />
+                                    <span>工单已处理 (Closed) - 查看详情完毕</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
 
             {/* Audit Dialog */}
             <ConfirmDialog
