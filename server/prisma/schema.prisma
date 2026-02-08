@@ -113,6 +113,8 @@ model Transaction {
   @@index([userId])
   @@index([type])
   @@index([createdAt])
+  @@index([completedAt])
+  @@index([userId, completedAt])
 }
 
 model Order {

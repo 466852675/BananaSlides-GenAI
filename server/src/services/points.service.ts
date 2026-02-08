@@ -50,13 +50,29 @@ export async function getActionCost(actionCode: PointsActionCode, userId?: strin
     // 检查用户 VIP 状态
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { vipLevel: true, vipExpiresAt: true }
+        select: { vipLevel: true, vipExpiresAt: true, role: true }
     });
 
     if (user && user.vipLevel > 0) {
+        // 检查是否为管理员（永久VIP）
+        const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN';
+        
         // 检查 VIP 是否过期
+        // - 管理员永不过期（vipExpiresAt为null或任意值都视为有效）
+        // - 普通用户需要检查过期时间
         const now = new Date();
-        const isVipValid = user.vipExpiresAt ? new Date(user.vipExpiresAt) > now : true; // 如果没有过期时间，假设永久有效 (或由业务逻辑控制)
+        let isVipValid: boolean;
+        
+        if (isAdmin) {
+            // 管理员是永久VIP，永不过期
+            isVipValid = true;
+        } else if (user.vipExpiresAt) {
+            // 普通用户有过期时间，检查是否过期
+            isVipValid = new Date(user.vipExpiresAt) > now;
+        } else {
+            // 普通用户无过期时间，默认不是永久VIP
+            isVipValid = false;
+        }
 
         if (isVipValid && rule.vipCostPoints !== null && rule.vipCostPoints !== undefined) {
             // console.log(`[Points] VIP User ${userId} applies VIP cost: ${rule.vipCostPoints} (Standard: ${rule.costPoints})`);

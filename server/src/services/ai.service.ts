@@ -12,6 +12,19 @@ import { injectionDetector, promptSanitizer, SecurePromptBuilder } from '../util
 import { contentFilter } from '../utils/content-filter';
 import { AuditService } from './audit.service';
 
+// --- Configuration Cache ---
+const configCache = new Map<string, {
+    config: ModelConnection;
+    timestamp: number;
+}>();
+const CACHE_TTL = 60000; // 1分钟
+
+// 清除配置缓存（供管理后台调用）
+export function invalidateConfigCache(): void {
+    console.log('[AIService] 清除配置缓存');
+    configCache.clear();
+}
+
 // --- Default Configuration ---
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 const DEFAULT_GEMINI_BASE_URL = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com";
@@ -90,7 +103,7 @@ const analyzeStyleImage = async (
                     ]
                 }
             ];
-            return await callOpenAICompatible(config, messages);
+            return await callOpenAICompatible(config, messages, 0.7, false, 'text');
         }
     } catch (e) {
         console.warn(`[analyzeStyleImage] Style analysis failed (Model: ${config.model}), falling back to basic metadata.`, e);
@@ -400,6 +413,14 @@ const getTaskConfig = (settings: AppSettings | undefined, task: 'text' | 'image'
  * [V10.0] 全局配置解析器：整合数据库活跃规则与旧版 settings
  */
 async function resolveActiveConfig(settings?: AppSettings, task: 'text' | 'image' | 'vision' = 'text'): Promise<ModelConnection> {
+    const cacheKey = `active_config_${task}`;
+    const cached = configCache.get(cacheKey);
+    
+    // 检查缓存是否有效
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.config;
+    }
+    
     try {
         const { prisma } = await import('../db');
         const activeRule = await prisma.aiEngineRule.findFirst({
@@ -435,11 +456,14 @@ async function resolveActiveConfig(settings?: AppSettings, task: 'text' | 'image
             if (activeRule.provider === 'CustomCombo' && config.combo && config.combo[task] && config.combo[task].model) {
                 const comboConfig = config.combo[task];
                 console.log(`[resolveActiveConfig] Using CustomCombo for ${task}:`, comboConfig.model);
-                return {
+                const connection = {
                     apiKey: comboConfig.apiKey || config.apiKey,
                     baseUrl: comboConfig.baseUrl || config.baseUrl || settings?.ai.baseUrl || DEFAULT_GEMINI_BASE_URL,
                     model: comboConfig.model
                 };
+                // 缓存结果
+                configCache.set(cacheKey, { config: connection, timestamp: Date.now() });
+                return connection;
             }
 
             // 2. Fallback to Standard/Multi-Model configuration
@@ -452,11 +476,14 @@ async function resolveActiveConfig(settings?: AppSettings, task: 'text' | 'image
 
             console.log('[resolveActiveConfig] Using Standard Config for', task, taskModelMap[task]);
 
-            return {
+            const connection = {
                 apiKey: config.apiKey,
                 baseUrl: config.baseUrl || settings?.ai.baseUrl || DEFAULT_GEMINI_BASE_URL,
                 model: taskModelMap[task]
             };
+            // 缓存结果
+            configCache.set(cacheKey, { config: connection, timestamp: Date.now() });
+            return connection;
         }
     } catch (e) {
         console.warn('[AIService] Failed to load active rule from DB, falling back to legacy settings.', e);
@@ -570,11 +597,19 @@ const calculateFinalResolution = (qualitySetting: string | undefined, aspectRati
     return map[tier][ratio] || map['2K']['16:9'];
 };
 
+// AI 服务超时配置（宽裕时长）
+const AI_TIMEOUTS = {
+    text: 300000,      // 文本生成 5分钟
+    image: 600000,     // 图片生成 10分钟（最宽裕）
+    vision: 180000     // 视觉分析 3分钟
+};
+
 async function callOpenAICompatible(
     config: ModelConnection,
     messages: any[],
     temperature: number = 0.7,
-    jsonMode: boolean = false
+    jsonMode: boolean = false,
+    taskType: 'text' | 'image' | 'vision' = 'text'
 ): Promise<string> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -608,8 +643,10 @@ async function callOpenAICompatible(
     while (retries > 0) {
         try {
             console.log(`[OpenAI Compatible] Calling: ${url}, Model: ${config.model} (Attempts left: ${retries})`);
-            // Increased timeout to 240s (4 mins) for deep reasoning models
-            const response = await axios.post(url, body, { headers, timeout: 240000 });
+            // 根据任务类型设置宽裕的超时时间
+            const timeout = AI_TIMEOUTS[taskType] || AI_TIMEOUTS.text;
+            console.log(`[OpenAI Compatible] Timeout: ${timeout}ms (${taskType} task)`);
+            const response = await axios.post(url, body, { headers, timeout });
             const content = response.data.choices[0]?.message?.content || "";
             console.log(`[OpenAI Compatible] Response received, length: ${content.length}`);
             console.log(`[OpenAI Compatible] Response preview:`, content.substring(0, 200));
@@ -1077,7 +1114,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             return response.text?.trim() || text;
         } else {
             const messages = [{ role: "user", content: prompt }];
-            return await callOpenAICompatible(config, messages);
+            return await callOpenAICompatible(config, messages, 0.7, false, 'text');
         }
     },
 
@@ -1110,7 +1147,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             return response.text?.trim() || "常规保存";
         } else {
             const messages = [{ role: "user", content: prompt }];
-            return await callOpenAICompatible(config, messages);
+            return await callOpenAICompatible(config, messages, 0.7, false, 'text');
         }
     },
 
@@ -1243,7 +1280,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                     ]
                 }
             ];
-            const text = await callOpenAICompatible(config, messages);
+            const text = await callOpenAICompatible(config, messages, 0.7, false, 'text');
             return {
                 content: text,
                 fallback: isFallback,
@@ -1551,7 +1588,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                 return response.text?.trim() || "";
             } else {
                 const messages = [{ role: "user", content: prompt }];
-                return await callOpenAICompatible(config, messages);
+                return await callOpenAICompatible(config, messages, 0.7, false, 'text');
             }
         } catch (error) {
             console.error("Generate Detail Error", error);
