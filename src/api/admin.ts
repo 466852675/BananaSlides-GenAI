@@ -21,6 +21,7 @@ export interface AdminUser {
     createdAt: string;
     projectCount: number;
     totalSpent: number;
+    riskScore?: number; // Added
 }
 
 export interface UserListFilters {
@@ -67,6 +68,10 @@ export interface Order {
     refundedAt?: string | null;
     createdAt: string;
     updatedAt: string;
+    beforeVipLevel?: number | null;
+    afterVipLevel?: number | null;
+    fulfillmentAt?: string | null; // Added
+    refundRequests?: any[]; // Added - using any[] for now or define RefundRequest interface
 }
 
 export interface PointsRule {
@@ -250,6 +255,17 @@ export async function getOrders(filters: {
 }
 
 /**
+ * 获取订单详情
+ */
+export async function getOrderById(id: string): Promise<Order> {
+    const result = await client.get(`/admin/orders/${id}`) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取订单详情失败');
+}
+
+/**
  * 退款订单
  */
 export async function refundOrder(id: string, reason?: string): Promise<void> {
@@ -257,6 +273,27 @@ export async function refundOrder(id: string, reason?: string): Promise<void> {
     if (!result.success) {
         throw new Error(result.error?.message || '退款失败');
     }
+}
+
+/**
+ * 获取订单统计数据
+ */
+export async function getOrderStats(): Promise<{
+    total: number;
+    pending: number;
+    paid: number;
+    refunded: number;
+    cancelled: number;
+    failed: number;
+    today: number;
+    totalRevenue: number;
+    todayRevenue: number;
+}> {
+    const result = await client.get('/admin/orders/stats') as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取订单统计失败');
 }
 
 // ============================================================

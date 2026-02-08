@@ -49,6 +49,12 @@ tests/e2e/fail_*.png
 # ReCode local database
 .recode
 
+# Windows reserved device names
+nul
+NUL
+server/nul
+server/NUL
+
 # AI Agent contexts and workflows
 .claude/
 .sisyphus/

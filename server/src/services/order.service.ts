@@ -186,8 +186,13 @@ export async function getOrderById(id: string) {
                     id: true,
                     email: true,
                     nickname: true,
+                    riskScore: true, // Added
+                    vipExpiresAt: true, // Added
                 },
             },
+            refundRequests: { // Added
+                orderBy: { createdAt: 'desc' }
+            }
         },
     });
 }
@@ -321,9 +326,11 @@ export async function fulfillOrder(orderId: string) {
         });
 
         // 3. 如果商品定义了角色授权，更新用户角色及 VIP 等级 (V8.5 对齐)
+        const currentVipLevel = user.vipLevel;
+        let newVipLevel = currentVipLevel;
+
         if (product?.roleToGrant) {
             const roleToGrantStr = product.roleToGrant.toUpperCase();
-            let newVipLevel = user.vipLevel;
 
             // 完整映射关系
             const roleMap: Record<string, number> = {
@@ -364,10 +371,14 @@ export async function fulfillOrder(orderId: string) {
             console.log(`[OrderService] 用户 ${user.id} VIP有效期更新至 ${newExpiry.toISOString()}`);
         }
 
-        // 5. 标记订单已履约
+        // 5. 标记订单已履约，并记录VIP等级变更历史
         await tx.order.update({
             where: { id: orderId },
-            data: { fulfillmentAt: new Date() },
+            data: {
+                fulfillmentAt: new Date(),
+                beforeVipLevel: currentVipLevel,
+                afterVipLevel: newVipLevel
+            },
         });
     });
 
@@ -512,3 +523,51 @@ export async function getMyOrders(userId: string, page: number = 1, limit: numbe
     };
 }
 
+
+/**
+ * 获取订单统计数据 (状态分布)
+ */
+export async function getOrderStats() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [
+        total,
+        pending,
+        paid,
+        refunded,
+        cancelled,
+        failed,
+        todayCount,
+        totalRevenue,
+        todayRevenue
+    ] = await Promise.all([
+        prisma.order.count(),
+        prisma.order.count({ where: { status: OrderStatus.PENDING } }),
+        prisma.order.count({ where: { status: OrderStatus.PAID } }),
+        prisma.order.count({ where: { status: OrderStatus.REFUNDED } }),
+        prisma.order.count({ where: { status: OrderStatus.CANCELLED } }),
+        prisma.order.count({ where: { status: OrderStatus.FAILED } }),
+        prisma.order.count({ where: { createdAt: { gte: today } } }),
+        prisma.order.aggregate({
+            where: { status: OrderStatus.PAID },
+            _sum: { finalPrice: true }
+        }),
+        prisma.order.aggregate({
+            where: { status: OrderStatus.PAID, paidAt: { gte: today } },
+            _sum: { finalPrice: true }
+        })
+    ]);
+
+    return {
+        total,
+        pending,
+        paid,
+        refunded,
+        cancelled,
+        failed,
+        today: todayCount,
+        totalRevenue: totalRevenue._sum.finalPrice || 0,
+        todayRevenue: todayRevenue._sum.finalPrice || 0
+    };
+}

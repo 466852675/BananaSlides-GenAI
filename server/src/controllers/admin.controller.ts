@@ -275,6 +275,33 @@ export async function listOrders(req: Request, res: Response): Promise<void> {
 }
 
 /**
+ * 获取订单详情
+ * GET /api/admin/orders/:id
+ */
+export async function getOrder(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const order = await OrderService.getOrderById(id);
+
+        if (!order) {
+            res.status(404).json({
+                success: false,
+                error: { code: 'NOT_FOUND', message: '订单不存在' }
+            });
+            return;
+        }
+
+        res.json({ success: true, data: order });
+    } catch (error) {
+        console.error('[Admin] 获取订单详情失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取订单详情失败' }
+        });
+    }
+}
+
+/**
  * 更新订单状态
  * PUT /api/admin/orders/:id
  */
@@ -304,14 +331,31 @@ export async function refundOrder(req: Request, res: Response): Promise<void> {
         const id = req.params.id as string;
         const { reason } = req.body;
 
-        await OrderService.refundOrder(id, reason || '管理员操作退款');
+        await OrderService.refundOrder(id, reason);
 
         res.json({ success: true, message: '退款成功' });
     } catch (error: any) {
-        console.error('[Admin] 退款失败:', error);
+        console.error('[Admin] 订单退款失败:', error);
         res.status(400).json({
             success: false,
             error: { code: 'REFUND_FAILED', message: error.message || '退款失败' }
+        });
+    }
+}
+
+/**
+ * 获取订单统计数据
+ * GET /api/admin/orders/stats
+ */
+export async function getOrderStats(req: Request, res: Response): Promise<void> {
+    try {
+        const stats = await OrderService.getOrderStats();
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        console.error('[Admin] 获取订单统计失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取订单统计失败' }
         });
     }
 }

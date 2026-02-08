@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ReactDOM from 'react-dom';
+import toast from 'react-hot-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as RefundApi from '../../api/refund';
 import {
@@ -21,6 +21,7 @@ import {
     ArrowLeft,
     RotateCcw,
     Shield,
+    ShieldAlert,
     Clock,
     Receipt,
     SquareCheck,
@@ -33,6 +34,8 @@ import {
 } from 'lucide-react';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { RefundDetailDrawer } from './refund/RefundDetailDrawer';
+import { AdminPageHeader } from './shared';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ReactNode }> = {
     PENDING: {
@@ -87,17 +90,20 @@ export const RefundManagement: React.FC = () => {
     const [channelFilter, setChannelFilter] = useState<string>('');
     // 是否有备注筛选
     const [hasNoteFilter, setHasNoteFilter] = useState<string>('');
-    const [selectedRefund, setSelectedRefund] = useState<RefundApi.RefundRequest | null>(null);
+    const [riskLevelFilter, setRiskLevelFilter] = useState<string>('');
     const [auditDialog, setAuditDialog] = useState<{
         isOpen: boolean;
         action: 'approve' | 'reject' | null;
         adminNote: string;
+        isBatch: boolean;
+        ids: string[];
     }>({
         isOpen: false,
         action: null,
-        adminNote: ''
+        adminNote: '',
+        isBatch: false,
+        ids: []
     });
-
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [selectAll, setSelectAll] = useState(false);
     // [智能决策座舱] 详情抽屉状态
@@ -109,7 +115,7 @@ export const RefundManagement: React.FC = () => {
     });
 
     const { data, isLoading } = useQuery({
-        queryKey: ['admin-refunds', page, statusFilter, startDate, endDate, keyword, minAmount, maxAmount, channelFilter, hasNoteFilter],
+        queryKey: ['admin-refunds', page, statusFilter, startDate, endDate, keyword, minAmount, maxAmount, channelFilter, hasNoteFilter, riskLevelFilter],
         queryFn: () => RefundApi.getAdminRefunds({
             page,
             limit: 10,
@@ -121,6 +127,7 @@ export const RefundManagement: React.FC = () => {
             maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
             channel: channelFilter || undefined,
             hasNote: hasNoteFilter === 'yes' ? true : hasNoteFilter === 'no' ? false : undefined,
+            riskLevel: riskLevelFilter || undefined,
         }),
     });
 
@@ -130,17 +137,20 @@ export const RefundManagement: React.FC = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin-refunds'] });
             queryClient.invalidateQueries({ queryKey: ['refund-stats'] });
-            setAuditDialog({ isOpen: false, action: null, adminNote: '' });
-            setSelectedRefund(null);
+            setAuditDialog({ isOpen: false, action: null, adminNote: '', isBatch: false, ids: [] });
             setSelectedIds(new Set());
             setSelectAll(false);
+            toast.success('审核处理成功');
         },
+        onError: (error: any) => {
+            toast.error(`审核失败: ${error.message}`);
+        }
     });
 
     const batchApproveMutation = useMutation({
-        mutationFn: async (ids: string[]) => {
+        mutationFn: async ({ ids, remark }: { ids: string[]; remark: string }) => {
             const results = await Promise.all(
-                ids.map(id => RefundApi.auditRefund(id, true, '批量通过'))
+                ids.map(id => RefundApi.auditRefund(id, true, remark || '批量通过'))
             );
             const successCount = results.filter(r => r.success).length;
             return { successCount, failedCount: ids.length - successCount };
@@ -150,14 +160,18 @@ export const RefundManagement: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['refund-stats'] });
             setSelectedIds(new Set());
             setSelectAll(false);
-            alert(`批量通过成功：${data.successCount}笔`);
+            setAuditDialog({ isOpen: false, action: null, adminNote: '', isBatch: false, ids: [] });
+            toast.success(`批量通过成功：${data.successCount}笔`);
         },
+        onError: (error: any) => {
+            toast.error(`批量通过失败: ${error.message}`);
+        }
     });
 
     const batchRejectMutation = useMutation({
-        mutationFn: async (ids: string[]) => {
+        mutationFn: async ({ ids, remark }: { ids: string[]; remark: string }) => {
             const results = await Promise.all(
-                ids.map(id => RefundApi.auditRefund(id, false, '批量拒绝'))
+                ids.map(id => RefundApi.auditRefund(id, false, remark || '批量拒绝'))
             );
             const successCount = results.filter(r => r.success).length;
             return { successCount, failedCount: ids.length - successCount };
@@ -167,22 +181,36 @@ export const RefundManagement: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['refund-stats'] });
             setSelectedIds(new Set());
             setSelectAll(false);
-            alert(`批量拒绝成功：${data.successCount}笔`);
+            setAuditDialog({ isOpen: false, action: null, adminNote: '', isBatch: false, ids: [] });
+            toast.success(`批量拒绝成功：${data.successCount}笔`);
         },
+        onError: (error: any) => {
+            toast.error(`批量拒绝失败: ${error.message}`);
+        }
     });
 
-    const handleAudit = (action: 'approve' | 'reject') => {
-        if (!selectedRefund) return;
-        setAuditDialog({ isOpen: true, action, adminNote: '' });
+    const handleAudit = (action: 'approve' | 'reject', isBatch = false, item?: RefundApi.RefundRequest) => {
+        const ids = isBatch ? Array.from(selectedIds) : (item ? [item.id] : []);
+        if (ids.length === 0) return;
+        setAuditDialog({ isOpen: true, action, adminNote: '', isBatch, ids });
     };
 
     const confirmAudit = () => {
-        if (!selectedRefund || !auditDialog.action) return;
-        auditMutation.mutate({
-            id: selectedRefund.id,
-            approved: auditDialog.action === 'approve',
-            remark: auditDialog.adminNote
-        });
+        if (!auditDialog.action || auditDialog.ids.length === 0) return;
+
+        if (auditDialog.isBatch) {
+            if (auditDialog.action === 'approve') {
+                batchApproveMutation.mutate({ ids: auditDialog.ids, remark: auditDialog.adminNote });
+            } else {
+                batchRejectMutation.mutate({ ids: auditDialog.ids, remark: auditDialog.adminNote });
+            }
+        } else {
+            auditMutation.mutate({
+                id: auditDialog.ids[0],
+                approved: auditDialog.action === 'approve',
+                remark: auditDialog.adminNote
+            });
+        }
     };
 
     const handleReset = () => {
@@ -195,6 +223,7 @@ export const RefundManagement: React.FC = () => {
         setMaxAmount('');
         setChannelFilter('');
         setHasNoteFilter('');
+        setRiskLevelFilter('');
         setSelectedIds(new Set());
         setSelectAll(false);
     };
@@ -228,22 +257,15 @@ export const RefundManagement: React.FC = () => {
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header */}
-            <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-3xl p-6 text-white shadow-xl shadow-violet-500/20 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
-                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                    <div className="flex items-center gap-6">
-                        <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
-                            <RotateCcw size={24} />
-                        </div>
-                        <div>
-                            <h2 className="text-2xl font-black tracking-tight mb-1">退款管理</h2>
-                            <p className="text-violet-100 font-medium opacity-90 whitespace-nowrap">
-                                审核和处理用户退款申请，管理退款流程。
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            {/* Header */}
+            <AdminPageHeader
+                icon={<RotateCcw size={24} />}
+                title="退款管理"
+                description="审核和处理用户退款申请，管理退款全生命周期。"
+                gradient="from-violet-600 to-indigo-600"
+                shadowColor="shadow-violet-500/20"
+                extraInfo={`Total Refunded: ¥${(stats?.totalAmount || 0).toLocaleString()}`}
+            />
 
             {/* Filter Bar */}
             <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-1.5 border border-white/60 shadow-sm overflow-x-auto no-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -252,75 +274,73 @@ export const RefundManagement: React.FC = () => {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={16} />
                         <input
                             type="text"
-                            placeholder="搜索订单/用户..."
+                            placeholder="搜索单号/订单/用户..."
                             value={keyword}
                             onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
                             className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none transition-all font-medium"
                         />
                     </div>
 
+                    {/* 风险等级筛选 */}
                     <div className="relative flex-shrink-0">
-                        <AlertCircle className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <ShieldAlert className={`absolute left-2.5 top-1/2 -translate-y-1/2 ${riskLevelFilter ? 'text-rose-500' : 'text-slate-400'}`} size={14} />
                         <select
-                            value={statusFilter}
-                            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-                            className="pl-7 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[100px]"
+                            value={riskLevelFilter}
+                            onChange={(e) => { setRiskLevelFilter(e.target.value); setPage(1); }}
+                            className={`pl-7 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[100px] ${riskLevelFilter ? 'text-rose-600 bg-rose-50 border-rose-100' : 'text-slate-600'}`}
                         >
-                            <option value="">全部状态</option>
-                            <option value="PENDING">待审核</option>
-                            <option value="PROCESSING">处理中</option>
-                            <option value="COMPLETED">已退款</option>
-                            <option value="REJECTED">已拒绝</option>
-                            <option value="FAILED">退款失败</option>
-                            <option value="MANUAL_REQUIRED">需人工处理</option>
+                            <option value="">风险等级</option>
+                            <option value="HIGH">高风险 ({'>'}=70)</option>
+                            <option value="MEDIUM">中风险 (30-69)</option>
+                            <option value="LOW">低风险 ({'<'}30)</option>
                         </select>
                         <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                             <Filter size={10} />
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    {/* 日期聚合岛 */}
+                    <div className="flex items-center gap-1 bg-slate-100/50 p-1 rounded-xl flex-shrink-0 border border-slate-200/50">
                         <div className="relative group">
                             <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
                             <input
                                 type="date"
                                 value={startDate}
                                 onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-                                className="pl-7 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[100px]"
+                                className="pl-7 pr-1 py-1 bg-transparent border-none text-[10px] font-bold text-slate-600 outline-none w-[100px]"
                             />
                         </div>
-                        <span className="text-slate-300 font-bold text-[10px]">-</span>
+                        <span className="text-slate-400 font-bold text-[10px]">→</span>
                         <div className="relative group">
-                            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
                             <input
                                 type="date"
                                 value={endDate}
                                 onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-                                className="pl-7 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[100px]"
+                                className="pl-2 pr-1 py-1 bg-transparent border-none text-[10px] font-bold text-slate-600 outline-none w-[100px]"
                             />
                         </div>
                     </div>
 
-                    {/* 退款金额范围筛选 */}
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    {/* 金额聚合岛 */}
+                    <div className="flex items-center gap-1 bg-slate-100/50 p-1 rounded-xl flex-shrink-0 border border-slate-200/50">
                         <div className="relative group">
                             <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={12} />
                             <input
                                 type="number"
-                                placeholder="最小金额"
+                                placeholder="Min ¥"
                                 value={minAmount}
                                 onChange={(e) => { setMinAmount(e.target.value); setPage(1); }}
-                                className="pl-6 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[80px]"
+                                className="pl-6 pr-1 py-1 bg-transparent border-none text-[10px] font-bold text-slate-600 outline-none w-[70px]"
                             />
                         </div>
-                        <span className="text-slate-300 font-bold text-[10px]">-</span>
+                        <span className="text-slate-400 font-bold text-[10px]">:</span>
                         <div className="relative group">
                             <input
                                 type="number"
-                                placeholder="最大金额"
+                                placeholder="Max ¥"
                                 value={maxAmount}
                                 onChange={(e) => { setMaxAmount(e.target.value); setPage(1); }}
-                                className="pl-2 pr-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none hover:bg-white transition-all w-[80px]"
+                                className="pl-2 pr-1 py-1 bg-transparent border-none text-[10px] font-bold text-slate-600 outline-none w-[70px]"
                             />
                         </div>
                     </div>
@@ -359,33 +379,6 @@ export const RefundManagement: React.FC = () => {
                         </div>
                     </div>
 
-                    {selectedIds.size > 0 && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-200">
-                            <span className="text-xs font-bold text-slate-600">已选 {selectedIds.size} 项</span>
-                            <button
-                                onClick={() => batchApproveMutation.mutate(Array.from(selectedIds))}
-                                disabled={batchApproveMutation.isPending}
-                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-all disabled:opacity-50"
-                            >
-                                <Check size={12} />
-                                批量通过
-                            </button>
-                            <button
-                                onClick={() => batchRejectMutation.mutate(Array.from(selectedIds))}
-                                disabled={batchRejectMutation.isPending}
-                                className="flex items-center gap-1 px-2 py-1 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-all disabled:opacity-50"
-                            >
-                                <X size={12} />
-                                批量拒绝
-                            </button>
-                            <button
-                                onClick={() => { setSelectedIds(new Set()); setSelectAll(false); }}
-                                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded transition-all"
-                            >
-                                <X size={12} />
-                            </button>
-                        </div>
-                    )}
 
                     <button
                         onClick={handleReset}
@@ -396,6 +389,101 @@ export const RefundManagement: React.FC = () => {
                     </button>
                 </div>
             </div>
+
+            {/* 状态快捷标签 (Status Tabs) - 迁移至列表上方 */}
+            <div className="flex items-center gap-4">
+                <div className="flex items-center p-1 bg-slate-100/50 rounded-2xl border border-slate-200/50">
+                    {[
+                        { id: '', label: '全部', icon: <RotateCcw size={14} />, count: stats?.totalRefunds ?? 0 },
+                        { id: 'PENDING', label: '待审核', icon: <Clock size={14} />, count: stats?.pendingRefunds ?? 0, color: 'text-amber-500', bgColor: 'bg-amber-100' },
+                        { id: 'MANUAL_REQUIRED', label: '需人工', icon: <Shield size={14} />, count: stats?.manualRequiredRefunds ?? 0, color: 'text-purple-500', bgColor: 'bg-purple-100' },
+                        { id: 'FAILED', label: '退款失败', icon: <AlertCircle size={14} />, count: stats?.failedRefunds ?? 0, color: 'text-red-500', bgColor: 'bg-red-100' },
+                        { id: 'PROCESSING', label: '处理中', icon: <RefreshCcw size={14} />, count: stats?.processingRefunds ?? 0 },
+                        { id: 'COMPLETED', label: '已完成', icon: <CheckCircle size={14} />, count: stats?.completedRefunds ?? 0, color: 'text-emerald-500', bgColor: 'bg-emerald-100' },
+                        { id: 'REJECTED', label: '已拒绝', icon: <XCircle size={14} />, count: stats?.rejectedRefunds ?? 0, color: 'text-rose-500', bgColor: 'bg-rose-100' }
+                    ].map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => { setStatusFilter(tab.id); setPage(1); }}
+                            className={`
+                                relative px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2.5
+                                ${statusFilter === tab.id
+                                    ? 'bg-white text-violet-600 shadow-[0_4px_12px_rgba(0,0,0,0.05)] scale-102'
+                                    : 'text-slate-500 hover:bg-white/50 hover:text-slate-700'
+                                }
+                            `}
+                        >
+                            <span className={statusFilter === tab.id ? 'text-violet-500' : 'text-slate-400'}>
+                                {tab.icon}
+                            </span>
+                            {tab.label}
+                            {typeof tab.count === 'number' && (
+                                <span className={`
+                                    px-1.5 py-0.5 rounded-md text-[10px] font-black
+                                    ${statusFilter === tab.id
+                                        ? 'bg-violet-50 text-violet-600'
+                                        : `${tab.bgColor || 'bg-slate-200'} ${tab.color || 'text-slate-600'}`
+                                    }
+                                `}>
+                                    {tab.count}
+                                </span>
+                            )}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/*灵动操作栏 (Dynamic Contextual Ribbon) */}
+            <AnimatePresence>
+                {selectedIds.size > 0 && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0, marginBottom: 0 }}
+                        animate={{ height: 'auto', opacity: 1, marginBottom: 16 }}
+                        exit={{ height: 0, opacity: 0, marginBottom: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-3 text-white shadow-lg shadow-indigo-500/15 flex flex-col sm:flex-row items-center justify-between gap-4 border border-white/10 relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-48 h-48 bg-white/10 rounded-full blur-3xl -ml-24 -mt-24 pointer-events-none" />
+                            <div className="relative z-10 flex items-center gap-4 pl-1">
+                                <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-white/15 backdrop-blur-md border border-white/10">
+                                    <Zap size={16} className="text-amber-300 fill-amber-300 animate-pulse" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2.5">
+                                        <span className="text-sm font-black tracking-tight">已选中 {selectedIds.size} 项退款申请</span>
+                                        <span className="px-1.5 py-0.5 bg-white/10 rounded-md text-[9px] font-black uppercase tracking-widest border border-white/10">Batch</span>
+                                    </div>
+                                    <button
+                                        onClick={() => { setSelectedIds(new Set()); setSelectAll(false); }}
+                                        className="text-[10px] text-indigo-100 hover:text-white font-bold transition-colors flex items-center gap-1 mt-0.5 group"
+                                    >
+                                        一键取消并重置
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="relative z-10 flex items-center gap-2 w-full sm:w-auto pr-1">
+                                <button
+                                    onClick={() => handleAudit('reject', true)}
+                                    disabled={batchRejectMutation.isPending}
+                                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-1.5 bg-white/5 hover:bg-rose-500/30 text-white border border-white/10 rounded-xl text-[11px] font-black transition-all active:scale-95 disabled:opacity-50"
+                                >
+                                    <XCircle size={14} className="opacity-70" />
+                                    拒绝
+                                </button>
+                                <button
+                                    onClick={() => handleAudit('approve', true)}
+                                    disabled={batchApproveMutation.isPending}
+                                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-6 py-2 bg-white text-indigo-600 rounded-xl text-[11px] font-black hover:bg-white/90 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                                >
+                                    <CheckCircle size={14} strokeWidth={3} />
+                                    通过
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Table */}
             <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden min-h-[520px]">
@@ -474,6 +562,9 @@ export const RefundManagement: React.FC = () => {
                                                 <div className="min-w-0">
                                                     <p className="text-[12px] font-bold text-slate-800 truncate leading-tight">{refund.productName}</p>
                                                     <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className="text-[9px] font-black text-slate-300 uppercase tracking-tighter">RFD#</span>
+                                                        <p className="text-[10px] text-slate-400 font-mono font-bold">{refund.refundNo}</p>
+                                                        <span className="text-[10px] text-slate-200 mx-0.5">|</span>
                                                         <p className="text-[10px] text-slate-400 font-mono">{refund.orderNo}</p>
                                                     </div>
                                                     <div className="mt-1 flex items-start gap-1 p-1.5 bg-slate-50 rounded-lg border border-slate-100">
@@ -484,7 +575,9 @@ export const RefundManagement: React.FC = () => {
                                             </td>
                                             <td className="px-3 py-3 whitespace-nowrap">
                                                 <div className="flex flex-col">
-                                                    <span className="text-[13px] font-black text-violet-600 leading-tight">¥{refund.amount.toFixed(2)}</span>
+                                                    <span className={`text-[13px] font-black leading-tight ${refund.amount >= 500 ? 'text-rose-600' : 'text-violet-600'}`}>
+                                                        ¥{refund.amount.toFixed(2)}
+                                                    </span>
                                                     <div className="flex items-center gap-1.5 mt-1">
                                                         {refund.paymentMethod === 'wechat' ? (
                                                             <div className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">
@@ -526,6 +619,13 @@ export const RefundManagement: React.FC = () => {
                                                     {status.icon}
                                                     {status.label}
                                                 </span>
+                                                {refund.status !== 'PENDING' && refund.remark && (
+                                                    <div className="mt-1 max-w-[120px]">
+                                                        <p className="text-[9px] text-slate-400 line-clamp-1 italic" title={refund.remark}>
+                                                            “{refund.remark}”
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-3 py-3">
                                                 <div className="flex flex-col whitespace-nowrap leading-tight">
@@ -541,20 +641,36 @@ export const RefundManagement: React.FC = () => {
                                             <td className="px-3 py-3 text-right">
                                                 <div className="flex items-center justify-end gap-1 transition-all">
                                                     {refund.status === 'PENDING' ? (
-                                                        <button
-                                                            onClick={() => setDrawerRefundId(refund.id)}
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-all shadow-sm shadow-violet-200 text-xs font-bold"
-                                                        >
-                                                            <Zap size={13} fill="currentColor" />
-                                                            去处理
-                                                        </button>
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                onClick={() => handleAudit('approve', false, refund)}
+                                                                className="p-1.5 bg-white border border-emerald-200 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-300 rounded-lg transition-all shadow-sm"
+                                                                title="通过"
+                                                            >
+                                                                <Check size={14} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleAudit('reject', false, refund)}
+                                                                className="p-1.5 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 rounded-lg transition-all shadow-sm"
+                                                                title="拒绝"
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setDrawerRefundId(refund.id)}
+                                                                className="p-1.5 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 rounded-lg transition-all shadow-sm"
+                                                                title="详情"
+                                                            >
+                                                                <Eye size={14} />
+                                                            </button>
+                                                        </div>
                                                     ) : (
                                                         <button
                                                             onClick={() => setDrawerRefundId(refund.id)}
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-all border border-slate-200 text-xs font-medium"
+                                                            className="p-1.5 bg-white border border-slate-200 text-slate-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 rounded-lg transition-all shadow-sm"
+                                                            title="查看详情"
                                                         >
-                                                            <Eye size={13} />
-                                                            详情
+                                                            <Eye size={14} />
                                                         </button>
                                                     )}
                                                 </div>
@@ -600,195 +716,24 @@ export const RefundManagement: React.FC = () => {
                 )}
             </div>
 
-            {/* Refund Detail Side Drawer */}
-            {selectedRefund && ReactDOM.createPortal(
-                <div className="fixed inset-0 z-[200] flex justify-end overflow-hidden">
-                    {/* Backdrop */}
-                    <div
-                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
-                        onClick={() => setSelectedRefund(null)}
-                    />
-
-                    {/* Drawer Content */}
-                    <div className="relative w-full max-w-2xl bg-slate-50 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300">
-                        {/* Header */}
-                        <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md sticky top-0 z-10">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100">
-                                    <RotateCcw size={24} />
-                                </div>
-                                <div>
-                                    <h3 className="text-xl font-black text-slate-800 tracking-tight">退款申请详情</h3>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Refund Request details</span>
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border uppercase ${statusConfig[selectedRefund.status]?.color} ${statusConfig[selectedRefund.status]?.bgColor} border-current/10`}>
-                                            {statusConfig[selectedRefund.status]?.label}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setSelectedRefund(null)}
-                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Body - Scrollable */}
-                        <div className="flex-1 overflow-y-auto p-8 space-y-8 pb-32 custom-scrollbar">
-                            {/* Summary Card */}
-                            <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[2.5rem] p-8 text-white shadow-xl shadow-indigo-200 relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
-                                <div className="relative z-10">
-                                    <div className="text-xs font-bold text-indigo-100 uppercase tracking-[0.2em] mb-4 opacity-70">Transaction Summary</div>
-                                    <div className="flex items-baseline gap-2 mb-2">
-                                        <span className="text-4xl font-black tracking-tighter">¥{selectedRefund.amount.toFixed(2)}</span>
-                                        <span className="text-indigo-200 text-sm font-bold tracking-widest uppercase">Refund Amount</span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-4 mt-6">
-                                        <div className="bg-white/10 backdrop-blur-md rounded-2xl px-4 py-3 border border-white/10 min-w-[140px]">
-                                            <div className="text-[10px] text-indigo-200 font-bold uppercase mb-1">Order No</div>
-                                            <div className="text-sm font-mono font-bold tracking-tight">{selectedRefund.orderNo}</div>
-                                        </div>
-                                        <div className="bg-white/10 backdrop-blur-md rounded-2xl px-4 py-3 border border-white/10 min-w-[140px]">
-                                            <div className="text-[10px] text-indigo-200 font-bold uppercase mb-1">Product</div>
-                                            <div className="text-sm font-bold tracking-tight">{selectedRefund.productName}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Info Sections */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Details */}
-                                <div className="bg-white rounded-[2rem] border border-slate-200 p-6 shadow-sm space-y-6">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600">
-                                            <Receipt size={18} strokeWidth={2.5} />
-                                        </div>
-                                        <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">申请详情 (Request)</h4>
-                                    </div>
-                                    <div className="space-y-4">
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">支付方式</span>
-                                            <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl text-xs font-black text-slate-700 border border-slate-100">
-                                                <Wallet size={14} className="text-slate-400" />
-                                                {selectedRefund.paymentMethod === 'wechat' ? '微信支付' : '支付宝'}
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">申请时间</span>
-                                            <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl text-xs font-black text-slate-700 border border-slate-100">
-                                                <Clock size={14} className="text-slate-400" />
-                                                {new Date(selectedRefund.createdAt).toLocaleString('zh-CN')}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Status History */}
-                                <div className="bg-white rounded-[2rem] border border-slate-200 p-6 shadow-sm space-y-6">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-600">
-                                            <Shield size={18} strokeWidth={2.5} />
-                                        </div>
-                                        <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">审核状态 (Process)</h4>
-                                    </div>
-                                    <div className="space-y-4">
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">当前状态</span>
-                                            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black border ${statusConfig[selectedRefund.status]?.bgColor} ${statusConfig[selectedRefund.status]?.color} border-current/10`}>
-                                                {statusConfig[selectedRefund.status]?.icon}
-                                                {statusConfig[selectedRefund.status]?.label}
-                                            </div>
-                                        </div>
-                                        {selectedRefund.processedAt && (
-                                            <div className="flex flex-col gap-1">
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">处理时间</span>
-                                                <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-xl text-xs font-black text-slate-700 border border-slate-100">
-                                                    <Calendar size={14} className="text-slate-400" />
-                                                    {new Date(selectedRefund.processedAt).toLocaleString('zh-CN')}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Reason & Notes */}
-                            <div className="space-y-6">
-                                <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm space-y-4">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
-                                            <FileText size={18} strokeWidth={2.5} />
-                                        </div>
-                                        <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">退款原因 (Reason)</h4>
-                                    </div>
-                                    <div className="p-4 bg-slate-50 rounded-2xl text-sm text-slate-700 font-medium leading-relaxed border border-slate-100">
-                                        {selectedRefund.reason}
-                                    </div>
-                                </div>
-
-                                {selectedRefund.remark && (
-                                    <div className="bg-blue-50/50 rounded-[2rem] border border-blue-100 p-8 space-y-4 animate-in fade-in zoom-in-95 duration-300">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="w-8 h-8 rounded-xl bg-blue-500 flex items-center justify-center text-white shadow-sm">
-                                                <MessageSquare size={16} />
-                                            </div>
-                                            <h4 className="text-[11px] font-black text-blue-800 uppercase tracking-widest">客服审核备注 (Admin Feedback)</h4>
-                                        </div>
-                                        <div className="p-4 bg-white rounded-2xl text-sm text-blue-900 font-bold leading-relaxed border border-blue-200 shadow-sm">
-                                            {selectedRefund.remark}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Footer - Sticky */}
-                        <div className="px-8 py-6 border-t border-slate-100 bg-white/80 backdrop-blur-xl flex items-center gap-4 shrink-0 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] sticky bottom-0 z-10 rounded-t-[2.5rem]">
-                            {selectedRefund.status === 'PENDING' ? (
-                                <>
-                                    <button
-                                        onClick={() => handleAudit('reject')}
-                                        disabled={auditMutation.isPending}
-                                        className="flex-1 py-4 px-6 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-rose-50 hover:text-rose-600 transition-all text-sm tracking-widest uppercase flex items-center justify-center gap-2"
-                                    >
-                                        <X size={18} />
-                                        拒绝退款
-                                    </button>
-                                    <button
-                                        onClick={() => handleAudit('approve')}
-                                        disabled={auditMutation.isPending}
-                                        className="flex-[2] py-4 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-black hover:shadow-xl hover:shadow-emerald-500/25 transition-all text-sm tracking-widest uppercase flex items-center justify-center gap-2"
-                                    >
-                                        <Check size={18} strokeWidth={3} />
-                                        同意并立即原路退回
-                                    </button>
-                                </>
-                            ) : (
-                                <div className="flex items-center gap-3 text-slate-400 font-black uppercase tracking-widest text-xs w-full justify-center py-2">
-                                    <Shield size={18} className="text-slate-400" />
-                                    <span>工单已处理 (Closed) - 查看详情完毕</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
 
             {/* Audit Dialog */}
             <ConfirmDialog
                 isOpen={auditDialog.isOpen}
-                onCancel={() => setAuditDialog({ isOpen: false, action: null, adminNote: '' })}
+                onCancel={() => setAuditDialog({ isOpen: false, action: null, adminNote: '', isBatch: false, ids: [] })}
                 onConfirm={confirmAudit}
-                title={auditDialog.action === 'approve' ? '确认同意退款' : '确认拒绝退款'}
+                title={auditDialog.isBatch
+                    ? (auditDialog.action === 'approve' ? `批量同意退款 (${auditDialog.ids.length}笔)` : `批量拒绝退款 (${auditDialog.ids.length}笔)`)
+                    : (auditDialog.action === 'approve' ? '确认同意退款' : '确认拒绝退款')
+                }
                 message={
-                    auditDialog.action === 'approve'
-                        ? `同意退款后，系统将自动处理退款，款项将原路返回给用户。是否继续？`
-                        : '拒绝退款后，用户将收到拒绝通知。'
+                    auditDialog.isBatch
+                        ? (auditDialog.action === 'approve'
+                            ? `确定要批量同意这 ${auditDialog.ids.length} 笔退款申请吗？系统将自动执行原路退款。`
+                            : `确定要批量拒绝这 ${auditDialog.ids.length} 笔退款申请吗？`)
+                        : (auditDialog.action === 'approve'
+                            ? `同意退款后，系统将自动处理退款，款项将原路返回给用户。是否继续？`
+                            : '拒绝退款后，用户将收到拒绝通知。')
                 }
                 confirmText={auditDialog.action === 'approve' ? '确认同意' : '确认拒绝'}
                 cancelText="取消"
@@ -796,7 +741,8 @@ export const RefundManagement: React.FC = () => {
                 showInput={true}
                 inputValue={auditDialog.adminNote}
                 onInputChange={(value) => setAuditDialog(prev => ({ ...prev, adminNote: value }))}
-                inputPlaceholder={auditDialog.action === 'approve' ? '可选：添加备注信息...' : '请输入拒绝原因...'}
+                inputPlaceholder={auditDialog.action === 'approve' ? '可选：添加通过备注...' : '请输入拒绝原因 (必填)...'}
+                isLoading={auditMutation.isPending || batchApproveMutation.isPending || batchRejectMutation.isPending}
             />
 
             {/* [智能决策座舱] 退款详情抽屉 */}

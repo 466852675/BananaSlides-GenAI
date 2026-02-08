@@ -13,6 +13,26 @@ export interface RefundAuditDTO {
     remark?: string;
 }
 
+/**
+ * 添加退款操作历史记录
+ */
+async function addRefundHistory(
+    tx: Prisma.TransactionClient | any,
+    refundId: string,
+    action: 'SUBMIT' | 'AUTO_APPROVE' | 'APPROVE' | 'REJECT' | 'PROCESS' | 'COMPLETE' | 'FAIL',
+    operator: string,
+    note?: string
+) {
+    return await tx.refundHistory.create({
+        data: {
+            refundId,
+            action,
+            operator,
+            note,
+        },
+    });
+}
+
 export interface RefundListFilters {
     userId?: string;
     status?: RefundStatus;
@@ -23,6 +43,7 @@ export interface RefundListFilters {
     maxAmount?: number;
     paymentMethod?: string;
     hasNote?: boolean;
+    riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
 export interface Pagination {
@@ -276,6 +297,9 @@ export async function applyRefund(
                     description,
                 },
             });
+
+            // 记录用户提交申请日志
+            await addRefundHistory(tx, createdRefund.id, 'SUBMIT', 'user', reason);
 
             return createdRefund;
         });
@@ -568,6 +592,12 @@ export async function getAdminRefundDetailAggregated(refundId: string) {
             consumedValue,
             refund.amount
         ),
+
+        // 审核历史流
+        auditHistory: await prisma.refundHistory.findMany({
+            where: { refundId },
+            orderBy: { createdAt: 'asc' },
+        }),
     };
 }
 
@@ -747,6 +777,23 @@ export async function listRefunds(
                     { remark: '' }
                 ]
             });
+        }
+    }
+
+    if (filters.riskLevel) {
+        if (filters.riskLevel === 'HIGH') {
+            andConditions.push({ user: { riskScore: { gte: 70 } } });
+        } else if (filters.riskLevel === 'MEDIUM') {
+            andConditions.push({
+                user: {
+                    riskScore: {
+                        gte: 30,
+                        lt: 70
+                    }
+                }
+            });
+        } else if (filters.riskLevel === 'LOW') {
+            andConditions.push({ user: { riskScore: { lt: 30 } } });
         }
     }
 
@@ -954,6 +1001,9 @@ export async function auditRefund(
                     },
                 });
 
+                // 记录管理员审核通过日志
+                await addRefundHistory(tx, refundId, 'APPROVE', adminId, remark);
+
                 await tx.userRefundStats.update({
                     where: { userId: refund.userId },
                     data: {
@@ -994,6 +1044,16 @@ export async function auditRefund(
                     },
                 });
 
+                // 记录退款支付失败日志
+                await prisma.refundHistory.create({
+                    data: {
+                        refundId,
+                        action: 'FAIL',
+                        operator: 'system',
+                        note: `支付接口返回失败: ${processResult.message}`,
+                    }
+                });
+
                 return {
                     success: false,
                     code: processResult.code,
@@ -1012,6 +1072,9 @@ export async function auditRefund(
                         remark,
                     },
                 });
+
+                // 记录管理员拒绝日志
+                await addRefundHistory(tx, refundId, 'REJECT', adminId, remark);
 
                 await tx.userRefundStats.update({
                     where: { userId: refund.userId },
@@ -1063,6 +1126,9 @@ export async function completeRefund(
                     transactionId,
                 },
             });
+
+            // 记录退款完成日志
+            await addRefundHistory(tx, refundId, 'COMPLETE', 'system', `资金已退还至原支付账户 (流水号: ${transactionId || 'N/A'})`);
 
             await tx.order.update({
                 where: { id: refund.orderId },
@@ -1152,6 +1218,8 @@ export async function getRefundStats() {
         processingCount,
         completedCount,
         rejectedCount,
+        failedCount,
+        manualCount,
         totalAmount,
     ] = await Promise.all([
         prisma.refundRequest.count(),
@@ -1159,6 +1227,8 @@ export async function getRefundStats() {
         prisma.refundRequest.count({ where: { status: RefundStatus.PROCESSING } }),
         prisma.refundRequest.count({ where: { status: RefundStatus.COMPLETED } }),
         prisma.refundRequest.count({ where: { status: RefundStatus.REJECTED } }),
+        prisma.refundRequest.count({ where: { status: RefundStatus.FAILED } }),
+        prisma.refundRequest.count({ where: { status: RefundStatus.MANUAL_REQUIRED } }),
         prisma.refundRequest.aggregate({
             where: { status: RefundStatus.COMPLETED },
             _sum: { amount: true },
@@ -1166,11 +1236,14 @@ export async function getRefundStats() {
     ]);
 
     return {
-        totalRequests,
-        pendingCount,
-        processingCount,
-        completedCount,
-        rejectedCount,
-        totalRefundAmount: totalAmount._sum.amount || 0,
+        totalRefunds: totalRequests,
+        pendingRefunds: pendingCount,
+        processingRefunds: processingCount,
+        completedRefunds: completedCount,
+        rejectedRefunds: rejectedCount,
+        failedRefunds: failedCount,
+        manualRequiredRefunds: manualCount,
+        totalAmount: totalAmount._sum.amount || 0,
+        todayRefunds: 0,
     };
 }

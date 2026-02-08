@@ -15,6 +15,7 @@ interface ConfirmDialogProps {
     inputValue?: string;
     onInputChange?: (value: string) => void;
     inputPlaceholder?: string;
+    isLoading?: boolean;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -29,7 +30,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     showInput,
     inputValue,
     onInputChange,
-    inputPlaceholder
+    inputPlaceholder,
+    isLoading
 }) => {
     if (!isOpen) return null;
     return ReactDOM.createPortal(
@@ -56,13 +58,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 )}
 
                 <div className="flex gap-3">
-                    <button onClick={onCancel} className="flex-1 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-medium transition-colors">
+                    <button
+                        onClick={onCancel}
+                        disabled={isLoading}
+                        className="flex-1 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-medium transition-colors disabled:opacity-50"
+                    >
                         {cancelText}
                     </button>
                     <button
                         onClick={onConfirm}
-                        className={`flex-1 py-2 text-white rounded-lg font-medium transition-colors ${type === 'danger' ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'}`}
+                        disabled={isLoading}
+                        className={`flex-1 py-2 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${type === 'danger' ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'} disabled:opacity-70`}
                     >
+                        {isLoading && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                         {confirmText}
                     </button>
                 </div>

@@ -50,7 +50,6 @@ model User {
   refundRequests     RefundRequest[]
   refundStats        UserRefundStats?
   messages           UserMessage[]
-  operationLogs      OperationLog[]    // 操作日志关联
 
   @@index([role])
   @@index([status])
@@ -381,48 +380,6 @@ model AuditLog {
    @@index([createdAt])
 }
 
-// 操作日志模型（管理后台操作审计）
-model OperationLog {
-  id            String    @id @default(uuid())
-  
-  // 操作人信息
-  operatorId    String
-  operatorRole  String
-  
-  // 操作信息
-  module        String    // 模块（ai-engine/users/orders/points-rules）
-  action        String    // 动作（create/update/delete/activate）
-  targetType    String    // 目标类型（rule/user/order）
-  targetId      String    // 目标ID
-  
-  // 变更详情
-  beforeValue   String?   // 操作前值（JSON）
-  afterValue    String?   // 操作后值（JSON）
-  changes       String?   // 变更字段摘要
-  
-  // 操作上下文
-  description   String    // 操作描述
-  ip            String    // IP地址
-  userAgent     String?   // 浏览器UA
-  
-  // 结果
-  success       Boolean   @default(true)
-  errorMessage  String?   // 失败原因
-  
-  createdAt     DateTime  @default(now())
-  
-  // 关联
-  operator      User      @relation(fields: [operatorId], references: [id])
-  
-  // 索引优化
-  @@index([operatorId])
-  @@index([module])
-  @@index([action])
-  @@index([targetType, targetId])
-  @@index([createdAt])
-  @@index([success])
-}
-
 // ============================================================
 // 退款管理模块
 // ============================================================
@@ -474,6 +431,21 @@ model RefundRequest {
   @@index([orderId])
   @@index([status])
   @@index([createdAt])
+
+  history           RefundHistory[]
+}
+
+model RefundHistory {
+  id        String   @id @default(uuid())
+  refundId  String
+  action    String   // SUBMIT, AUTO_APPROVE, APPROVE, REJECT, PROCESS, COMPLETE, FAIL
+  operator  String   // 操作人标识：'user', 'system' 或 管理员 ID/姓名
+  note      String?  // 审核备注或失败原因
+  createdAt DateTime @default(now())
+
+  refund    RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
+
+  @@index([refundId])
 }
 
 model UserRefundStats {

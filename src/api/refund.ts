@@ -13,6 +13,7 @@ export interface RefundEligibility {
 
 export interface RefundRequest {
     id: string;
+    refundNo: string;
     orderId: string;
     orderNo: string;
     productName: string;
@@ -43,8 +44,11 @@ export interface RefundListResponse {
 export interface RefundStats {
     totalRefunds: number;
     pendingRefunds: number;
+    processingRefunds: number;
     completedRefunds: number;
     rejectedRefunds: number;
+    failedRefunds: number;
+    manualRequiredRefunds: number;
     totalAmount: number;
     todayRefunds: number;
 }
@@ -60,6 +64,7 @@ export interface AdminRefundFilters {
     maxAmount?: number;
     channel?: string;
     hasNote?: boolean;
+    riskLevel?: string;
 }
 
 // 用户画像接口（用于 RefundUserCard 组件）
@@ -198,6 +203,9 @@ export interface AdminRefundDetailAggregated {
         confidence: 'LOW' | 'MEDIUM' | 'HIGH';
         explanation: string;
     };
+
+    // 审核记录（时光轴）
+    auditHistory: RefundAuditItem[];
 }
 
 export async function checkRefundEligibility(orderId: string): Promise<RefundEligibility> {

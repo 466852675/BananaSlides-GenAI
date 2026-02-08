@@ -5,7 +5,7 @@ import {
     Bot, Plus, Zap, Trash2, Power, Edit3, Check, X, Save,
     CircuitBoard, Sparkles, Eye, EyeOff, ShieldCheck, AlertTriangle,
     FileText, Image, Gauge, Globe, ChevronDown, ChevronRight,
-    Settings2, Cpu, Database
+    Settings2, Cpu, Database, Loader2
 } from 'lucide-react';
 import {
     AiEngineRule,
@@ -23,6 +23,8 @@ import {
 } from '../../api/admin';
 import { useAppSettingsMasked, useUpdateAppSettings } from '../../api/settings';
 import toast from 'react-hot-toast';
+import { AdminDrawer } from './shared';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 // ============================================================
 // 类型定义
@@ -328,175 +330,14 @@ const RuleEditorDrawer: React.FC<RuleEditorDrawerProps> = ({
 
     if (!isOpen) return null;
 
-    const drawerContent = (
-        <div className="fixed inset-0 z-[200] flex justify-end overflow-hidden">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
-            <div className="relative w-full max-w-xl bg-slate-50 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300">
-                {/* Header */}
-                <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md sticky top-0 z-10">
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-                            <Cpu size={20} />
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-black text-slate-800">{isEdit ? '编辑规则' : '新建规则'}</h3>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Model Configuration</span>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all">
-                        <X size={20} />
-                    </button>
-                </div>
-
-                {/* Body */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                    <CollapsibleSection title="基础信息" icon={<CircuitBoard size={16} />}>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">规则名称 *</label>
-                            <input
-                                type="text"
-                                value={formData.name}
-                                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                                placeholder="例: 生产环境 Gemini"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">厂商</label>
-                            <select
-                                value={formData.provider}
-                                onChange={e => setFormData({ ...formData, provider: e.target.value })}
-                                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                            >
-                                {PROVIDER_PRESETS.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.icon} {opt.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">描述</label>
-                            <textarea
-                                value={formData.description}
-                                onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                rows={2}
-                                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none resize-none"
-                                placeholder="可选描述..."
-                            />
-                        </div>
-                    </CollapsibleSection>
-
-                    {formData.provider !== 'CustomCombo' && (
-                        <CollapsibleSection title="模型连接" icon={<Zap size={16} />}>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">API Key *</label>
-                                <div className="relative">
-                                    <input
-                                        type={showKeys['main'] ? "text" : "password"}
-                                        value={formData.config.apiKey}
-                                        onChange={e => updateConfig('apiKey', e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 outline-none font-mono pr-10"
-                                        placeholder="sk-..."
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => toggleKey('main')}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
-                                    >
-                                        {showKeys['main'] ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </button>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Base URL</label>
-                                <input
-                                    type="text"
-                                    value={formData.config.baseUrl || ''}
-                                    onChange={e => updateConfig('baseUrl', e.target.value)}
-                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 outline-none font-mono"
-                                    placeholder="https://api.example.com"
-                                />
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-500 mb-1">Text Model</label>
-                                    <input
-                                        type="text"
-                                        value={formData.config.textModel || ''}
-                                        onChange={e => updateConfig('textModel', e.target.value)}
-                                        className="w-full px-2 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-violet-500 outline-none font-mono"
-                                        placeholder="gemini-2.0-pro"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-500 mb-1">Image Model</label>
-                                    <input
-                                        type="text"
-                                        value={formData.config.imageModel || ''}
-                                        onChange={e => updateConfig('imageModel', e.target.value)}
-                                        className="w-full px-2 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-violet-500 outline-none font-mono"
-                                        placeholder="gemini-2.0-image"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-slate-500 mb-1">Vision Model</label>
-                                    <input
-                                        type="text"
-                                        value={formData.config.visionModel || ''}
-                                        onChange={e => updateConfig('visionModel', e.target.value)}
-                                        className="w-full px-2 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-violet-500 outline-none font-mono"
-                                        placeholder="gemini-1.5-flash"
-                                    />
-                                </div>
-                            </div>
-                        </CollapsibleSection>
-                    )}
-
-
-                    {formData.provider === 'CustomCombo' && (
-                        <CollapsibleSection title="CustomCombo 组合配置" icon={<Settings2 size={16} />} defaultOpen={true}>
-                            {(['text', 'image', 'vision'] as const).map(task => (
-                                <div key={task} className="bg-slate-50 rounded-lg p-3 space-y-2">
-                                    <div className="text-xs font-bold text-slate-600 uppercase">{task === 'text' ? '文本生成' : task === 'image' ? '图像生成' : '视觉识别'}</div>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <input
-                                            type="text"
-                                            value={formData.config.combo?.[task]?.baseUrl || ''}
-                                            onChange={e => updateConfig(`combo.${task}.baseUrl`, e.target.value)}
-                                            className="px-2 py-1.5 border border-slate-200 rounded text-xs font-mono"
-                                            placeholder="Base URL"
-                                        />
-                                        <div className="relative">
-                                            <input
-                                                type={showKeys[`combo.${task}`] ? "text" : "password"}
-                                                value={formData.config.combo?.[task]?.apiKey || ''}
-                                                onChange={e => updateConfig(`combo.${task}.apiKey`, e.target.value)}
-                                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs font-mono pr-7"
-                                                placeholder="API Key"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleKey(`combo.${task}`)}
-                                                className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-0.5"
-                                            >
-                                                {showKeys[`combo.${task}`] ? <EyeOff size={12} /> : <Eye size={12} />}
-                                            </button>
-                                        </div>
-                                        <input
-                                            type="text"
-                                            value={formData.config.combo?.[task]?.model || ''}
-                                            onChange={e => updateConfig(`combo.${task}.model`, e.target.value)}
-                                            className="px-2 py-1.5 border border-slate-200 rounded text-xs font-mono"
-                                            placeholder="Model"
-                                        />
-                                    </div>
-                                </div>
-                            ))}
-                        </CollapsibleSection>
-                    )}
-                </div>
-
-                {/* Footer */}
-                <div className="px-6 py-4 bg-white border-t flex items-center justify-end gap-3 shrink-0">
+    return (
+        <AdminDrawer
+            isOpen={isOpen}
+            onClose={onClose}
+            title={isEdit ? '编辑规则' : '新建规则'}
+            description="Model Configuration"
+            footer={
+                <div className="flex items-center justify-end gap-3 w-full">
                     <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors">
                         取消
                     </button>
@@ -505,15 +346,158 @@ const RuleEditorDrawer: React.FC<RuleEditorDrawerProps> = ({
                         disabled={isSaving}
                         className="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
                     >
-                        {isSaving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+                        {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                         {isEdit ? '保存更改' : '创建规则'}
                     </button>
                 </div>
-            </div>
-        </div>
-    );
+            }
+        >
+            <div className="space-y-4">
+                <CollapsibleSection title="基础信息" icon={<CircuitBoard size={16} />}>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">规则名称 *</label>
+                        <input
+                            type="text"
+                            value={formData.name}
+                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                            placeholder="例: 生产环境 Gemini"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">厂商</label>
+                        <select
+                            value={formData.provider}
+                            onChange={e => setFormData({ ...formData, provider: e.target.value })}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                        >
+                            {PROVIDER_PRESETS.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.icon} {opt.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">描述</label>
+                        <textarea
+                            value={formData.description}
+                            onChange={e => setFormData({ ...formData, description: e.target.value })}
+                            rows={2}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none resize-none transition-all"
+                            placeholder="可选描述..."
+                        />
+                    </div>
+                </CollapsibleSection>
 
-    return ReactDOM.createPortal(drawerContent, document.body);
+                {formData.provider !== 'CustomCombo' && (
+                    <CollapsibleSection title="模型连接" icon={<Zap size={16} />}>
+                        <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">API Key *</label>
+                            <div className="relative">
+                                <input
+                                    type={showKeys['main'] ? "text" : "password"}
+                                    value={formData.config.apiKey}
+                                    onChange={e => updateConfig('apiKey', e.target.value)}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-violet-500 outline-none font-mono pr-10 transition-all"
+                                    placeholder="sk-..."
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => toggleKey('main')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                                >
+                                    {showKeys['main'] ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Base URL</label>
+                            <input
+                                type="text"
+                                value={formData.config.baseUrl || ''}
+                                onChange={e => updateConfig('baseUrl', e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-violet-500 outline-none font-mono transition-all"
+                                placeholder="https://api.example.com"
+                            />
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Text Model</label>
+                                <input
+                                    type="text"
+                                    value={formData.config.textModel || ''}
+                                    onChange={e => updateConfig('textModel', e.target.value)}
+                                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:ring-2 focus:ring-violet-500 outline-none font-mono transition-all"
+                                    placeholder="gemini-2.0-pro"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Image Model</label>
+                                <input
+                                    type="text"
+                                    value={formData.config.imageModel || ''}
+                                    onChange={e => updateConfig('imageModel', e.target.value)}
+                                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:ring-2 focus:ring-violet-500 outline-none font-mono transition-all"
+                                    placeholder="gemini-2.0-image"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Vision Model</label>
+                                <input
+                                    type="text"
+                                    value={formData.config.visionModel || ''}
+                                    onChange={e => updateConfig('visionModel', e.target.value)}
+                                    className="w-full px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:ring-2 focus:ring-violet-500 outline-none font-mono transition-all"
+                                    placeholder="gemini-1.5-flash"
+                                />
+                            </div>
+                        </div>
+                    </CollapsibleSection>
+                )}
+
+                {formData.provider === 'CustomCombo' && (
+                    <CollapsibleSection title="CustomCombo 组合配置" icon={<Settings2 size={16} />} defaultOpen={true}>
+                        {(['text', 'image', 'vision'] as const).map(task => (
+                            <div key={task} className="bg-slate-50/50 rounded-lg p-3 space-y-2 border border-slate-100">
+                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{task === 'text' ? '文本生成 (Text)' : task === 'image' ? '图像生成 (Image)' : '视觉识别 (Vision)'}</div>
+                                <div className="grid grid-cols-1 gap-2">
+                                    <input
+                                        type="text"
+                                        value={formData.config.combo?.[task]?.baseUrl || ''}
+                                        onChange={e => updateConfig(`combo.${task}.baseUrl`, e.target.value)}
+                                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono focus:ring-2 focus:ring-violet-500 outline-none"
+                                        placeholder="Base URL"
+                                    />
+                                    <div className="relative">
+                                        <input
+                                            type={showKeys[`combo.${task}`] ? "text" : "password"}
+                                            value={formData.config.combo?.[task]?.apiKey || ''}
+                                            onChange={e => updateConfig(`combo.${task}.apiKey`, e.target.value)}
+                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono pr-8 focus:ring-2 focus:ring-violet-500 outline-none"
+                                            placeholder="API Key"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleKey(`combo.${task}`)}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                                        >
+                                            {showKeys[`combo.${task}`] ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={formData.config.combo?.[task]?.model || ''}
+                                        onChange={e => updateConfig(`combo.${task}.model`, e.target.value)}
+                                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono focus:ring-2 focus:ring-violet-500 outline-none"
+                                        placeholder="Model Name"
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </CollapsibleSection>
+                )}
+            </div>
+        </AdminDrawer>
+    );
 };
 
 // ============================================================
@@ -554,144 +538,14 @@ const GlobalConfigDrawer: React.FC<GlobalConfigDrawerProps> = ({
 
     if (!isOpen) return null;
 
-    const drawerContent = (
-        <div className="fixed inset-0 z-[200] flex justify-end overflow-hidden">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
-            <div className="relative w-full max-w-xl bg-slate-50 shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300">
-                {/* Header */}
-                <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md sticky top-0 z-10">
-                    <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-                            <Settings2 size={20} />
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-black text-slate-800">基础配置</h3>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Global Settings</span>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all">
-                        <X size={20} />
-                    </button>
-                </div>
-
-                {/* Body */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                    <CollapsibleSection title="文档解析" icon={<FileText size={16} />}>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">服务商</label>
-                            <select
-                                value={formData.docParser.provider}
-                                onChange={e => setFormData({ ...formData, docParser: { ...formData.docParser, provider: e.target.value } })}
-                                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                            >
-                                <option value="MinerU">MinerU</option>
-                                <option value="Custom">自定义</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">API Key</label>
-                            <div className="relative">
-                                <input
-                                    type={showKey ? "text" : "password"}
-                                    value={formData.docParser.apiKey}
-                                    onChange={e => setFormData({ ...formData, docParser: { ...formData.docParser, apiKey: e.target.value } })}
-                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-indigo-500 pr-10"
-                                    placeholder="eyJ..."
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowKey(!showKey)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
-                                >
-                                    {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </button>
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">Base URL</label>
-                            <input
-                                type="text"
-                                value={formData.docParser.baseUrl}
-                                onChange={e => setFormData({ ...formData, docParser: { ...formData.docParser, baseUrl: e.target.value } })}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-indigo-500"
-                                placeholder="https://mineru.net"
-                            />
-                        </div>
-                    </CollapsibleSection>
-
-                    <CollapsibleSection title="图像生成" icon={<Image size={16} />}>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">默认分辨率</label>
-                            <select
-                                value={formData.imageResolution}
-                                onChange={e => setFormData({ ...formData, imageResolution: e.target.value })}
-                                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                            >
-                                {RESOLUTION_OPTIONS.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </CollapsibleSection>
-
-                    <CollapsibleSection title="性能并发" icon={<Gauge size={16} />}>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-2">
-                                文本生成并发: <span className="font-bold text-indigo-600">{formData.textConcurrency}</span>
-                            </label>
-                            <input
-                                type="range"
-                                min="1"
-                                max="10"
-                                value={formData.textConcurrency}
-                                onChange={e => setFormData({ ...formData, textConcurrency: parseInt(e.target.value) })}
-                                className="w-full accent-indigo-600"
-                            />
-                            <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                                <span>1</span>
-                                <span>10</span>
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-2">
-                                图像生成并发: <span className="font-bold text-indigo-600">{formData.imageConcurrency}</span>
-                            </label>
-                            <input
-                                type="range"
-                                min="1"
-                                max="5"
-                                value={formData.imageConcurrency}
-                                onChange={e => setFormData({ ...formData, imageConcurrency: parseInt(e.target.value) })}
-                                className="w-full accent-indigo-600"
-                            />
-                            <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                                <span>1</span>
-                                <span>5</span>
-                            </div>
-                        </div>
-                    </CollapsibleSection>
-
-                    <CollapsibleSection title="输出语言" icon={<Globe size={16} />}>
-                        <div className="flex flex-wrap gap-2">
-                            {LANGUAGE_PRESETS.map(lang => (
-                                <button
-                                    key={lang.value}
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, outputLanguage: lang.value as GlobalAiConfig['outputLanguage'] })}
-                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${formData.outputLanguage === lang.value
-                                        ? 'bg-indigo-600 text-white shadow-lg'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                        }`}
-                                >
-                                    {lang.label}
-                                </button>
-                            ))}
-                        </div>
-                    </CollapsibleSection>
-                </div>
-
-                {/* Footer */}
-                <div className="px-6 py-4 bg-white border-t flex items-center justify-end gap-3 shrink-0">
+    return (
+        <AdminDrawer
+            isOpen={isOpen}
+            onClose={onClose}
+            title="基础配置"
+            description="Global Settings"
+            footer={
+                <div className="flex items-center justify-end gap-3 w-full">
                     <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors">
                         取消
                     </button>
@@ -700,15 +554,128 @@ const GlobalConfigDrawer: React.FC<GlobalConfigDrawerProps> = ({
                         disabled={isSaving}
                         className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
                     >
-                        {isSaving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save size={16} />}
+                        {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                         保存配置
                     </button>
                 </div>
-            </div>
-        </div>
-    );
+            }
+        >
+            <div className="space-y-4">
+                <CollapsibleSection title="文档解析" icon={<FileText size={16} />}>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">服务商</label>
+                        <select
+                            value={formData.docParser.provider}
+                            onChange={e => setFormData({ ...formData, docParser: { ...formData.docParser, provider: e.target.value } })}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                        >
+                            <option value="MinerU">MinerU</option>
+                            <option value="Custom">自定义</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">API Key</label>
+                        <div className="relative">
+                            <input
+                                type={showKey ? "text" : "password"}
+                                value={formData.docParser.apiKey}
+                                onChange={e => setFormData({ ...formData, docParser: { ...formData.docParser, apiKey: e.target.value } })}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 pr-10 transition-all"
+                                placeholder="eyJ..."
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowKey(!showKey)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                            >
+                                {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Base URL</label>
+                        <input
+                            type="text"
+                            value={formData.docParser.baseUrl}
+                            onChange={e => setFormData({ ...formData, docParser: { ...formData.docParser, baseUrl: e.target.value } })}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all"
+                            placeholder="https://mineru.net"
+                        />
+                    </div>
+                </CollapsibleSection>
 
-    return ReactDOM.createPortal(drawerContent, document.body);
+                <CollapsibleSection title="图像生成" icon={<Image size={16} />}>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">默认分辨率</label>
+                        <select
+                            value={formData.imageResolution}
+                            onChange={e => setFormData({ ...formData, imageResolution: e.target.value })}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                        >
+                            {RESOLUTION_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                </CollapsibleSection>
+
+                <CollapsibleSection title="性能并发" icon={<Gauge size={16} />}>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-2">
+                            文本生成并发: <span className="font-bold text-indigo-600">{formData.textConcurrency}</span>
+                        </label>
+                        <input
+                            type="range"
+                            min="1"
+                            max="20"
+                            value={formData.textConcurrency}
+                            onChange={e => setFormData({ ...formData, textConcurrency: parseInt(e.target.value) })}
+                            className="w-full accent-indigo-600 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] text-slate-400 mt-1 font-bold">
+                            <span>1</span>
+                            <span>20</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-2">
+                            图像生成并发: <span className="font-bold text-indigo-600">{formData.imageConcurrency}</span>
+                        </label>
+                        <input
+                            type="range"
+                            min="1"
+                            max="10"
+                            value={formData.imageConcurrency}
+                            onChange={e => setFormData({ ...formData, imageConcurrency: parseInt(e.target.value) })}
+                            className="w-full accent-indigo-600 cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] text-slate-400 mt-1 font-bold">
+                            <span>1</span>
+                            <span>10</span>
+                        </div>
+                    </div>
+                </CollapsibleSection>
+
+                <CollapsibleSection title="输出语言" icon={<Globe size={16} />}>
+                    <div className="grid grid-cols-2 gap-2">
+                        {LANGUAGE_PRESETS.map(lang => (
+                            <button
+                                key={lang.value}
+                                type="button"
+                                onClick={() => setFormData({ ...formData, outputLanguage: lang.value as GlobalAiConfig['outputLanguage'] })}
+                                className={`px-4 py-3 rounded-xl text-sm font-bold transition-all border-2 ${formData.outputLanguage === lang.value
+                                    ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm'
+                                    : 'bg-slate-50 border-transparent text-slate-500 hover:bg-slate-100'
+                                    }`}
+                            >
+                                {lang.label}
+                            </button>
+                        ))}
+                    </div>
+                </CollapsibleSection>
+            </div>
+        </AdminDrawer>
+    );
 };
 
 // ============================================================
@@ -721,6 +688,15 @@ export const AICoreEngine: React.FC = () => {
     const [isRuleEditorOpen, setIsRuleEditorOpen] = useState(false);
     const [isGlobalEditorOpen, setIsGlobalEditorOpen] = useState(false);
     const [editingRule, setEditingRule] = useState<AiEngineRule | null>(null);
+
+    // 删除确认对话框状态
+    const [deleteDialog, setDeleteDialog] = useState<{
+        isOpen: boolean;
+        rule: AiEngineRule | null;
+    }>({
+        isOpen: false,
+        rule: null
+    });
 
     // 规则数据
     const { data: rules = [], isLoading: isLoadingRules, error: rulesError } = useQuery({
@@ -831,8 +807,14 @@ export const AICoreEngine: React.FC = () => {
     };
 
     const handleDeleteRule = (rule: AiEngineRule) => {
-        if (window.confirm(`确定要删除规则「${rule.name}」吗？`)) {
-            deleteMutation.mutate(rule.id);
+        setDeleteDialog({ isOpen: true, rule });
+    };
+
+    const confirmDelete = () => {
+        if (deleteDialog.rule) {
+            deleteMutation.mutate(deleteDialog.rule.id, {
+                onSuccess: () => setDeleteDialog({ isOpen: false, rule: null })
+            });
         }
     };
 
@@ -1063,6 +1045,18 @@ export const AICoreEngine: React.FC = () => {
                 currentConfig={globalConfig}
                 onSave={handleSaveGlobalConfig}
                 isSaving={updateSettingsMutation.isPending}
+            />
+
+            {/* Delete Confirmation */}
+            <ConfirmDialog
+                isOpen={deleteDialog.isOpen}
+                title="确认删除规则"
+                message={`确定要删除规则「${deleteDialog.rule?.name}」吗？此操作不可恢复。`}
+                onConfirm={confirmDelete}
+                onCancel={() => setDeleteDialog({ isOpen: false, rule: null })}
+                type="danger"
+                confirmText="删除"
+                isLoading={deleteMutation.isPending}
             />
         </div>
     );

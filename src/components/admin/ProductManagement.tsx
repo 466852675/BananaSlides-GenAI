@@ -21,11 +21,13 @@ import {
     Sparkles,
     Clock,
     User,
-    History
+    History,
+    Loader2
 } from 'lucide-react';
 import * as AdminAPI from '../../api/admin';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ConfirmDialog } from '../ConfirmDialog';
+import { AdminDrawer } from './shared';
 
 // Define the handle interface
 export interface ProductManagementHandle {
@@ -543,288 +545,211 @@ export const ProductManagement = React.forwardRef<ProductManagementHandle>((_, r
             </div>
 
             {/* Product Modal (Create & Edit) */}
-            {isModalOpen && ReactDOM.createPortal(
-                <div className="fixed inset-0 z-50 flex justify-end overflow-hidden">
-                    {/* Backdrop */}
-                    <div
-                        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
-                        onClick={() => setIsModalOpen(false)}
-                    />
-
-                    {/* Drawer Content */}
-                    <div className="relative w-full max-w-xl bg-white shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300">
-                        {/* Drawer Header */}
-                        <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md sticky top-0 z-10">
-                            <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shadow-black/5 ${formData.type === 'VIP_MONTHLY'
-                                    ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white'
-                                    : 'bg-gradient-to-br from-blue-400 to-indigo-500 text-white'
-                                    }`}>
-                                    {formData.type === 'VIP_MONTHLY' ? <Crown size={20} /> : <Coins size={20} />}
-                                </div>
-                                <div>
-                                    <h2 className="text-xl font-black text-slate-800 tracking-tight leading-none">
-                                        {editingProduct ? '编辑商品' : '上架新商品'}
-                                    </h2>
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">
-                                        {formData.type === 'VIP_MONTHLY' ? 'VIP Membership' : 'Points Package'} Management
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setIsModalOpen(false)}
-                                className="p-2.5 hover:bg-slate-100 rounded-2xl transition-all text-slate-400 hover:text-slate-600 active:scale-90"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Drawer Body - Scrollable */}
-                        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-10 pb-32">
-                            {/* Section 1: Type Selection */}
-                            <div className="space-y-4">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Layers size={14} className="text-violet-500" /> 商品类别 (Product Type)
-                                </label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, type: 'POINTS_PACKAGE' })}
-                                        className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${formData.type === 'POINTS_PACKAGE'
-                                            ? 'border-blue-500 bg-blue-50/50 text-blue-700 shadow-sm'
-                                            : 'border-slate-100 hover:border-slate-200 text-slate-400'
-                                            }`}
-                                    >
-                                        <Coins size={20} />
-                                        <span className="font-bold text-sm">积分加油包</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, type: 'VIP_MONTHLY' })}
-                                        className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${formData.type === 'VIP_MONTHLY'
-                                            ? 'border-amber-500 bg-amber-50/50 text-amber-700 shadow-sm'
-                                            : 'border-slate-100 hover:border-slate-200 text-slate-400'
-                                            }`}
-                                    >
-                                        <Crown size={20} />
-                                        <span className="font-bold text-sm">VIP 会员</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Section 2: Basic Properties */}
-                            <div className="space-y-4">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Tag size={14} className="text-violet-500" /> 基础属性 (Basic Properties)
-                                </label>
-                                <div className="space-y-5">
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-slate-500 ml-1">商品名称</span>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={formData.name}
-                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/5 outline-none transition-all placeholder:text-slate-300"
-                                            placeholder="输入吸引人的商品名称"
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-5">
-                                        <div className="space-y-2">
-                                            <span className="text-xs font-bold text-slate-500 ml-1">包含积分</span>
-                                            <div className="relative">
-                                                <input
-                                                    type="number"
-                                                    required
-                                                    value={formData.points}
-                                                    onChange={e => setFormData({ ...formData, points: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-5 pr-12 py-3.5 font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
-                                                    placeholder="0"
-                                                />
-                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">PTS</span>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <span className="text-xs font-bold text-slate-500 ml-1">授权角色 (可选)</span>
-                                            <div className="relative">
-                                                <select
-                                                    value={formData.roleToGrant}
-                                                    onChange={e => setFormData({ ...formData, roleToGrant: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer transition-all"
-                                                >
-                                                    <option value="">不变更角色</option>
-                                                    <option value="PROFESSIONAL">专业版 (PROFESSIONAL)</option>
-                                                    <option value="ENTERPRISE">企业版 (ENTERPRISE)</option>
-                                                </select>
-                                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                                                    <Plus size={14} />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Section 3: Pricing and Period */}
-                            <div className="space-y-4">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Coins size={14} className="text-violet-500" /> 定价与周期 (Pricing & Period)
-                                </label>
-                                <div className="space-y-5">
-                                    <div className="grid grid-cols-2 gap-5">
-                                        <div className="space-y-2">
-                                            <span className="text-xs font-bold text-slate-500 ml-1">销售价格 (元)</span>
-                                            <div className="relative">
-                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">¥</span>
-                                                <input
-                                                    type="number"
-                                                    required
-                                                    value={formData.price}
-                                                    onChange={e => setFormData({ ...formData, price: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-8 pr-4 py-3.5 font-black text-slate-900 focus:bg-white focus:border-violet-500 outline-none transition-all"
-                                                    placeholder="9.9"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <span className="text-xs font-bold text-slate-500 ml-1">划线原价 (元)</span>
-                                            <div className="relative">
-                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">¥</span>
-                                                <input
-                                                    type="number"
-                                                    value={formData.originalPrice}
-                                                    onChange={e => setFormData({ ...formData, originalPrice: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-8 pr-4 py-3.5 font-bold text-slate-400 focus:bg-white focus:border-slate-300 outline-none transition-all"
-                                                    placeholder="19.9"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-slate-500 ml-1">服务周期</span>
-                                        <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/50">
-                                            {(['month', 'year', 'once'] as const).map(p => (
-                                                <button
-                                                    key={p}
-                                                    type="button"
-                                                    onClick={() => setFormData({ ...formData, period: p })}
-                                                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-black transition-all ${formData.period === p
-                                                        ? 'bg-white text-violet-600 shadow-sm border border-violet-100'
-                                                        : 'text-slate-400 hover:text-slate-600'
-                                                        }`}
-                                                >
-                                                    {p === 'month' ? '月度' : p === 'year' ? '年度' : '一次性'}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Section 4: Features and Content */}
-                            <div className="space-y-4">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Sparkles size={14} className="text-violet-500" /> 销售内容 (Features & Content)
-                                </label>
-                                <div className="space-y-5">
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-slate-500 ml-1">权益描述 (每行一条)</span>
-                                        <textarea
-                                            value={formData.features}
-                                            onChange={e => setFormData({ ...formData, features: e.target.value })}
-                                            className="w-full bg-slate-100/50 border border-slate-200 rounded-3xl px-5 py-4 font-medium focus:bg-white focus:border-violet-500 outline-none h-32 resize-none transition-all leading-relaxed text-sm"
-                                            placeholder="例如：&#10;无限次 AI 生成&#10;解锁 4K 导出&#10;专属客服支持"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-slate-500 ml-1">营销标签 (逗号分隔)</span>
-                                        <div className="relative">
-                                            <Tag className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                            <input
-                                                type="text"
-                                                value={formData.tags}
-                                                onChange={e => setFormData({ ...formData, tags: e.target.value })}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-3.5 font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
-                                                placeholder="热销, 限时优惠"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Section 5: Status and Schedule */}
-                            <div className="space-y-4">
-                                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Save size={14} className="text-violet-500" /> 上架状态 (Status & Schedule)
-                                </label>
-                                <div className="grid grid-cols-2 gap-5">
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-slate-500 ml-1">显示状态</span>
-                                        <div className="relative">
-                                            <select
-                                                value={formData.displayType}
-                                                onChange={e => setFormData({ ...formData, displayType: e.target.value })}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 font-bold focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer transition-all"
-                                            >
-                                                <option value="public">公开上架</option>
-                                                <option value="hidden">下架隐藏</option>
-                                                <option value="contact_sales">联系销售</option>
-                                            </select>
-                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                                                <Eye size={14} />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <span className="text-xs font-bold text-slate-500 ml-1">预计生效日期</span>
-                                        <div className="relative">
-                                            <Clock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                            <input
-                                                type="date"
-                                                value={formData.effectiveAt}
-                                                onChange={e => setFormData({ ...formData, effectiveAt: e.target.value })}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-3.5 font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-amber-50 p-5 rounded-[2rem] flex items-start gap-4 border border-amber-200/50">
-                                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0">
-                                    <AlertCircle className="text-amber-500" size={20} />
-                                </div>
-                                <div className="text-xs text-amber-700/80 font-medium leading-relaxed">
-                                    <p className="font-extrabold text-amber-800 mb-1">管理员提示</p>
-                                    提交后将立即同步至商城。修改价格可能会影响正在进行的支付请求，请谨慎操作。
-                                </div>
-                            </div>
-                        </form>
-
-                        {/* Drawer Footer - Sticky */}
-                        <div className="px-8 py-6 border-t border-slate-100 bg-white/80 backdrop-blur-xl flex items-center justify-center gap-4 shrink-0 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] sticky bottom-0 z-10 rounded-t-[2rem]">
+            <AdminDrawer
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title={editingProduct ? '编辑商品' : '上架新商品'}
+                description={formData.type === 'VIP_MONTHLY' ? 'VIP Membership Management' : 'Points Package Management'}
+                width="narrow"
+                footer={
+                    <div className="flex items-center justify-end gap-3 w-full">
+                        <button
+                            onClick={() => setIsModalOpen(false)}
+                            className="px-6 py-2.5 rounded-xl font-bold text-sm text-slate-400 hover:bg-slate-50 transition-all"
+                        >
+                            取消
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={createMutation.isPending || updateMutation.isPending}
+                            className="px-8 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-all disabled:opacity-50 flex items-center gap-2"
+                        >
+                            {(createMutation.isPending || updateMutation.isPending)
+                                ? <Loader2 size={16} className="animate-spin" />
+                                : <Save size={16} />}
+                            {editingProduct ? '确认更新' : '立即发布'}
+                        </button>
+                    </div>
+                }
+            >
+                <form id="product-form" onSubmit={handleSubmit} className="space-y-6">
+                    {/* Section 1: Type Selection */}
+                    <AdminDrawer.Section title="商品类别" icon={Layers}>
+                        <div className="grid grid-cols-2 gap-3">
                             <button
                                 type="button"
-                                onClick={() => setIsModalOpen(false)}
-                                className="flex-1 py-4 rounded-2xl font-black text-sm text-slate-400 hover:bg-slate-50 transition-all active:scale-95"
+                                onClick={() => setFormData({ ...formData, type: 'POINTS_PACKAGE' })}
+                                className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${formData.type === 'POINTS_PACKAGE'
+                                    ? 'border-indigo-500 bg-indigo-50/50 text-indigo-700 shadow-sm'
+                                    : 'border-slate-100 hover:border-slate-200 text-slate-400'
+                                    }`}
                             >
-                                取消
+                                <Coins size={20} />
+                                <span className="font-bold text-sm">积分加油包</span>
                             </button>
                             <button
-                                onClick={handleSubmit}
-                                disabled={createMutation.isPending || updateMutation.isPending}
-                                className="flex-[2] py-4 bg-slate-900 lg:bg-gradient-to-r lg:from-slate-900 lg:to-slate-800 text-white rounded-2xl font-black text-sm shadow-xl shadow-slate-900/20 hover:shadow-slate-900/30 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                                type="button"
+                                onClick={() => setFormData({ ...formData, type: 'VIP_MONTHLY' })}
+                                className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${formData.type === 'VIP_MONTHLY'
+                                    ? 'border-amber-500 bg-amber-50/50 text-amber-700 shadow-sm'
+                                    : 'border-slate-100 hover:border-slate-200 text-slate-400'
+                                    }`}
                             >
-                                {(createMutation.isPending || updateMutation.isPending)
-                                    ? <div className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
-                                    : <><Save size={18} /> {editingProduct ? '确认更新' : '立即发布'}</>}
+                                <Crown size={20} />
+                                <span className="font-bold text-sm">VIP 会员</span>
                             </button>
                         </div>
+                    </AdminDrawer.Section>
+
+                    {/* Section 2: Basic Properties */}
+                    <AdminDrawer.Section title="基础属性" icon={Tag}>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold text-slate-500 ml-1">商品名称</span>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 font-bold focus:bg-white focus:border-indigo-500 outline-none transition-all placeholder:text-slate-300"
+                                    placeholder="输入吸引人的商品名称"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold text-slate-500 ml-1">包含积分</span>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            required
+                                            value={formData.points}
+                                            onChange={e => setFormData({ ...formData, points: e.target.value })}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-5 pr-12 py-3.5 font-bold focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                                            placeholder="0"
+                                        />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400">PTS</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold text-slate-500 ml-1">授权角色 (可选)</span>
+                                    <div className="relative">
+                                        <select
+                                            value={formData.roleToGrant}
+                                            onChange={e => setFormData({ ...formData, roleToGrant: e.target.value })}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 font-bold focus:bg-white focus:border-indigo-500 outline-none appearance-none cursor-pointer transition-all"
+                                        >
+                                            <option value="">不变更角色</option>
+                                            <option value="PROFESSIONAL">专业版 (PROFESSIONAL)</option>
+                                            <option value="ENTERPRISE">企业版 (ENTERPRISE)</option>
+                                        </select>
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                            <Plus size={14} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </AdminDrawer.Section>
+
+                    {/* Section 3: Pricing and Period */}
+                    <AdminDrawer.Section title="定价与周期" icon={Coins}>
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold text-slate-500 ml-1">销售价格 (元)</span>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">¥</span>
+                                        <input
+                                            type="number"
+                                            required
+                                            value={formData.price}
+                                            onChange={e => setFormData({ ...formData, price: e.target.value })}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-4 py-3.5 font-black text-slate-900 focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                                            placeholder="9.9"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold text-slate-500 ml-1">划线原价 (元)</span>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">¥</span>
+                                        <input
+                                            type="number"
+                                            value={formData.originalPrice}
+                                            onChange={e => setFormData({ ...formData, originalPrice: e.target.value })}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-4 py-3.5 font-bold text-slate-400 focus:bg-white focus:border-slate-300 outline-none transition-all"
+                                            placeholder="19.9"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <span className="text-xs font-bold text-slate-500 ml-1">服务周期</span>
+                                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+                                    {(['month', 'year', 'once'] as const).map(p => (
+                                        <button
+                                            key={p}
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, period: p })}
+                                            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-black transition-all ${formData.period === p
+                                                ? 'bg-white text-indigo-600 shadow-sm border border-indigo-100'
+                                                : 'text-slate-400 hover:text-slate-600'
+                                                }`}
+                                        >
+                                            {p === 'month' ? '月度' : p === 'year' ? '年度' : '一次性'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </AdminDrawer.Section>
+
+                    {/* Section 4: Features and Content */}
+                    <AdminDrawer.Section title="推销卖点" icon={Sparkles}>
+                        <div className="space-y-2">
+                            <span className="text-xs font-bold text-slate-500 ml-1">权益描述 (每行一条)</span>
+                            <textarea
+                                value={formData.features}
+                                onChange={e => setFormData({ ...formData, features: e.target.value })}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 font-bold focus:bg-white focus:border-indigo-500 outline-none h-32 resize-none transition-all leading-relaxed text-sm placeholder:text-slate-300"
+                                placeholder="例如：&#10;无限次 AI 生成&#10;解锁 4K 导出&#10;专属客服支持"
+                            />
+                        </div>
+                    </AdminDrawer.Section>
+
+                    {/* Section 5: Status and Schedule */}
+                    <AdminDrawer.Section title="上架状态" icon={Eye}>
+                        <div className="space-y-2">
+                            <span className="text-xs font-bold text-slate-500 ml-1">显示状态</span>
+                            <div className="relative">
+                                <select
+                                    value={formData.displayType}
+                                    onChange={e => setFormData({ ...formData, displayType: e.target.value })}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 font-bold focus:bg-white focus:border-indigo-500 outline-none appearance-none cursor-pointer transition-all"
+                                >
+                                    <option value="public">公开上架</option>
+                                    <option value="hidden">下架隐藏</option>
+                                    <option value="contact_sales">专属表单 (联系客户经理)</option>
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                    <Plus size={14} />
+                                </div>
+                            </div>
+                        </div>
+                    </AdminDrawer.Section>
+
+                    <div className="bg-amber-50 p-5 rounded-2xl flex items-start gap-4 border border-amber-200/50">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                            <AlertCircle className="text-amber-500" size={20} />
+                        </div>
+                        <div className="text-[10px] text-amber-700/80 font-black leading-relaxed uppercase tracking-widest">
+                            <p className="text-amber-800 mb-1">DANGER ZONE / 管理员核验</p>
+                            提交后将立即同步至商城。修改价格可能会影响正在进行的支付请求，请谨慎操作。
+                        </div>
                     </div>
-                </div>,
-                document.body
-            )}
+                </form>
+            </AdminDrawer>
 
             {/* 删除确认对话框 */}
             <ConfirmDialog
