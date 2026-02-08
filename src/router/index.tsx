@@ -18,7 +18,8 @@ const ProductManagement = lazy(() => import('../pages/admin/ProductManagement'))
 const AIEngineManagement = lazy(() => import('../pages/admin/AIEngineManagement'));
 const RefundManagement = lazy(() => import('../pages/admin/RefundManagement'));
 const RoleManagement = lazy(() => import('../pages/admin/RoleManagement'));
-const AuditLogPage = lazy(() => import('../pages/admin/AuditLogPage'));  // 审计日志页面
+const AuditLogPage = lazy(() => import('../pages/admin/AuditLogPage'));
+const OperationLogPage = lazy(() => import('../pages/admin/OperationLogPage'));
 
 // 加载中组件
 const PageLoader = () => (
@@ -91,6 +92,14 @@ const AppRoutes: React.FC = () => {
                         element={
                             <SuperAdminRoute>
                                 <AuditLogPage />
+                            </SuperAdminRoute>
+                        } 
+                    />
+                    <Route 
+                        path="operation-logs" 
+                        element={
+                            <SuperAdminRoute>
+                                <OperationLogPage />
                             </SuperAdminRoute>
                         } 
                     />

@@ -21,6 +21,7 @@ const AdminLayout: React.FC = () => {
                         <li><Link to="/admin/roles" className="block p-2 hover:bg-gray-100 rounded">角色权限</Link></li>
                         <li><Link to="/admin/ai-engine" className="block p-2 hover:bg-gray-100 rounded">AI引擎</Link></li>
                         <li><Link to="/admin/audit-logs" className="block p-2 hover:bg-gray-100 rounded">审计日志</Link></li>
+                        <li><Link to="/admin/operation-logs" className="block p-2 hover:bg-gray-100 rounded">操作日志</Link></li>
                     </ul>
                 </nav>
                 <main className="flex-1 p-6">
