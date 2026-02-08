@@ -5,6 +5,7 @@ import { Router } from 'express';
 import * as AdminController from '../controllers/admin.controller';
 import { authenticate, requireAdmin, requireSuperAdmin, requirePermission } from '../middlewares/auth.middleware';
 import * as RefundService from '../services/refund.service';
+import { prisma } from '../db';
 
 const router = Router();
 
@@ -261,6 +262,120 @@ router.get('/refunds/metrics', authenticate, requireAdmin, requirePermission('ad
         });
     } catch (error: any) {
         console.error('[Admin] 获取退款指标失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'SYSTEM_ERROR', message: '系统错误，请稍后重试' }
+        });
+    }
+});
+
+// ============================================================
+// 操作日志管理（新增）
+// ============================================================
+
+router.get('/operation-logs', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const {
+            page = '1',
+            limit = '20',
+            operatorId,
+            module,
+            action,
+            targetType,
+            success,
+            startDate,
+            endDate
+        } = req.query;
+
+        const where: any = {};
+        if (operatorId) where.operatorId = operatorId as string;
+        if (module) where.module = module as string;
+        if (action) where.action = action as string;
+        if (targetType) where.targetType = targetType as string;
+        if (success !== undefined) where.success = success === 'true';
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = new Date(startDate as string);
+            if (endDate) where.createdAt.lte = new Date(endDate as string);
+        }
+
+        const [items, total] = await Promise.all([
+            prisma.operationLog.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                skip: (parseInt(page as string) - 1) * parseInt(limit as string),
+                take: parseInt(limit as string),
+                include: {
+                    operator: {
+                        select: { id: true, email: true, nickname: true }
+                    }
+                }
+            }),
+            prisma.operationLog.count({ where })
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                items,
+                pagination: {
+                    page: parseInt(page as string),
+                    limit: parseInt(limit as string),
+                    total,
+                    totalPages: Math.ceil(total / parseInt(limit as string))
+                }
+            }
+        });
+    } catch (error: any) {
+        console.error('[Admin] 获取操作日志失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'SYSTEM_ERROR', message: '系统错误，请稍后重试' }
+        });
+    }
+});
+
+// 获取操作日志统计
+router.get('/operation-logs/stats', authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        const where: any = {};
+        
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = new Date(startDate as string);
+            if (endDate) where.createdAt.lte = new Date(endDate as string);
+        }
+
+        const [totalCount, successCount, failedCount, moduleStats, actionStats] = await Promise.all([
+            prisma.operationLog.count({ where }),
+            prisma.operationLog.count({ where: { ...where, success: true } }),
+            prisma.operationLog.count({ where: { ...where, success: false } }),
+            prisma.operationLog.groupBy({
+                by: ['module'],
+                where,
+                _count: { module: true }
+            }),
+            prisma.operationLog.groupBy({
+                by: ['action'],
+                where,
+                _count: { action: true }
+            })
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                totalCount,
+                successCount,
+                failedCount,
+                successRate: totalCount > 0 ? Math.round((successCount / totalCount) * 100) : 0,
+                moduleStats,
+                actionStats
+            }
+        });
+    } catch (error: any) {
+        console.error('[Admin] 获取操作日志统计失败:', error);
         res.status(500).json({
             success: false,
             error: { code: 'SYSTEM_ERROR', message: '系统错误，请稍后重试' }
