@@ -1,0 +1,12 @@
+import React from 'react';
+
+const PointsRulesManagement: React.FC = () => {
+    return (
+        <div>
+            <h2 className="text-2xl font-bold mb-4">PointsRulesManagement</h2>
+            <p>页面重构中...</p>
+        </div>
+    );
+};
+
+export default PointsRulesManagement;
