@@ -407,7 +407,22 @@ async function resolveActiveConfig(settings?: AppSettings, task: 'text' | 'image
         });
 
         if (activeRule) {
-            const config = JSON.parse(activeRule.config);
+            let config: any;
+            
+            try {
+                config = JSON.parse(activeRule.config);
+            } catch (parseError) {
+                console.error('[resolveActiveConfig] JSON解析失败:', {
+                    ruleId: activeRule.id,
+                    provider: activeRule.provider,
+                    error: parseError,
+                    configPreview: activeRule.config.substring(0, 200) + (activeRule.config.length > 200 ? '...' : '')
+                });
+                
+                console.warn('[resolveActiveConfig] 配置JSON格式错误，使用默认配置回退');
+                return getTaskConfig(settings, task);
+            }
+            
             console.log('[resolveActiveConfig] Active Rule:', {
                 id: activeRule.id,
                 provider: activeRule.provider,
