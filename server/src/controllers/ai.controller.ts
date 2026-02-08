@@ -9,13 +9,16 @@ const getServerSettings = async () => {
     return await SettingService.getSettings();
 };
 
+// Check if MOCK_AI mode is enabled - in this mode, no points should be deducted
+const isMockAiMode = () => process.env.MOCK_AI === '1';
+
 export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) => {
     const { input, projectId, triggerTime } = req.body; // input can be string or { path, mimeType }
     try {
         // Vision 分析扣费：仅当输入为图片时扣费
         const isImageInput = input && typeof input === 'object' &&
             input.mimeType?.startsWith('image/');
-        if (req.user && isImageInput) {
+        if (req.user && isImageInput && !isMockAiMode()) {
             const deductResult = await PointsService.deductPoints(
                 req.user.id,
                 'vision_analyze',
@@ -74,7 +77,7 @@ export const handleGenerateStyleReference = async (req: Request, res: Response) 
     try {
         // 积分扣费（登录用户扣费，未登录免费）
         // 使用 slide_image 规则 (5积分)
-        if (req.user) {
+        if (req.user && !isMockAiMode()) {
             const deductResult = await PointsService.deductPoints(
                 req.user.id,
                 'slide_image',
@@ -130,7 +133,7 @@ export const handleSmartRefine = async (req: Request, res: Response) => {
     const { text, type, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
-        if (req.user) {
+        if (req.user && !isMockAiMode()) {
             const deductResult = await PointsService.deductPoints(
                 req.user.id,
                 'smart_refine',
@@ -181,7 +184,7 @@ export const handleExtractText = async (req: Request, res: Response) => {
         if (!resourcePath) throw new Error("Resource path is required");
 
         // 积分扣费（登录用户扣费，未登录免费）
-        if (req.user) {
+        if (req.user && !isMockAiMode()) {
             const deductResult = await PointsService.deductPoints(
                 req.user.id,
                 'doc_parse',
@@ -221,6 +224,11 @@ export const handleExtractText = async (req: Request, res: Response) => {
         const fallback = typeof result === 'string' ? false : result.fallback;
         const provider = typeof result === 'string' ? 'unknown' : result.provider;
 
+        // Mark transaction as completed if successful
+        if ((res as any).transactionId) {
+            await PointsService.completeTransaction((res as any).transactionId);
+        }
+
         res.json({
             success: true,
             data: content,
@@ -231,6 +239,7 @@ export const handleExtractText = async (req: Request, res: Response) => {
             pointsDeducted: (res as any).deductedPoints
         });
     } catch (error: any) {
+        console.error('[handleExtractText] Error:', error);
         if (req.user && (res as any).deductedPoints > 0) {
             await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
         }
@@ -242,7 +251,7 @@ export const handleGenerateOutline = async (req: Request, res: Response) => {
     const { topic, configStyle, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
-        if (req.user) {
+        if (req.user && !isMockAiMode()) {
             const deductResult = await PointsService.deductPoints(
                 req.user.id,
                 'outline_generation',
@@ -269,6 +278,12 @@ export const handleGenerateOutline = async (req: Request, res: Response) => {
 
         const settings = await getServerSettings();
         const result = await AIService.generateOutline(topic, configStyle, settings);
+
+        // Mark transaction as completed if successful
+        if ((res as any).transactionId) {
+            await PointsService.completeTransaction((res as any).transactionId);
+        }
+
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         console.error('[handleGenerateOutline] Error:', error);
@@ -283,7 +298,7 @@ export const handleGenerateSingleOutlineItem = async (req: Request, res: Respons
     const { topic, index, total, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
-        if (req.user) {
+        if (req.user && !isMockAiMode()) {
             const deductResult = await PointsService.deductPoints(
                 req.user.id,
                 'outline_page_regen',
@@ -310,8 +325,15 @@ export const handleGenerateSingleOutlineItem = async (req: Request, res: Respons
 
         const settings = await getServerSettings();
         const result = await AIService.generateSingleOutlineItem(topic, index, total, settings);
+
+        // Mark transaction as completed if successful
+        if ((res as any).transactionId) {
+            await PointsService.completeTransaction((res as any).transactionId);
+        }
+
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
+        console.error('[handleGenerateSingleOutlineItem] Error:', error);
         if (req.user && (res as any).deductedPoints > 0) {
             await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
         }
@@ -323,7 +345,7 @@ export const handleGenerateSlideDetail = async (req: Request, res: Response) => 
     const { title, brief, topicContext, index, total, pageType, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
-        if (req.user) {
+        if (req.user && !isMockAiMode()) {
             const deductResult = await PointsService.deductPoints(
                 req.user.id,
                 'slide_content',
@@ -391,7 +413,7 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
             variantLabel?.toLowerCase().includes('插图') ||
             variantLabel?.toLowerCase().includes('option');
 
-        if (req.user) {
+        if (req.user && !isMockAiMode()) {
             const actionCode = isImageGeneration ? 'slide_image' : 'slide_content';
             const category = isImageGeneration ? '图片生成' : '文本生成';
             const subcategory = isImageGeneration ? '正文配图' : '内容变体';

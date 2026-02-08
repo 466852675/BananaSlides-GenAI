@@ -7,7 +7,7 @@ describe('积分扣减竞态条件测试', () => {
 
   beforeEach(async () => {
     // 创建测试用户，初始积分 100
-    testUser = await testPrisma.user.create({
+    testUser = await prisma.user.create({
       data: {
         email: `race-test-user-${Date.now()}@example.com`,
         passwordHash: 'hashedpassword',
@@ -19,19 +19,31 @@ describe('积分扣减竞态条件测试', () => {
 
   afterEach(async () => {
     // 清理测试数据
-    await testPrisma.transaction.deleteMany({
+    await prisma.transaction.deleteMany({
       where: {
         user: { email: { contains: 'race-test-user-' } }
       }
     });
-    await testPrisma.user.deleteMany({
+    await prisma.user.deleteMany({
       where: {
-        user: { email: { contains: 'race-test-user-' } }
+        email: { contains: 'race-test-user-' }
       }
     });
   });
 
   it('应该防止并发扣费导致超扣', async () => {
+    // 先创建积分规则（60积分/次）
+    await prisma.pointsRule.upsert({
+      where: { code: 'test_race' },
+      update: {},
+      create: {
+        code: 'test_race',
+        name: '并发测试',
+        costPoints: 60,
+        isActive: true,
+      },
+    });
+
     // 模拟两个并发请求同时扣除 60 积分（总共 120，超过用户拥有的 100）
     const deductionPromise1 = deductPoints(
       testUser.id,
@@ -89,7 +101,7 @@ describe('积分扣减竞态条件测试', () => {
       create: {
         code: 'test_single',
         name: '单线程测试',
-        cost: 30,
+        costPoints: 30,
         isActive: true,
       },
     });
@@ -124,7 +136,7 @@ describe('积分扣减竞态条件测试', () => {
       create: {
         code: 'test_insufficient',
         name: '余额不足测试',
-        cost: 200,
+        costPoints: 200,
         isActive: true,
       },
     });
@@ -158,7 +170,7 @@ describe('积分扣减竞态条件测试', () => {
       create: {
         code: 'test_free',
         name: '免费操作测试',
-        cost: 0,
+        costPoints: 0,
         isActive: true,
       },
     });
