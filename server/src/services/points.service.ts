@@ -204,96 +204,134 @@ export async function deductPoints(
         };
     }
 
-    try {
-        const result = await prisma.$transaction(async (tx) => {
-            // [Fix] SQLite incompatible "FOR UPDATE". Use standard Prisma query.
-            // Prisma transactions provide sufficient isolation.
-            const user = await tx.user.findUnique({
-                where: { id: userId },
-                select: { points: true }
-            });
+    // 最大重试次数（处理并发冲突）
+    const MAX_RETRIES = 3;
+    let retryCount = 0;
 
-            if (!user) {
-                throw new Error('用户不存在');
-            }
+    while (retryCount < MAX_RETRIES) {
+        try {
+            const result = await prisma.$transaction(async (tx) => {
+                // 使用更严格的查询，确保获取最新数据
+                const user = await tx.user.findUnique({
+                    where: { id: userId },
+                    select: { id: true, points: true }
+                });
 
-            const currentPoints = user.points;
+                if (!user) {
+                    throw new Error('用户不存在');
+                }
 
-            if (currentPoints < totalCost) {
+                const currentPoints = user.points;
+
+                // 再次检查余额（双重检查）
+                if (currentPoints < totalCost) {
+                    return {
+                        success: false,
+                        remainingPoints: currentPoints,
+                        deductedAmount: 0,
+                        message: `积分不足 (需要 ${totalCost}, 当前 ${currentPoints})`,
+                        transactionId: undefined,
+                    };
+                }
+
+                // 使用乐观锁：确保更新时余额没有被其他事务修改
+                // 通过检查更新后的余额不会变成负数来防止超卖
+                const updatedUser = await tx.user.update({
+                    where: { 
+                        id: userId,
+                        // 添加条件：确保当前余额仍然足够
+                        points: { gte: totalCost }
+                    },
+                    data: {
+                        points: { decrement: totalCost },
+                        pointsUsed: { increment: totalCost }
+                    }
+                });
+
+                // 最终验证：确保余额不会变成负数（最后一道防线）
+                if (updatedUser.points < 0) {
+                    throw new Error('并发冲突：余额计算异常');
+                }
+
+                const log = await tx.transaction.create({
+                    data: {
+                        userId,
+                        type: 'consume',
+                        amount: -totalCost,
+                        balance: updatedUser.points,
+                        ruleCode: actionCode,
+                        projectId,
+                        description: description || rule.name,
+                        module: options?.module || rule.module,
+                        category: options?.category || rule.category,
+                        subcategory: options?.subcategory,
+                        triggerTime: options?.triggerTime,
+                        templateId: options?.templateId
+                    }
+                });
+
                 return {
-                    success: false,
-                    remainingPoints: currentPoints,
-                    deductedAmount: 0,
-                    message: `积分不足 (需要 ${totalCost}, 当前 ${currentPoints})`,
-                    transactionId: undefined,
+                    success: true,
+                    updatedUser,
+                    log,
+                    deductedAmount: totalCost,
                 };
+            }, {
+                isolationLevel: 'Serializable',
+                maxWait: 5000,
+                timeout: 10000,
+            });
+
+            if (!result.success) {
+                return result as DeductResult;
             }
-
-            const updatedUser = await tx.user.update({
-                where: { id: userId },
-                data: {
-                    points: { decrement: totalCost },
-                    pointsUsed: { increment: totalCost }
-                }
-            });
-
-            const log = await tx.transaction.create({
-                data: {
-                    userId,
-                    type: 'consume',
-                    amount: -totalCost,
-                    balance: updatedUser.points,
-                    ruleCode: actionCode,
-                    projectId,
-                    description: description || rule.name,
-                    module: options?.module || rule.module,
-                    category: options?.category || rule.category,
-                    subcategory: options?.subcategory,
-                    triggerTime: options?.triggerTime,
-                    templateId: options?.templateId
-                }
-            });
 
             return {
                 success: true,
-                updatedUser,
-                log,
-                deductedAmount: totalCost,
+                remainingPoints: result.updatedUser!.points,
+                deductedAmount: result.deductedAmount,
+                transactionId: result.log!.id,
+                message: '扣费成功'
             };
-        }, {
-            isolationLevel: 'Serializable',
-            maxWait: 5000,
-            timeout: 10000,
-        });
-
-        if (!result.success) {
-            return result as DeductResult;
+        } catch (error: any) {
+            // 检测并发冲突错误（P2034: Transaction failed due to a write conflict）
+            if (error.code === 'P2034' || 
+                error.message?.includes('concurrent') ||
+                error.message?.includes('conflict') ||
+                error.message?.includes('数据库被锁定')) {
+                retryCount++;
+                console.warn(`[deductPoints] 检测到并发冲突，第${retryCount}次重试...`, { userId, actionCode });
+                
+                // 指数退避：100ms, 200ms, 400ms
+                await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retryCount - 1)));
+                
+                if (retryCount >= MAX_RETRIES) {
+                    console.error(`[deductPoints] 重试${MAX_RETRIES}次后仍然失败`, { userId, actionCode, error });
+                    return {
+                        success: false,
+                        remainingPoints: 0,
+                        deductedAmount: 0,
+                        message: '系统繁忙，请稍后重试',
+                    };
+                }
+                
+                // 继续下一次重试
+                continue;
+            }
+            
+            // 其他错误直接抛出
+            throw error;
         }
-
-        return {
-            success: true,
-            remainingPoints: result.updatedUser!.points,
-            deductedAmount: result.deductedAmount,
-            transactionId: result.log!.id,
-            message: '扣费成功'
-        };
-    } catch (error) {
-        console.error('[Points] 扣费事务失败:', error);
-
-        if (error instanceof Error && error.message.includes('deadlock')) {
-            return {
-                success: false,
-                remainingPoints: 0,
-                deductedAmount: 0,
-                message: '系统繁忙，请稍后重试',
-            };
-        }
-
-        throw error;
     }
+
+    // 理论上不会到达这里，但为了类型安全
+    return {
+        success: false,
+        remainingPoints: 0,
+        deductedAmount: 0,
+        message: '扣费失败，请稍后重试',
+    };
 }
-
-
 
 /**
  * 标记交易为已完成（AI生成成功）
