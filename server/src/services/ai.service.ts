@@ -599,9 +599,9 @@ const calculateFinalResolution = (qualitySetting: string | undefined, aspectRati
 
 // AI 服务超时配置（宽裕时长）
 const AI_TIMEOUTS = {
-    text: 300000,      // 文本生成 5分钟
-    image: 600000,     // 图片生成 10分钟（最宽裕）
-    vision: 180000     // 视觉分析 3分钟
+    text: 30000,      // 文本生成 0.5分钟
+    image: 180000,     // 图片生成 3分钟
+    vision: 90000     // 视觉分析 1.5分钟
 };
 
 async function callOpenAICompatible(
