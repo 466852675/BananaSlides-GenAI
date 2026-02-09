@@ -113,6 +113,23 @@ export async function getUser(req: Request, res: Response): Promise<void> {
 }
 
 /**
+ * 获取用户统计数据
+ * GET /api/admin/users/stats
+ */
+export async function getUserStats(req: Request, res: Response): Promise<void> {
+    try {
+        const stats = await AdminService.getUserStats();
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        console.error('[Admin] 获取用户统计失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取用户统计失败' }
+        });
+    }
+}
+
+/**
  * 更新用户信息
  * PUT /api/admin/users/:id
  */
@@ -210,7 +227,7 @@ export async function deleteUser(req: Request, res: Response): Promise<void> {
  */
 export async function batchUserAction(req: Request, res: Response): Promise<void> {
     try {
-        const { action, userIds } = req.body;
+        const { action, userIds, reason } = req.body;
 
         if (!action || !userIds || !Array.isArray(userIds)) {
             res.status(400).json({
@@ -220,10 +237,18 @@ export async function batchUserAction(req: Request, res: Response): Promise<void
             return;
         }
 
+        if (!reason) {
+            res.status(400).json({
+                success: false,
+                error: { code: 'MISSING_FIELDS', message: '操作理由不能为空' }
+            });
+            return;
+        }
+
         // 过滤掉当前用户自己
         const filteredIds = userIds.filter((id: string) => id !== req.user?.id);
 
-        const result = await AdminService.batchUserAction(action, filteredIds, req.user!.id);
+        const result = await AdminService.batchUserAction(action, filteredIds, req.user!.id, reason);
 
         res.json({ success: true, data: result });
     } catch (error) {

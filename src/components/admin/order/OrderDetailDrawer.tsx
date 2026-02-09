@@ -43,7 +43,7 @@ export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({ orderId, i
             onClose={onClose}
             title="订单详情"
             description="查看完整的订单履约与支付记录"
-            width="medium"
+            width="wide"
         >
             {isLoading ? (
                 <div className="flex flex-col items-center justify-center h-64 gap-4 text-slate-400">

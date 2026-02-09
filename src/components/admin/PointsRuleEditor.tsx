@@ -585,18 +585,18 @@ export const PointsRuleEditor: React.FC = () => {
                         <button
                             type="button"
                             onClick={closeModal}
-                            className="flex-1 py-3 px-6 bg-slate-100 text-slate-600 rounded-xl font-black hover:bg-slate-200 transition-all text-xs tracking-widest uppercase"
+                            className="flex-1 py-4 px-6 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-slate-200 transition-all text-sm tracking-widest uppercase"
                         >
                             取消返回
                         </button>
                         <button
                             onClick={handleSubmit}
                             disabled={createMutation.isPending || updateMutation.isPending}
-                            className="flex-[2] py-3 px-6 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl font-black hover:shadow-xl hover:shadow-violet-500/25 transition-all text-xs tracking-widest uppercase flex items-center justify-center gap-2"
+                            className="flex-[2] py-4 px-6 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-2xl font-black hover:shadow-xl hover:shadow-violet-500/25 transition-all text-sm tracking-widest uppercase flex items-center justify-center gap-2"
                         >
                             {createMutation.isPending || updateMutation.isPending ? (
                                 <>
-                                    <Loader2 size={16} className="animate-spin" />
+                                    <Loader2 size={18} className="animate-spin" />
                                     正在同步
                                 </>
                             ) : (
@@ -607,183 +607,181 @@ export const PointsRuleEditor: React.FC = () => {
                 }
             >
                 <div className="space-y-10 pb-8 text-left">
-                    {/* Rule Type Illustration/Icon */}
-                    <div className="relative p-6 bg-gradient-to-br from-amber-50 to-orange-50 rounded-[2.5rem] border border-amber-100/50 shadow-sm overflow-hidden text-center">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-amber-200/20 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
-                        <div className="relative w-16 h-16 mx-auto bg-white rounded-3xl shadow-sm flex items-center justify-center text-amber-600 mb-3 border border-amber-50">
-                            <Zap size={32} />
-                        </div>
-                        <h4 className="text-sm font-black text-slate-800">配置自动化积分消耗逻辑</h4>
-                        <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase tracking-wider">Define module triggers and point costs</p>
-                    </div>
+                    <AdminDrawer.HeadCard
+                        title={editingRule ? '调优自动化计费' : '定义新计费策略'}
+                        description="Points Economic Logic & Trigger Rules"
+                        icon={Zap}
+                        variant="primary"
+                    />
 
-                    <div className="space-y-8">
-                        {/* Basic Info */}
-                        <div className="space-y-4">
-                            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">基础信息配置</h4>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">规则显示名称</label>
-                                <div className="relative group text-left">
-                                    <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
-                                    <input
-                                        type="text"
-                                        required
-                                        value={formData.name}
-                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/5 outline-none transition-all"
-                                        placeholder="例如：生成文本大纲"
-                                    />
-                                </div>
-                            </div>
-
-                            {!editingRule && (
+                    <div className="space-y-10">
+                        <AdminDrawer.Section title="基础身份映射" icon={Tag}>
+                            <AdminDrawer.Card className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">唯一识别代码 (Action Code)</label>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">规则显示名称</label>
                                     <div className="relative group text-left">
-                                        <Database className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
+                                        <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
                                         <input
                                             type="text"
                                             required
-                                            value={formData.code}
-                                            onChange={e => setFormData({ ...formData, code: e.target.value })}
-                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/5 outline-none transition-all font-mono"
-                                            placeholder="outline_generation"
+                                            value={formData.name}
+                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
+                                            placeholder="例如：生成文本大纲"
                                         />
                                     </div>
-                                    <p className="text-[10px] text-slate-400 mt-2 ml-1 flex items-center gap-1 font-medium">
-                                        <AlertCircle size={10} />
-                                        后端调用的唯一性凭证，保存后不可更改
-                                    </p>
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Values */}
-                        <div className="space-y-4">
-                            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">成本设置 (Points)</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">标准消耗积分</label>
-                                    <div className="relative group text-left">
-                                        <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
-                                        <input
-                                            type="number"
-                                            required
-                                            min="0"
-                                            value={formData.costPoints}
-                                            onChange={e => setFormData({ ...formData, costPoints: Number(e.target.value) })}
-                                            className="w-full pl-12 pr-12 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
-                                        />
-                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded uppercase">PTS</span>
+                                {!editingRule && (
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">唯一识别代码 (Action Code)</label>
+                                        <div className="relative group text-left">
+                                            <Database className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
+                                            <input
+                                                type="text"
+                                                required
+                                                value={formData.code}
+                                                onChange={e => setFormData({ ...formData, code: e.target.value })}
+                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all font-mono"
+                                                placeholder="outline_generation"
+                                            />
+                                        </div>
+                                        <div className="mt-2 ml-1 px-3 py-1.5 bg-amber-50 rounded-lg border border-amber-100/50 flex items-center gap-2">
+                                            <AlertCircle size={10} className="text-amber-500" />
+                                            <p className="text-[9px] text-amber-700 font-bold uppercase tracking-wider">
+                                                后端调用的唯一性凭证，保存后不可更改
+                                            </p>
+                                        </div>
                                     </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-amber-600 mb-2 ml-1 flex items-center gap-1">
-                                        <Crown size={12} /> VIP 优惠积分
-                                    </label>
-                                    <div className="relative group text-left">
-                                        <Crown className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" size={18} />
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            value={formData.vipCostPoints}
-                                            onChange={e => setFormData({ ...formData, vipCostPoints: Number(e.target.value) })}
-                                            className="w-full pl-12 pr-12 py-3 bg-amber-50/50 border-2 border-amber-100/50 rounded-2xl text-sm font-bold focus:bg-white focus:border-amber-500 outline-none transition-all"
-                                            placeholder="默认同上"
-                                        />
-                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-amber-400 bg-amber-50 px-1.5 py-0.5 rounded uppercase">PTS</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                                )}
+                            </AdminDrawer.Card>
+                        </AdminDrawer.Section>
 
-                        {/* Categorization */}
-                        <div className="space-y-4">
-                            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">业务与归类</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">所属板块 (Module)</label>
-                                    <div className="relative group text-left">
-                                        <Folder className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <select
-                                            className="w-full pl-12 pr-10 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all appearance-none cursor-pointer"
-                                            value={formData.module}
-                                            onChange={e => setFormData({ ...formData, module: e.target.value })}
-                                        >
-                                            <option value="创作室">创作室 (Creation)</option>
-                                            <option value="模版间">模版间 (Templates)</option>
-                                            <option value="高级工具">高级工具 (Tools)</option>
-                                            <option value="系统配置">系统配置 (System)</option>
-                                        </select>
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                                            <Layers size={12} />
+                        <AdminDrawer.Section title="价值与权益系数" icon={Coins}>
+                            <AdminDrawer.Card className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">标准消耗积分</label>
+                                        <div className="relative group text-left">
+                                            <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
+                                            <input
+                                                type="number"
+                                                required
+                                                min="0"
+                                                value={formData.costPoints}
+                                                onChange={e => setFormData({ ...formData, costPoints: Number(e.target.value) })}
+                                                className="w-full pl-12 pr-12 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
+                                            />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded uppercase">PTS</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-1">
+                                            VIP 优惠设置
+                                        </label>
+                                        <div className="relative group text-left">
+                                            <Crown className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" size={18} />
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                value={formData.vipCostPoints}
+                                                onChange={e => setFormData({ ...formData, vipCostPoints: Number(e.target.value) })}
+                                                className="w-full pl-12 pr-12 py-3 bg-amber-50/30 border-2 border-amber-100/30 rounded-2xl text-sm font-bold focus:bg-white focus:border-amber-500 outline-none transition-all"
+                                                placeholder="默认同上"
+                                            />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-amber-400 bg-amber-100/50 px-1.5 py-0.5 rounded uppercase">PTS</span>
                                         </div>
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">二级分类 (Category)</label>
-                                    <div className="relative group text-left">
-                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <input
-                                            type="text"
-                                            required
-                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
-                                            placeholder="例如: 文本生成"
-                                            value={formData.category}
-                                            onChange={e => setFormData({ ...formData, category: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
+                            </AdminDrawer.Card>
+                        </AdminDrawer.Section>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">计算方式</label>
-                                    <div className="relative group text-left">
-                                        <BookOpen className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <input
-                                            type="text"
-                                            required
-                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
-                                            placeholder="例如: 按次、按页"
-                                            value={formData.calculationMethod}
-                                            onChange={e => setFormData({ ...formData, calculationMethod: e.target.value })}
-                                        />
+                        <AdminDrawer.Section title="业务场景与归类" icon={Folder}>
+                            <AdminDrawer.Card className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">所属板块 (Module)</label>
+                                        <div className="relative group text-left">
+                                            <Folder className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                            <select
+                                                className="w-full pl-12 pr-10 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all appearance-none cursor-pointer"
+                                                value={formData.module}
+                                                onChange={e => setFormData({ ...formData, module: e.target.value })}
+                                            >
+                                                <option value="创作室">创作室 (Creation)</option>
+                                                <option value="模版间">模版间 (Templates)</option>
+                                                <option value="高级工具">高级工具 (Tools)</option>
+                                                <option value="系统配置">系统配置 (System)</option>
+                                            </select>
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                <Layers size={14} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">二级分类 (Category)</label>
+                                        <div className="relative group text-left">
+                                            <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                            <input
+                                                type="text"
+                                                required
+                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
+                                                placeholder="例如: 文本生成"
+                                                value={formData.category}
+                                                onChange={e => setFormData({ ...formData, category: e.target.value })}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">生效日期</label>
-                                    <div className="relative group text-left">
-                                        <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <input
-                                            type="date"
-                                            required
-                                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all font-mono"
-                                            value={formData.effectiveAt}
-                                            onChange={e => setFormData({ ...formData, effectiveAt: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* Logic Textarea */}
-                        <div className="space-y-4">
-                            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-1">扣费逻辑详情</h4>
-                            <div className="relative group text-left">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">计算方式 (Method)</label>
+                                        <div className="relative group text-left">
+                                            <BookOpen className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                            <input
+                                                type="text"
+                                                required
+                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all"
+                                                placeholder="例如: 按次、按页"
+                                                value={formData.calculationMethod}
+                                                onChange={e => setFormData({ ...formData, calculationMethod: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">生效日期</label>
+                                        <div className="relative group text-left">
+                                            <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                            <input
+                                                type="date"
+                                                required
+                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold focus:bg-white focus:border-violet-500 outline-none transition-all font-mono"
+                                                value={formData.effectiveAt}
+                                                onChange={e => setFormData({ ...formData, effectiveAt: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </AdminDrawer.Card>
+                        </AdminDrawer.Section>
+
+                        <AdminDrawer.Section title="底层扣费逻辑算法" icon={Database}>
+                            <AdminDrawer.Card className="p-0 overflow-hidden">
                                 <textarea
-                                    className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] text-sm font-medium focus:bg-white focus:border-violet-500 outline-none transition-all resize-none leading-relaxed"
-                                    rows={4}
+                                    className="w-full p-6 bg-slate-50 border-none text-sm font-medium focus:bg-white outline-none transition-all resize-none leading-relaxed min-h-[140px]"
                                     placeholder="请详细描述该规则的扣费逻辑，此内容将展示给用户..."
                                     value={formData.deductionLogic}
                                     onChange={e => setFormData({ ...formData, deductionLogic: e.target.value })}
                                 />
-                            </div>
-                            <p className="text-[10px] text-slate-400 mt-2 ml-2 flex items-center gap-1.5 font-medium leading-relaxed">
-                                <Sparkles size={12} className="text-violet-400" />
-                                提示：详细的描述有助于降低用户的理解成本，增加计费透明度。
-                            </p>
-                        </div>
+                                <div className="px-6 py-3 bg-indigo-50/50 border-t border-indigo-100/50 flex items-center gap-2">
+                                    <Sparkles size={12} className="text-indigo-400" />
+                                    <p className="text-[9px] text-indigo-600 font-bold uppercase tracking-wider">
+                                        提示：计费透明度有助于提升用户信任感
+                                    </p>
+                                </div>
+                            </AdminDrawer.Card>
+                        </AdminDrawer.Section>
                     </div>
                 </div>
             </AdminDrawer>

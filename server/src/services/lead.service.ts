@@ -1,66 +1,64 @@
-// server/src/services/lead.service.ts
-// 销售线索服务：处理企业咨询、需求收集
-
-import { Lead } from '@prisma/client';
 import { prisma } from '../db';
-
-export interface CreateLeadDto {
-    userId?: string;
-    name: string;
-    phone: string;
-    company?: string;
-    position?: string;
-    email?: string;
-    teamSize?: string;
-    industry?: string;
-    needs?: string;
-}
+import { UserRole, UserStatus } from '@prisma/client';
+import { hashPassword } from '../utils/password.util';
 
 /**
- * 创建销售线索
+ * LeadService - 销售线索 CRM 业务逻辑
  */
-export async function createLead(data: CreateLeadDto) {
-    return prisma.lead.create({
+
+/**
+ * 创建线索
+ */
+export async function createLead(data: any) {
+    const { userId, name, phone, company, position, email, teamSize, industry, needs, source } = data;
+    return await prisma.lead.create({
         data: {
-            ...data,
-            status: 'PENDING'
+            userId,
+            name,
+            phone,
+            company,
+            position,
+            email,
+            teamSize,
+            industry,
+            needs,
+            source,
+            status: 'PENDING',
+            priority: 'MEDIUM'
         }
     });
 }
 
 /**
- * 获取线索列表 (Admin)
+ * 获取线索列表 (带分页和筛选)
  */
-export async function listLeads(
-    page: number = 1,
-    limit: number = 20,
-    search?: string,
-    status?: string
-) {
-    const whereClause: any = {};
-
+export async function listLeads(page: number, limit: number, search?: string, status?: string) {
+    const where: any = {};
     if (search) {
-        whereClause.OR = [
+        where.OR = [
             { name: { contains: search } },
-            { company: { contains: search } },
             { phone: { contains: search } },
+            { company: { contains: search } },
             { email: { contains: search } }
         ];
     }
-
     if (status) {
-        whereClause.status = status;
+        where.status = status;
     }
 
     const [items, total] = await Promise.all([
         prisma.lead.findMany({
-            where: whereClause,
-            orderBy: { createdAt: 'desc' },
+            where,
             skip: (page - 1) * limit,
             take: limit,
-            include: { user: { select: { nickname: true, email: true } } } // 关联用户信息
+            orderBy: { createdAt: 'desc' },
+            include: {
+                assignee: {
+                    select: { nickname: true, avatar: true }
+                }
+            }
         }),
-        prisma.lead.count({ where: whereClause })
+        prisma.lead.count({ where })
     ]);
 
     return {
@@ -75,108 +73,192 @@ export async function listLeads(
 }
 
 /**
- * 更新线索状态与备注
+ * 获取线索详情
  */
-export async function updateLeadStatus(id: string, status: string, notes?: string) {
-    return prisma.lead.update({
+export async function getLeadById(id: string) {
+    return await prisma.lead.findUnique({
         where: { id },
-        data: {
-            status,
-            notes: notes !== undefined ? notes : undefined,
-            updatedAt: new Date()
+        include: {
+            assignee: {
+                select: { id: true, nickname: true, avatar: true }
+            },
+            activities: {
+                orderBy: { createdAt: 'desc' }
+            }
         }
     });
+}
+
+/**
+ * 更新线索状态 (带自动日志)
+ */
+export async function updateLeadStatus(id: string, status: string, notes: string | null, operatorId: string) {
+    const oldLead = await prisma.lead.findUnique({ where: { id } });
+
+    const updatedLead = await prisma.lead.update({
+        where: { id },
+        data: { status, notes }
+    });
+
+    if (oldLead && oldLead.status !== status) {
+        await logActivity({
+            leadId: id,
+            type: 'SYSTEM',
+            content: `状态变更: ${oldLead.status} -> ${status}`,
+            operatorId
+        });
+    }
+
+    if (notes) {
+        await logActivity({
+            leadId: id,
+            type: 'NOTE',
+            content: notes,
+            operatorId
+        });
+    }
+
+    return updatedLead;
+}
+
+/**
+ * 记录跟进动态
+ */
+export async function logActivity(data: {
+    leadId: string;
+    type: string;
+    content: string;
+    metadata?: any;
+    operatorId: string;
+}) {
+    // 1. 创建记录
+    const activity = await prisma.leadActivity.create({
+        data: {
+            leadId: data.leadId,
+            type: data.type,
+            content: data.content,
+            metadata: data.metadata ? JSON.stringify(data.metadata) : null,
+            operatorId: data.operatorId
+        }
+    });
+
+    // 2. 自动化逻辑：首次填写跟进备注自动改为已跟进
+    if (data.type !== 'SYSTEM' && data.operatorId !== 'system') {
+        const lead = await prisma.lead.findUnique({
+            where: { id: data.leadId },
+            select: { status: true }
+        });
+
+        if (lead?.status === 'PENDING') {
+            await prisma.lead.update({
+                where: { id: data.leadId },
+                data: { status: 'CONTACTED' }
+            });
+
+            // 记录系统自动变更日志
+            await prisma.leadActivity.create({
+                data: {
+                    leadId: data.leadId,
+                    type: 'SYSTEM',
+                    content: '线索状态自动变更为: 已跟进 (触发因素: 首次添加跟进记录)',
+                    operatorId: 'system'
+                }
+            });
+        }
+    }
+
+    return activity;
+}
+
+/**
+ * 获取线索的跟进记录
+ */
+export async function getActivities(leadId: string) {
+    return await prisma.leadActivity.findMany({
+        where: { leadId },
+        orderBy: { createdAt: 'desc' }
+    });
+}
+
+/**
+ * 指派负责人
+ */
+export async function assignLead(id: string, assigneeId: string | null, operatorId: string) {
+    const lead = await prisma.lead.update({
+        where: { id },
+        data: { assigneeId },
+        include: {
+            assignee: {
+                select: { nickname: true }
+            }
+        }
+    });
+
+    await logActivity({
+        leadId: id,
+        type: 'SYSTEM',
+        content: assigneeId
+            ? `指派负责人: ${lead.assignee?.nickname || '未知用户'}`
+            : '取消指派负责人',
+        operatorId
+    });
+
+    return lead;
 }
 
 /**
  * 删除线索
  */
 export async function deleteLead(id: string) {
-    return prisma.lead.delete({
+    return await prisma.lead.delete({
         where: { id }
-    });
-}
-
-/**
- * 获取线索详情
- */
-export async function getLeadById(id: string) {
-    return prisma.lead.findUnique({
-        where: { id },
-        include: { user: { select: { nickname: true, email: true } } }
-    });
-}
-
-/**
- * 添加跟进备注
- */
-export async function addLeadNote(id: string, note: string) {
-    // 先获取当前线索
-    const lead = await prisma.lead.findUnique({ where: { id } });
-    if (!lead) {
-        throw new Error('线索不存在');
-    }
-
-    // 追加备注（保留原有备注）
-    const existingNotes = lead.notes || '';
-    const timestamp = new Date().toLocaleString('zh-CN');
-    const newNotes = existingNotes
-        ? `${existingNotes}\n\n[${timestamp}] ${note}`
-        : `[${timestamp}] ${note}`;
-
-    return prisma.lead.update({
-        where: { id },
-        data: {
-            notes: newNotes,
-            updatedAt: new Date()
-        }
     });
 }
 
 /**
  * 转换线索为用户
  */
-export async function convertLeadToUser(id: string, email: string, password: string) {
-    // 1. 获取线索
-    const lead = await prisma.lead.findUnique({ where: { id } });
-    if (!lead) {
-        throw new Error('线索不存在');
-    }
+export async function convertLeadToUser(leadId: string, email: string, passwordHash: string) {
+    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+    if (!lead) throw new Error('线索不存在');
 
-    if (lead.status === 'CONVERTED') {
-        throw new Error('该线索已转换为用户');
-    }
-
-    // 2. 检查邮箱是否已被使用
+    // 检查邮箱是否已存在
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-        throw new Error('该邮箱已被注册');
-    }
+    if (existingUser) throw new Error('该邮箱已注册');
 
-    // 3. 创建用户
-    const { hashPassword } = await import('../utils/password.util');
-    const user = await prisma.user.create({
-        data: {
-            email,
-            passwordHash: await hashPassword(password),
-            nickname: lead.name,
-            phone: lead.phone,
-            role: 'USER',
-            status: 'ACTIVE',
-            points: 30 // 默认赠送积分
-        }
+    return await prisma.$transaction(async (tx) => {
+        // 1. 创建用户
+        const user = await tx.user.create({
+            data: {
+                email,
+                passwordHash,
+                nickname: lead.name,
+                phone: lead.phone,
+                role: UserRole.USER,
+                status: UserStatus.ACTIVE,
+                points: 30 // 默认注册奖励
+            }
+        });
+
+        // 2. 更新线索状态
+        await tx.lead.update({
+            where: { id: leadId },
+            data: {
+                status: 'CONVERTED',
+                userId: user.id
+            }
+        });
+
+        // 3. 记录日志
+        await tx.leadActivity.create({
+            data: {
+                leadId,
+                type: 'SYSTEM',
+                content: `线索已成功转换为正式用户: ${email}`,
+                operatorId: 'system'
+            }
+        });
+
+        return user;
     });
-
-    // 4. 更新线索状态
-    await prisma.lead.update({
-        where: { id },
-        data: {
-            status: 'CONVERTED',
-            userId: user.id,
-            notes: `${lead.notes || ''}\n\n[${new Date().toLocaleString('zh-CN')}] 已转换为用户: ${email}`,
-            updatedAt: new Date()
-        }
-    });
-
-    return { user, lead: await prisma.lead.findUnique({ where: { id } }) };
 }

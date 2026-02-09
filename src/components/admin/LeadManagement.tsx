@@ -5,23 +5,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     Search,
-    Filter,
     RefreshCcw,
-    MoreHorizontal,
     Phone,
     Mail,
     Briefcase,
     Building2,
     CheckCircle2,
-    XCircle,
     Clock,
     MessageSquare,
-    User,
     Trash2,
     ClipboardList,
     X
 } from 'lucide-react';
 import * as AdminAPI from '../../api/admin';
+// @ts-ignore
+import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { ConfirmDialog } from '../ConfirmDialog';
@@ -51,11 +49,8 @@ export const LeadManagement: React.FC = () => {
     const [page, setPage] = useState(1);
     const [statusFilter, setStatusFilter] = useState<string>('');
     const [keyword, setKeyword] = useState('');
-
-    // 编辑状态
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editStatus, setEditStatus] = useState<string>('');
-    const [editNotes, setEditNotes] = useState<string>('');
+    const [selectedLead, setSelectedLead] = useState<AdminAPI.Lead | null>(null);
+    const [isDetailOpen, setIsDetailOpen] = useState(false);
 
     // 确认对话框状态
     const [deleteDialog, setDeleteDialog] = useState<{
@@ -78,10 +73,6 @@ export const LeadManagement: React.FC = () => {
         leadId: '',
         leadName: ''
     });
-
-    // 详情抽屉状态
-    const [selectedLead, setSelectedLead] = useState<AdminAPI.Lead | null>(null);
-    const [isDetailOpen, setIsDetailOpen] = useState(false);
 
     // 防抖函数
     const debounce = (fn: Function, delay: number) => {
@@ -123,29 +114,12 @@ export const LeadManagement: React.FC = () => {
         fetchLeads();
     }, [page, statusFilter]);
 
-    // 当 keyword 变化时，防抖搜索
     useEffect(() => {
         debouncedFetchLeads();
     }, [keyword, debouncedFetchLeads]);
 
-    const handleSearch = (e: React.FormEvent) => {
-        e.preventDefault();
-        setPage(1);
-        fetchLeads();
-    };
-
     const clearSearch = () => {
         setKeyword('');
-    };
-
-    const handleUpdateStatus = async (id: string) => {
-        try {
-            await AdminAPI.updateLeadStatus(id, editStatus, editNotes);
-            setEditingId(null);
-            fetchLeads(); // 刷新列表
-        } catch (error) {
-            console.error('Failed to update status:', error);
-        }
     };
 
     const handleDelete = async (id: string, name: string) => {
@@ -162,7 +136,7 @@ export const LeadManagement: React.FC = () => {
             setDeleteDialog(prev => ({ ...prev, isOpen: false }));
             fetchLeads();
         } catch (error) {
-            alert('删除失败');
+            console.error('Delete lead failed:', error);
         }
     };
 
@@ -170,39 +144,29 @@ export const LeadManagement: React.FC = () => {
         setDeleteDialog(prev => ({ ...prev, isOpen: false }));
     };
 
-    const handleMarkContactedClick = (lead: AdminAPI.Lead) => {
-        setContactDialog({
-            isOpen: true,
-            leadId: lead.id,
-            leadName: lead.name
-        });
-    };
-
-    const confirmMarkContacted = async () => {
+    const handleStatusUpdate = async (lead: AdminAPI.Lead, status: string) => {
         try {
-            setEditStatus('CONTACTED');
-            setEditNotes('');
-            await AdminAPI.updateLeadStatus(contactDialog.leadId, 'CONTACTED', '');
-            setContactDialog(prev => ({ ...prev, isOpen: false }));
+            await AdminAPI.updateLeadStatus(lead.id, status, '');
+            toast.success(`状态已更新为: ${status}`);
             fetchLeads();
+            if (selectedLead?.id === lead.id) {
+                // 如果当前选中的是这个线索，关闭详情页或刷新（这里选择让用户手动刷新或重新加载详情）
+                setIsDetailOpen(false);
+            }
         } catch (error) {
-            console.error('Failed to update status:', error);
+            console.error('Update status failed:', error);
+            toast.error('操作失败');
         }
     };
 
-    const closeContactDialog = () => {
-        setContactDialog(prev => ({ ...prev, isOpen: false }));
-    };
-
-    const openEdit = (lead: AdminAPI.Lead) => {
-        setEditingId(lead.id);
-        setEditStatus(lead.status);
-        setEditNotes(lead.notes || '');
+    const openDetail = (lead: AdminAPI.Lead) => {
+        setSelectedLead(lead);
+        setIsDetailOpen(true);
     };
 
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Header / Intro - Standardized Hero */}
+            {/* Header / Intro */}
             <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-violet-600 to-indigo-600 p-6 shadow-xl shadow-violet-500/20">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-white/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20 mix-blend-overlay" />
                 <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -220,9 +184,8 @@ export const LeadManagement: React.FC = () => {
                 </div>
             </div>
 
-            {/* Filter Bar - Glassmorphism Style */}
+            {/* Filter Bar */}
             <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-4 border border-white/60 shadow-sm flex flex-wrap items-center gap-4">
-                {/* Search Input */}
                 <div className="relative flex-1 min-w-[280px]">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={18} />
                     <input
@@ -236,21 +199,16 @@ export const LeadManagement: React.FC = () => {
                         <button
                             onClick={clearSearch}
                             className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
-                            title="清除搜索"
                         >
                             <X size={14} />
                         </button>
                     )}
                 </div>
 
-                {/* Status Filter - Segmented Control */}
                 <div className="flex bg-slate-100/80 p-1 rounded-xl border border-slate-200/40">
                     <button
                         onClick={() => setStatusFilter('')}
-                        className={`px-3 py-2 rounded-lg text-[11px] font-black transition-all ${statusFilter === ''
-                            ? 'bg-white text-violet-600 shadow-sm'
-                            : 'text-slate-400 hover:text-slate-600'
-                        }`}
+                        className={`px-3 py-2 rounded-lg text-[11px] font-black transition-all ${statusFilter === '' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                     >
                         全部状态
                     </button>
@@ -258,21 +216,16 @@ export const LeadManagement: React.FC = () => {
                         <button
                             key={key}
                             onClick={() => setStatusFilter(key)}
-                            className={`px-3 py-2 rounded-lg text-[11px] font-black transition-all ${statusFilter === key
-                                ? 'bg-white text-violet-600 shadow-sm'
-                                : 'text-slate-400 hover:text-slate-600'
-                            }`}
+                            className={`px-3 py-2 rounded-lg text-[11px] font-black transition-all ${statusFilter === key ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                         >
                             {label}
                         </button>
                     ))}
                 </div>
 
-                {/* Refresh Button */}
                 <button
                     onClick={() => fetchLeads()}
                     className="p-3 text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-xl transition-all"
-                    title="刷新"
                 >
                     <RefreshCcw size={18} />
                 </button>
@@ -281,180 +234,107 @@ export const LeadManagement: React.FC = () => {
             {/* List */}
             {loading ? (
                 <div className="flex justify-center items-center h-64">
-                    <div className="relative">
-                        <div className="w-12 h-12 rounded-full border-4 border-violet-100 animate-pulse"></div>
-                        <div className="absolute top-0 left-0 w-12 h-12 rounded-full border-4 border-violet-500 border-t-transparent animate-spin"></div>
-                    </div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600"></div>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {leads.map((lead) => (
-                        <div 
-                            key={lead.id} 
-                            className="group bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col cursor-pointer"
-                            onClick={() => {
-                                setSelectedLead(lead);
-                                setIsDetailOpen(true);
-                            }}
-                        >
-                            {/* Hover Actions - Top Right */}
-                            {editingId !== lead.id && (
-                                <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 bg-white/95 backdrop-blur-sm p-1.5 rounded-xl shadow-lg border border-slate-100 z-20">
-                                    <PermissionTooltip requiredPermission="admin.leads.manage.note">
-                                        <button
-                                            onClick={() => openEdit(lead)}
-                                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                                            title="跟进"
-                                        >
-                                            <MessageSquare size={16} />
+                        <div key={lead.id} className="group relative bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col h-full">
+                            {/* Hover Actions */}
+                            <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0 bg-white/95 backdrop-blur-sm p-1.5 rounded-xl shadow-lg border border-slate-100 z-20">
+                                <PermissionTooltip requiredPermission="admin.leads.manage.note">
+                                    <button onClick={() => openDetail(lead)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="查看详情与跟进">
+                                        <MessageSquare size={16} />
+                                    </button>
+                                </PermissionTooltip>
+                                {lead.status === 'PENDING' && (
+                                    <PermissionTooltip requiredPermission="admin.leads.manage.status">
+                                        <button onClick={() => handleStatusUpdate(lead, 'CONTACTED')} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="标记已联系">
+                                            <CheckCircle2 size={16} />
                                         </button>
                                     </PermissionTooltip>
-                                    {lead.status === 'PENDING' && (
-                                        <PermissionTooltip requiredPermission="admin.leads.manage.status">
-                                            <button
-                                                onClick={() => handleMarkContactedClick(lead)}
-                                                className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
-                                                title="标记已联系"
-                                            >
-                                                <CheckCircle2 size={16} />
-                                            </button>
-                                        </PermissionTooltip>
-                                    )}
-                                    <PermissionTooltip requiredPermission="admin.leads.delete">
-                                        <button
-                                            onClick={() => handleDelete(lead.id, lead.name)}
-                                            className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                            title="删除"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </PermissionTooltip>
-                                </div>
-                            )}
+                                )}
+                                <PermissionTooltip requiredPermission="admin.leads.delete">
+                                    <button onClick={() => handleDelete(lead.id, lead.name)} className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="删除">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </PermissionTooltip>
+                            </div>
 
-                            <div className="flex flex-col gap-4">
-                                {/* Header: Avatar + Name + Status + Time */}
-                                <div className="flex items-start gap-4 pr-32">
-                                    <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center text-violet-600 font-bold text-lg shrink-0">
-                                        {lead.name.charAt(0)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <h3 className="text-[15px] font-black text-slate-800">{lead.name}</h3>
-                                            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-black ${STATUS_COLORS[lead.status] || 'bg-gray-100'}`}>
-                                                {STATUS_LABELS[lead.status] || lead.status}
-                                            </span>
+                            <div className="flex flex-col gap-4 flex-1">
+                                <div className="space-y-4">
+                                    <div className="flex items-start gap-3">
+                                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center text-violet-600 font-bold text-base shrink-0 border border-violet-200/50">
+                                            {lead.name.charAt(0)}
                                         </div>
-                                        <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400">
-                                            <span className="flex items-center gap-1">
-                                                <Clock size={11} />
-                                                {format(new Date(lead.createdAt), 'yyyy年MM月dd日 HH:mm', { locale: zhCN })}
-                                            </span>
-                                            {lead.source && (
-                                                <span className="text-slate-300">|</span>
-                                            )}
-                                            {lead.source && (
-                                                <span>来源: {lead.source}</span>
-                                            )}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between gap-2 mb-1">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <h3 className="text-[15px] font-black text-slate-800 truncate">{lead.name}</h3>
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md border font-bold shrink-0 ${STATUS_COLORS[lead.status] || 'bg-gray-100'}`}>
+                                                        {STATUS_LABELS[lead.status] || lead.status}
+                                                    </span>
+                                                </div>
+                                                {lead.priority === 'HIGH' && (
+                                                    <span className="px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold bg-rose-50 text-rose-500 border border-rose-100 shrink-0">HIGH</span>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <Clock size={11} />
+                                                    {format(new Date(lead.createdAt), 'MM-dd HH:mm', { locale: zhCN })}
+                                                </div>
+                                                {lead.source && <span className="text-slate-200">|</span>}
+                                                {lead.source && <span className="truncate max-w-[80px]" title={lead.source}>{lead.source}</span>}
+
+                                                {lead.assignee && (
+                                                    <div className="flex items-center gap-1 ml-auto shrink-0 bg-slate-50 px-1.5 py-0.5 rounded-full border border-slate-100">
+                                                        <div className="w-3 h-3 rounded-full bg-slate-200 flex items-center justify-center text-[7px] font-bold text-slate-500 overflow-hidden">{lead.assignee.nickname.charAt(0)}</div>
+                                                        <span className="text-[9px] font-medium text-slate-500 max-w-[40px] truncate">{lead.assignee.nickname}</span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2.5 my-1 bg-slate-50/50 rounded-lg p-3 border border-slate-100/50">
+                                        <div className="flex items-center gap-2 text-[12px] text-slate-600 min-w-0">
+                                            <Building2 size={13} className="text-slate-400 shrink-0" />
+                                            <div className="truncate flex items-center gap-1 min-w-0">
+                                                <span className="font-bold truncate" title={lead.company}>{lead.company || '-'}</span>
+                                                {lead.position && <span className="text-slate-400 shrink-0 text-[11px]">({lead.position})</span>}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[12px] text-slate-600 min-w-0">
+                                            <Phone size={13} className="text-slate-400 shrink-0" />
+                                            <span className="font-mono truncate select-all">{lead.phone}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[12px] text-slate-600 min-w-0">
+                                            <Briefcase size={13} className="text-slate-400 shrink-0" />
+                                            <span className="truncate" title={`${lead.industry || '未知'} · ${lead.teamSize || '-'}`}>{lead.industry || '未知'} · {lead.teamSize || '-'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[12px] text-slate-600 min-w-0">
+                                            <Mail size={13} className="text-slate-400 shrink-0" />
+                                            <span className="truncate select-all" title={lead.email}>{lead.email || '-'}</span>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {/* Info Grid */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                    <div className="flex items-center gap-2 text-[12px] text-slate-600 bg-slate-50/50 rounded-lg p-2">
-                                        <Building2 size={14} className="text-slate-400 shrink-0" />
-                                        <span className="truncate">
-                                            <span className="font-bold">{lead.company || '-'}</span>
-                                            {lead.position && <span className="text-slate-400 ml-1">({lead.position})</span>}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-[12px] text-slate-600 bg-slate-50/50 rounded-lg p-2">
-                                        <Phone size={14} className="text-slate-400 shrink-0" />
-                                        <span className="font-mono truncate">{lead.phone}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-[12px] text-slate-600 bg-slate-50/50 rounded-lg p-2">
-                                        <Mail size={14} className="text-slate-400 shrink-0" />
-                                        <span className="truncate">{lead.email || '-'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-[12px] text-slate-600 bg-slate-50/50 rounded-lg p-2">
-                                        <Briefcase size={14} className="text-slate-400 shrink-0" />
-                                        <span className="truncate">{lead.industry || '未知行业'} · {lead.teamSize || '规模未知'}</span>
-                                    </div>
-                                </div>
-
-                                {/* Needs Description */}
-                                <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100">
-                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5">需求描述</span>
-                                    <p className="text-[12px] text-slate-600 leading-relaxed">
+                                <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 mt-auto min-h-[100px] flex flex-col justify-center">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5 text-left">需求描述</span>
+                                    <p className="text-[12px] text-slate-600 leading-relaxed text-left line-clamp-3">
                                         {lead.needs || <span className="text-slate-400 italic">无详细描述</span>}
                                     </p>
                                 </div>
-
-                                {/* Notes */}
-                                {lead.notes && (
-                                    <div className="bg-amber-50/50 rounded-xl p-3 border border-amber-100/50">
-                                        <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
-                                            <MessageSquare size={10} />
-                                            跟进记录
-                                        </span>
-                                        <p className="text-[12px] text-amber-800/80 leading-relaxed">
-                                            {lead.notes}
-                                        </p>
-                                    </div>
-                                )}
-
-                                {/* Edit Form - Inline */}
-                                {editingId === lead.id && (
-                                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3 animate-in fade-in zoom-in-95">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5 block">更新状态</label>
-                                                <select
-                                                    value={editStatus}
-                                                    onChange={(e) => setEditStatus(e.target.value)}
-                                                    className="w-full p-2.5 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none"
-                                                >
-                                                    {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                                                        <option key={k} value={k}>{v}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5 block">添加备注</label>
-                                                <textarea
-                                                    value={editNotes}
-                                                    onChange={(e) => setEditNotes(e.target.value)}
-                                                    className="w-full p-2.5 text-sm bg-white border border-slate-200 rounded-lg h-[42px] resize-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 outline-none"
-                                                    placeholder="填写跟进情况..."
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2 justify-end">
-                                            <button
-                                                onClick={() => setEditingId(null)}
-                                                className="px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-lg text-[12px] font-black hover:bg-slate-50 transition-colors"
-                                            >
-                                                取消
-                                            </button>
-                                            <button
-                                                onClick={() => handleUpdateStatus(lead.id)}
-                                                className="px-4 py-2 bg-violet-600 text-white rounded-lg text-[12px] font-black hover:bg-violet-700 transition-colors"
-                                            >
-                                                保存
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     ))}
 
                     {leads.length === 0 && (
-                        <div className="py-20 text-center bg-white/50 rounded-3xl border border-dashed border-slate-200">
+                        <div className="py-20 text-center bg-white/50 rounded-3xl border border-dashed border-slate-200 col-span-full">
                             <ClipboardList size={48} className="mx-auto mb-4 opacity-20 text-slate-400" />
                             <p className="font-bold text-slate-400">暂无销售线索</p>
-                            <p className="text-slate-300 text-sm mt-1">在这里管理所有来自企业版咨询的客户意向</p>
                         </div>
                     )}
                 </div>
@@ -467,50 +347,28 @@ export const LeadManagement: React.FC = () => {
                 </div>
             )}
 
-            {/* 删除确认对话框 */}
+            {/* Dialogs */}
             <ConfirmDialog
                 isOpen={deleteDialog.isOpen}
                 title="确认删除"
-                message={`确定要删除线索「${deleteDialog.leadName}」吗？此操作不可恢复。`}
+                message={`确定要删除线索「${deleteDialog.leadName}」吗？`}
                 onConfirm={confirmDelete}
                 onCancel={closeDeleteDialog}
                 type="danger"
-                confirmText="删除"
-                cancelText="取消"
             />
 
-            {/* 标记已联系确认对话框 */}
-            <ConfirmDialog
-                isOpen={contactDialog.isOpen}
-                title="确认标记"
-                message={`确定将线索「${contactDialog.leadName}」标记为"已联系"吗？`}
-                onConfirm={confirmMarkContacted}
-                onCancel={closeContactDialog}
-                type="info"
-                confirmText="确认标记"
-                cancelText="取消"
-            />
 
-            {/* 线索详情抽屉 */}
+            {/* Detail Drawer */}
             <LeadDetailDrawer
                 lead={selectedLead}
                 isOpen={isDetailOpen}
                 onClose={() => setIsDetailOpen(false)}
-                onExpand={() => {
-                    console.log('展开全页:', selectedLead?.name);
-                    // TODO: 实现路由跳转到详情页
-                }}
-                onEdit={(lead) => {
-                    setIsDetailOpen(false);
-                    openEdit(lead);
-                }}
                 onDelete={(id, name) => {
                     setIsDetailOpen(false);
                     handleDelete(id, name);
                 }}
-                onMarkContacted={(lead) => {
-                    setIsDetailOpen(false);
-                    handleMarkContactedClick(lead);
+                onStatusUpdate={(lead, status) => {
+                    handleStatusUpdate(lead, status);
                 }}
             />
         </div>

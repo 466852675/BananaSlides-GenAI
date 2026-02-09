@@ -50,6 +50,7 @@ model User {
   refundRequests     RefundRequest[]
   refundStats        UserRefundStats?
   messages           UserMessage[]
+  assignedLeads      Lead[]          @relation("LeadAssignee")
 
   @@index([role])
   @@index([status])
@@ -321,22 +322,49 @@ model CheckInLog {
 }
 
 model Lead {
-  id        String   @id @default(uuid())
-  userId    String?
-  name      String
-  company   String?
-  position  String?
-  phone     String
-  email     String?
-  teamSize  String?
-  industry  String?
-  needs     String?
-  status    String   @default("PENDING")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  notes     String?
-  source    String?
-  user      User?    @relation(fields: [userId], references: [id])
+  id               String         @id @default(uuid())
+  userId           String?        // 关联前台用户
+  name             String
+  company          String?
+  position         String?
+  phone            String
+  email            String?
+  teamSize         String?
+  industry         String?
+  needs            String?
+  status           String         @default("PENDING")
+  priority         String?        @default("MEDIUM") // LOW, MEDIUM, HIGH
+  
+  // CRM 核心扩展
+  assigneeId       String?        // 负责人 ID (管理员)
+  nextFollowUpAt   DateTime?      // 下次跟进时间
+  convertedOrderId String?        // 转化后的订单 ID
+  
+  source           String?
+  notes            String?        // 简易备注 (保留兼容)
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  
+  // 关联
+  user             User?          @relation(fields: [userId], references: [id])
+  assignee         User?          @relation("LeadAssignee", fields: [assigneeId], references: [id])
+  activities       LeadActivity[]
+}
+
+model LeadActivity {
+  id         String   @id @default(uuid())
+  leadId     String
+  type       String   // CALL, EMAIL, MEETING, NOTE, SYSTEM
+  content    String
+  metadata   String?  // JSON string for extra info (attachments, duration, etc.)
+  operatorId String   // 操作人 ID
+  createdAt  DateTime @default(now())
+  
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([createdAt])
 }
 
 enum UserRole {

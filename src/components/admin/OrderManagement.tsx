@@ -240,7 +240,7 @@ export const OrderManagement: React.FC = () => {
     );
 
     const orderTabs = [
-        { id: '', label: '全部订单', count: orderStats?.total, icon: <ShoppingBag size={18} /> },
+        { id: '', label: '全部', count: orderStats?.total, icon: <ShoppingBag size={18} /> },
         { id: 'PAID', label: '已支付', count: orderStats?.paid, icon: <CheckCircle size={18} />, color: 'text-emerald-500', bgColor: 'bg-emerald-100' },
         { id: 'PENDING', label: '待支付', count: orderStats?.pending, icon: <Clock size={18} />, color: 'text-amber-500', bgColor: 'bg-amber-100' },
         { id: 'REFUNDED', label: '已退款', count: orderStats?.refunded, icon: <RotateCcw size={18} />, color: 'text-rose-500', bgColor: 'bg-rose-100' },

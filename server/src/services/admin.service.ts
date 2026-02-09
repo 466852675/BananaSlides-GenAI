@@ -381,8 +381,14 @@ export async function deleteUserById(id: string) {
 export async function batchUserAction(
     action: 'disable' | 'enable' | 'delete',
     userIds: string[],
-    operatorId: string
+    operatorId: string,
+    reason?: string // [V9.0] 增加操作理由
 ) {
+    // 记录审计日志 (简单 console，实际应写入 AuditLog 表)
+    if (reason) {
+        console.log(`[Audit] Operator ${operatorId} performed ${action} on users [${userIds.join(', ')}]. Reason: ${reason}`);
+    }
+
     switch (action) {
         case 'disable':
             await prisma.user.updateMany({
@@ -402,15 +408,16 @@ export async function batchUserAction(
             break;
 
         case 'delete':
-            // 软删除：标记为禁用
-            await prisma.user.updateMany({
+            // [V9.0] 硬删除：直接从数据库移除 (用户要求)
+            // 先删除相关联的数据 (如果 Prisma schema 没有配置级联删除，这里需要手动处理)
+            // 简单起见，假设都有级联删除配置 onDelete: Cascade
+            const count = await prisma.user.deleteMany({
                 where: {
                     id: { in: userIds },
-                    role: { not: UserRole.SUPER_ADMIN },
-                },
-                data: { status: UserStatus.DISABLED },
+                    role: { not: UserRole.SUPER_ADMIN }, // 不能删除超管
+                }
             });
-            break;
+            return { affected: count.count };
     }
 
     return { affected: userIds.length };
@@ -594,6 +601,25 @@ export async function getVipDistribution() {
         name: levelNames[d.vipLevel] || `等级 ${d.vipLevel}`,
         count: d._count.id
     })).sort((a, b) => b.level - a.level);
+}
+
+/**
+ * [V9.5] 获取用户状态统计数据
+ */
+export async function getUserStats() {
+    const [total, active, disabled, pending] = await Promise.all([
+        prisma.user.count(),
+        prisma.user.count({ where: { status: UserStatus.ACTIVE } }),
+        prisma.user.count({ where: { status: UserStatus.DISABLED } }),
+        prisma.user.count({ where: { status: UserStatus.PENDING } }),
+    ]);
+
+    return {
+        total,
+        active,
+        disabled,
+        pending
+    };
 }
 
 // ============================================================

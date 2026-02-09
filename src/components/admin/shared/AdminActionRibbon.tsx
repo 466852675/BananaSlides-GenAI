@@ -19,6 +19,7 @@ interface AdminActionRibbonProps {
     tagLabel?: string;
     subText?: string;
     onSubTextClick?: () => void;
+    unit?: string;
 }
 
 export const AdminActionRibbon: React.FC<AdminActionRibbonProps> = ({
@@ -28,7 +29,8 @@ export const AdminActionRibbon: React.FC<AdminActionRibbonProps> = ({
     variant = 'floating',
     tagLabel = 'BATCH',
     subText,
-    onSubTextClick
+    onSubTextClick,
+    unit = '订单数据'
 }) => {
     return (
         <AnimatePresence>
@@ -58,7 +60,7 @@ export const AdminActionRibbon: React.FC<AdminActionRibbonProps> = ({
                                     <div className="flex flex-col">
                                         <div className="flex items-center gap-2">
                                             <span className={`text-sm font-black tracking-tight leading-none ${variant === 'floating' ? '' : 'text-white'}`}>
-                                                已选中 {selectedCount} 项{variant === 'inline' ? '订单数据' : ''}
+                                                已选中 {selectedCount} 项{variant === 'inline' ? unit : ''}
                                             </span>
                                             {tagLabel && (
                                                 <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${variant === 'floating' ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400' : 'bg-white/10 border-white/10 text-white'}`}>

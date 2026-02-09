@@ -211,6 +211,37 @@ export async function deleteUser(id: string): Promise<void> {
     }
 }
 
+/**
+ * 批量用户操作
+ */
+export async function batchUserAction(
+    action: 'disable' | 'enable' | 'delete',
+    userIds: string[],
+    reason: string
+): Promise<{ affected: number }> {
+    const result = await client.post('/admin/users/batch', { action, userIds, reason }) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '批量操作失败');
+}
+
+/**
+ * 获取用户统计数据 (按状态)
+ */
+export async function getUserStats(): Promise<{
+    total: number;
+    active: number;
+    disabled: number;
+    pending: number;
+}> {
+    const result = await client.get('/admin/users/stats') as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取用户统计失败');
+}
+
 // ============================================================
 // 订单管理 API
 // ============================================================
@@ -647,11 +678,29 @@ export interface Lead {
     industry: string | null;
     needs: string | null;
     status: 'PENDING' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'CLOSED';
+    priority: 'LOW' | 'MEDIUM' | 'HIGH';
+    assigneeId: string | null;
+    assignee?: {
+        nickname: string;
+        avatar?: string;
+    };
+    nextFollowUpAt: string | null;
+    convertedOrderId: string | null;
     notes: string | null;
     source: string | null;
     userId: string | null;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface LeadActivity {
+    id: string;
+    leadId: string;
+    type: 'CALL' | 'EMAIL' | 'MEETING' | 'NOTE' | 'SYSTEM';
+    content: string;
+    metadata?: string | null; // JSON for files, duration, etc.
+    operatorId: string;
+    createdAt: string;
 }
 
 export interface LeadListFilters {
@@ -707,6 +756,43 @@ export async function deleteLead(id: string): Promise<void> {
     if (!result.success) {
         throw new Error(result.error?.message || '删除线索失败');
     }
+}
+
+/**
+ * 获取线索跟进记录
+ */
+export async function getLeadActivities(leadId: string): Promise<LeadActivity[]> {
+    const result = await client.get(`/leads/${leadId}/activities`) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取跟进记录失败');
+}
+
+/**
+ * 创建跟进记录
+ */
+export async function createLeadActivity(leadId: string, data: {
+    type: string;
+    content: string;
+    metadata?: any;
+}): Promise<LeadActivity> {
+    const result = await client.post(`/leads/${leadId}/activities`, data) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '创建记录失败');
+}
+
+/**
+ * 分派线索负责人
+ */
+export async function assignLead(leadId: string, assigneeId: string | null): Promise<Lead> {
+    const result = await client.put(`/leads/${leadId}/assign`, { assigneeId }) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '分派线索失败');
 }
 
 // ============================================================

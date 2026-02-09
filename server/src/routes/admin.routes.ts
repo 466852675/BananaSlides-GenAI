@@ -25,6 +25,7 @@ router.delete('/ai-engine-rules/:id', requireSuperAdmin, AdminController.deleteE
 // 用户管理
 // ============================================================
 router.get('/users', AdminController.listUsers);
+router.get('/users/stats', AdminController.getUserStats);
 router.post('/users', authenticate, requireAdmin, requirePermission('admin.users.create'), AdminController.createUser); // 新增路由
 router.get('/users/:id', AdminController.getUser);
 router.put('/users/:id', authenticate, requireAdmin, requirePermission('admin.users.manage.role'), AdminController.updateUser);

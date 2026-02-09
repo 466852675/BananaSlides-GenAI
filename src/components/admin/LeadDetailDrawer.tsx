@@ -1,29 +1,12 @@
-import React, { useState } from 'react';
-import { User, Phone, Mail, Briefcase, Clock, MessageSquare, CheckCircle2, Trash2, ChevronRight, Calendar, Tag, FileText, Star, ShoppingBag, Fingerprint, Activity, DollarSign, Globe, Copy } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { User, Phone, Mail, Briefcase, Clock, MessageSquare, CheckCircle2, XCircle, Trash2, ChevronRight, Calendar, Tag, FileText, Star, ShoppingBag, Fingerprint, Activity, DollarSign, Globe, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { PermissionTooltip } from '../PermissionTooltip';
 import { AdminDrawer } from './shared';
+import * as AdminAPI from '../../api/admin';
 // @ts-ignore
 import { toast } from 'react-hot-toast';
-
-interface Lead {
-    id: string;
-    name: string;
-    company: string;
-    position: string;
-    phone: string;
-    email?: string;
-    industry?: string;
-    teamSize?: string;
-    status: string;
-    needs?: string;
-    notes?: string;
-    createdAt: string;
-    source?: string;
-    convertedOrderId?: string;
-    convertedAt?: string;
-}
 
 interface FollowUpRecord {
     id: string;
@@ -37,66 +20,84 @@ interface FollowUpRecord {
 }
 
 interface LeadDetailDrawerProps {
-    lead: Lead | null;
+    lead: AdminAPI.Lead | null;
     isOpen: boolean;
     onClose: () => void;
     onExpand?: () => void;
-    onEdit?: (lead: Lead) => void;
-    onDelete?: (id: string, name: string) => void;
-    onMarkContacted?: (lead: Lead) => void;
+    onDelete?: (id, name: string) => void;
+    onStatusUpdate?: (lead: AdminAPI.Lead, status: string) => void;
 }
 
 const TYPE_CONFIG: Record<string, { icon: string; label: string; bgColor: string; textColor: string }> = {
-    phone: { icon: '📞', label: '电话沟通', bgColor: 'bg-violet-50', textColor: 'text-violet-600' },
-    email: { icon: '📧', label: '发送邮件', bgColor: 'bg-blue-50', textColor: 'text-blue-600' },
-    meeting: { icon: '🤝', label: '线下会面', bgColor: 'bg-emerald-50', textColor: 'text-emerald-600' },
-    note: { icon: '📝', label: '备注记录', bgColor: 'bg-slate-50', textColor: 'text-slate-600' }
+    CALL: { icon: '📞', label: '电话沟通', bgColor: 'bg-violet-50', textColor: 'text-violet-600' },
+    EMAIL: { icon: '📧', label: '发送邮件', bgColor: 'bg-blue-50', textColor: 'text-blue-600' },
+    MEETING: { icon: '🤝', label: '线下会面', bgColor: 'bg-emerald-50', textColor: 'text-emerald-600' },
+    NOTE: { icon: '📝', label: '备注记录', bgColor: 'bg-slate-50', textColor: 'text-slate-600' },
+    SYSTEM: { icon: '⚙️', label: '系统日志', bgColor: 'bg-amber-50', textColor: 'text-amber-600' }
 };
-
-const MOCK_FOLLOW_UPS: FollowUpRecord[] = [
-    {
-        id: '1',
-        type: 'phone',
-        content: '客户对私有化部署方案很感兴趣，但对价格有疑虑。需要申请集团折扣，预计可以给到8折。客户表示需要内部讨论后回复。',
-        createdAt: new Date().toISOString(),
-        createdBy: '小王',
-        duration: '15分钟',
-        nextFollowUp: '明天 10:00'
-    },
-    {
-        id: '2',
-        type: 'email',
-        content: '发送产品手册和私有化部署方案，包含客户案例和定价说明。',
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-        createdBy: '小李',
-        attachments: ['产品手册_v2.pdf', '部署方案.pdf']
-    },
-    {
-        id: '3',
-        type: 'note',
-        content: '客户通过官网表单咨询，需求：企业账号批量采购、API对接、私有化部署方案。',
-        createdAt: new Date(Date.now() - 172800000).toISOString(),
-        createdBy: '系统'
-    }
-];
 
 export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
     lead,
     isOpen,
     onClose,
     onExpand,
-    onEdit,
     onDelete,
-    onMarkContacted
+    onStatusUpdate
 }) => {
     const [activeTab, setActiveTab] = useState<'timeline' | 'info' | 'files'>('timeline');
     const [isAddingNote, setIsAddingNote] = useState(false);
     const [newNote, setNewNote] = useState('');
+    const [noteType, setNoteType] = useState<string>('NOTE');
+    const [activities, setActivities] = useState<AdminAPI.LeadActivity[]>([]);
+    const [loadingActivities, setLoadingActivities] = useState(false);
+    const noteInputRef = useRef<HTMLTextAreaElement>(null);
 
-    const handleAddNote = () => {
-        if (newNote.trim()) {
+    // 加载动态
+    useEffect(() => {
+        if (isOpen && lead?.id) {
+            loadActivities();
+        }
+    }, [isOpen, lead?.id]);
+
+    // 自动聚焦输入框
+    useEffect(() => {
+        if (isAddingNote && noteInputRef.current) {
+            noteInputRef.current.focus();
+        }
+    }, [isAddingNote]);
+
+    const loadActivities = async () => {
+        if (!lead?.id) return;
+        setLoadingActivities(true);
+        try {
+            const data = await AdminAPI.getLeadActivities(lead.id);
+            setActivities(data);
+        } catch (error) {
+            console.error('Load activities error:', error);
+        } finally {
+            setLoadingActivities(false);
+        }
+    };
+
+    const startAddNote = () => {
+        setActiveTab('timeline');
+        setIsAddingNote(true);
+    };
+
+    const handleAddNote = async () => {
+        if (!lead?.id || !newNote.trim()) return;
+
+        try {
+            await AdminAPI.createLeadActivity(lead.id, {
+                type: noteType,
+                content: newNote.trim()
+            });
+            toast.success('记录已添加');
             setNewNote('');
             setIsAddingNote(false);
+            loadActivities(); // 刷新列表
+        } catch (error: any) {
+            toast.error(error.message || '添加记录失败');
         }
     };
 
@@ -125,37 +126,56 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
             }
             footer={
                 <div className="flex items-center gap-3 w-full">
-                    <PermissionTooltip requiredPermission="admin.leads.manage.note" className="flex-1">
-                        <button
-                            onClick={() => onEdit?.(lead)}
-                            className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] tracking-widest uppercase hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                        >
-                            <MessageSquare size={16} />
-                            记跟进
-                        </button>
-                    </PermissionTooltip>
-
-                    {lead.status === 'PENDING' && (
-                        <PermissionTooltip requiredPermission="admin.leads.manage.status" className="flex-[2]">
+                    {/* 第一阶段：记跟进 (仅针对未归档线索) */}
+                    {['PENDING', 'CONTACTED', 'QUALIFIED'].includes(lead.status) && (
+                        <PermissionTooltip requiredPermission="admin.leads.manage.note" className="flex-1">
                             <button
-                                onClick={() => onMarkContacted?.(lead)}
-                                className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-black text-[10px] tracking-widest uppercase hover:shadow-xl hover:shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+                                onClick={startAddNote}
+                                className="w-full py-3 bg-violet-50 text-violet-600 rounded-xl font-black text-[10px] tracking-widest uppercase hover:bg-violet-100 transition-all flex items-center justify-center gap-2 border border-violet-100/50"
                             >
-                                <CheckCircle2 size={16} strokeWidth={3} />
-                                标记为已成功联络
+                                <MessageSquare size={16} />
+                                记跟进
                             </button>
                         </PermissionTooltip>
                     )}
 
-                    <PermissionTooltip requiredPermission="admin.leads.delete">
-                        <button
-                            onClick={() => onDelete?.(lead.id, lead.name)}
-                            className="p-3 text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                            title="删除线索"
-                        >
-                            <Trash2 size={20} />
-                        </button>
-                    </PermissionTooltip>
+                    {/* 第二阶段：人工判定高意向 */}
+                    {(lead.status === 'PENDING' || lead.status === 'CONTACTED') && (
+                        <PermissionTooltip requiredPermission="admin.leads.manage.status" className="flex-1">
+                            <button
+                                onClick={() => onStatusUpdate?.(lead, 'QUALIFIED')}
+                                className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-[10px] tracking-widest uppercase hover:shadow-xl hover:shadow-indigo-500/25 transition-all flex items-center justify-center gap-2"
+                            >
+                                <CheckCircle2 size={16} strokeWidth={3} />
+                                确定高意向
+                            </button>
+                        </PermissionTooltip>
+                    )}
+
+                    {/* 第三阶段：关闭线索 */}
+                    {lead.status !== 'CLOSED' && lead.status !== 'CONVERTED' && (
+                        <PermissionTooltip requiredPermission="admin.leads.manage.status">
+                            <button
+                                onClick={() => onStatusUpdate?.(lead, 'CLOSED')}
+                                className="p-3 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                                title="关闭线索"
+                            >
+                                <XCircle size={20} />
+                            </button>
+                        </PermissionTooltip>
+                    )}
+
+                    {['PENDING', 'CONTACTED', 'QUALIFIED'].includes(lead.status) && (
+                        <PermissionTooltip requiredPermission="admin.leads.delete">
+                            <button
+                                onClick={() => onDelete?.(lead.id, lead.name)}
+                                className="p-3 text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                                title="删除线索"
+                            >
+                                <Trash2 size={20} />
+                            </button>
+                        </PermissionTooltip>
+                    )}
                 </div>
             }
         >
@@ -179,12 +199,14 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
                 <div className="flex items-center gap-3 mt-6">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border uppercase ${lead.status === 'PENDING' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
                         lead.status === 'CONTACTED' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                            lead.status === 'CONVERTED' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                                'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                            lead.status === 'QUALIFIED' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' :
+                                lead.status === 'CONVERTED' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                                    'bg-slate-500/20 text-slate-400 border-slate-500/30'
                         }`}>
                         {lead.status === 'PENDING' ? '待处理' :
                             lead.status === 'CONTACTED' ? '已跟进' :
-                                lead.status === 'CONVERTED' ? '已转单' : '已关闭'}
+                                lead.status === 'QUALIFIED' ? '高意向' :
+                                    lead.status === 'CONVERTED' ? '已转单' : '已关闭'}
                     </span>
                     <div className="h-4 w-px bg-white/10" />
                     <div className="flex items-center gap-1">
@@ -220,28 +242,25 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
                 {activeTab === 'timeline' && (
                     <div className="space-y-6">
                         {/* Quick Note Input */}
-                        {!isAddingNote ? (
-                            <button
-                                onClick={() => setIsAddingNote(true)}
-                                className="w-full py-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all font-black text-[10px] tracking-widest uppercase flex items-center justify-center gap-2"
-                            >
-                                <MessageSquare size={14} />
-                                Add follow-up record
-                            </button>
-                        ) : (
+                        {isAddingNote && (
                             <AdminDrawer.Card className="animate-in zoom-in-95 duration-300">
                                 <textarea
+                                    ref={noteInputRef}
                                     value={newNote}
                                     onChange={(e) => setNewNote(e.target.value)}
-                                    placeholder="Enter follow-up details..."
+                                    placeholder="输入跟进细节或备注信息..."
                                     className="w-full text-sm bg-slate-50 border border-slate-100 rounded-2xl p-4 min-h-[100px] focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none font-medium"
                                 />
                                 <div className="flex items-center justify-between mt-4">
-                                    <select className="pl-3 pr-8 py-2 text-[10px] font-black bg-slate-50 border border-slate-100 rounded-xl outline-none appearance-none cursor-pointer tracking-widest uppercase">
-                                        <option value="phone">📞 Phone</option>
-                                        <option value="email">📧 Email</option>
-                                        <option value="meeting">🤝 Meeting</option>
-                                        <option value="note">📝 Note</option>
+                                    <select
+                                        value={noteType}
+                                        onChange={(e) => setNoteType(e.target.value)}
+                                        className="pl-3 pr-8 py-2 text-[10px] font-black bg-slate-50 border border-slate-100 rounded-xl outline-none appearance-none cursor-pointer tracking-widest uppercase"
+                                    >
+                                        <option value="PHONE">📞 Phone</option>
+                                        <option value="EMAIL">📧 Email</option>
+                                        <option value="MEETING">🤝 Meeting</option>
+                                        <option value="NOTE">📝 Note</option>
                                     </select>
                                     <div className="flex gap-2">
                                         <button
@@ -262,43 +281,45 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
                         )}
 
                         {/* Timeline Items */}
-                        <AdminDrawer.Section title="最近动态 (Activities)" icon={Clock}>
+                        <AdminDrawer.Section title="动态追踪 (Live Activities)" icon={Activity}>
                             <div className="relative space-y-4 pl-4 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
-                                {MOCK_FOLLOW_UPS.map((record) => {
-                                    const config = TYPE_CONFIG[record.type];
+                                {loadingActivities ? (
+                                    <div className="py-8 text-center text-slate-400 animate-pulse font-black text-[10px] tracking-widest uppercase">
+                                        Loading historical records...
+                                    </div>
+                                ) : activities.length === 0 ? (
+                                    <div className="py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center">
+                                        <div className="text-2xl mb-2">🧊</div>
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No activities recorded yet</div>
+                                    </div>
+                                ) : activities.map((record) => {
+                                    const config = TYPE_CONFIG[record.type as keyof typeof TYPE_CONFIG] || TYPE_CONFIG.NOTE;
                                     return (
-                                        <AdminDrawer.Card key={record.id} className="relative group hover:border-indigo-100 transition-colors">
-                                            <div className="flex items-center justify-between mb-3">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${config.bgColor} ${config.textColor}`}>
-                                                        {config.label}
-                                                    </span>
-                                                    <span className="text-[10px] font-mono text-slate-300">
-                                                        {format(new Date(record.createdAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
-                                                    </span>
-                                                </div>
-                                                {record.duration && (
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                                                        <Clock size={10} /> {record.duration}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-sm text-slate-600 leading-relaxed font-bold">
-                                                {record.content}
-                                            </p>
-                                            <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 uppercase">
-                                                        {record.createdBy.charAt(0)}
+                                        <AdminDrawer.Card key={record.id} className="relative group hover:border-indigo-100 transition-colors shadow-sm" noPadding>
+                                            <div className="p-4 border-l-4 border-indigo-500/30">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${config.bgColor} ${config.textColor}`}>
+                                                            {config.label}
+                                                        </span>
+                                                        <span className="text-[10px] font-mono text-slate-300">
+                                                            {format(new Date(record.createdAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
+                                                        </span>
                                                     </div>
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">BY {record.createdBy}</span>
                                                 </div>
-                                                {record.nextFollowUp && (
-                                                    <div className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded flex items-center gap-1.5 border border-indigo-100">
-                                                        <Calendar size={10} />
-                                                        <span className="text-[10px] font-black tracking-widest uppercase">Next: {record.nextFollowUp}</span>
+                                                <p className="text-sm text-slate-700 leading-relaxed font-bold">
+                                                    {record.content}
+                                                </p>
+                                                <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 uppercase">
+                                                            A
+                                                        </div>
+                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                            {record.type === 'SYSTEM' ? 'SYSTEM' : 'ADMIN'}
+                                                        </span>
                                                     </div>
-                                                )}
+                                                </div>
                                             </div>
                                         </AdminDrawer.Card>
                                     );
