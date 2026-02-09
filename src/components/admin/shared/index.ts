@@ -11,3 +11,4 @@ export * from './AdminActionRibbon';
 export * from './AdminDashboardItems';
 export * from './AdminFormControls';
 export * from './AdminDrawer';
+export * from './AdminAvatar';

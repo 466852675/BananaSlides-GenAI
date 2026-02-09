@@ -58,9 +58,13 @@ server/NUL
 # AI Agent contexts and workflows
 .claude/
 .sisyphus/
-.spec-workflow/
 .trae/
 contexts/
+
+# Spec workflow - 保留模板，忽略个人工作文件
+.spec-workflow/drafts/
+.spec-workflow/notepads/
+.spec-workflow/plans/
 
 # ============================================
 # 建议添加的配置
@@ -108,3 +112,43 @@ $RECYCLE.BIN/
 
 # Backups
 *.backup
+
+# ============================================
+# 数据库备份和恢复文件
+# ============================================
+*.bak
+*.bak.*
+*.recovered
+*.precious
+*.before_fix
+server/prisma/*.bak
+server/prisma/*.bak.*
+server/prisma/*.recovered
+server/prisma/*.precious
+server/prisma/*.before_fix
+
+# ============================================
+# Playwright 测试产物
+# ============================================
+test-results/
+playwright-report/
+blob-report/
+
+# ============================================
+# Vite 缓存
+# ============================================
+node_modules/.vite/
+
+# ============================================
+# 本地脚本和工具
+# ============================================
+scripts/*.bat
+scripts/*.ps1
+scripts/*.sh
+!scripts/脚本使用说明.md
+
+# ============================================
+# 文档归档
+# ============================================
+docs/archive/
+docs/completed-tasks/

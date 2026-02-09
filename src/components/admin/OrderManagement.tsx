@@ -282,16 +282,35 @@ export const OrderManagement: React.FC = () => {
                         <p className="text-[10px] text-slate-400 font-mono tracking-tighter leading-none">{order.orderNo || 'NO_LINK'}</p>
 
                         {/* VIP Level Change Indicator */}
-                        {order.beforeVipLevel !== null && order.afterVipLevel !== null && order.beforeVipLevel !== undefined && order.afterVipLevel !== undefined && (
-                            <>
-                                <span className="text-[10px] text-slate-200 mx-0.5">|</span>
-                                <div className="flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100">
-                                    <span className="text-[9px] font-bold text-slate-400">Lv.{order.beforeVipLevel}</span>
-                                    <span className="text-[9px] text-amber-400">→</span>
-                                    <span className="text-[9px] font-black text-amber-600">Lv.{order.afterVipLevel}</span>
-                                </div>
-                            </>
-                        )}
+                        {(() => {
+                            const isAdmin = order.user?.role === 'ADMIN' || order.user?.role === 'SUPER_ADMIN';
+                            const fixedVip = order.user?.role === 'SUPER_ADMIN' ? 10 : order.user?.role === 'ADMIN' ? 9 : null;
+
+                            if (isAdmin && fixedVip !== null) {
+                                // 管理员角色：显示固定VIP等级
+                                return (
+                                    <>
+                                        <span className="text-[10px] text-slate-200 mx-0.5">|</span>
+                                        <div className="flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100">
+                                            <span className="text-[9px] font-black text-amber-600">Lv.{fixedVip}</span>
+                                        </div>
+                                    </>
+                                );
+                            } else if (order.beforeVipLevel !== null && order.afterVipLevel !== null && order.beforeVipLevel !== undefined && order.afterVipLevel !== undefined) {
+                                // 非管理员：显示VIP变化
+                                return (
+                                    <>
+                                        <span className="text-[10px] text-slate-200 mx-0.5">|</span>
+                                        <div className="flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-100">
+                                            <span className="text-[9px] font-bold text-slate-400">Lv.{order.beforeVipLevel}</span>
+                                            <span className="text-[9px] text-amber-400">→</span>
+                                            <span className="text-[9px] font-black text-amber-600">Lv.{order.afterVipLevel}</span>
+                                        </div>
+                                    </>
+                                );
+                            }
+                            return null;
+                        })()}
                     </div>
                 </div>
             )

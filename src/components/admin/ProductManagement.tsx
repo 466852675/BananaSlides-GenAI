@@ -581,31 +581,32 @@ export const ProductManagement = React.forwardRef<ProductManagementHandle>((_, r
                     />
 
                     <div className="space-y-8">
-                        {/* Section 1: Type Selection */}
                         <AdminDrawer.Section title="商品识别属性" icon={Layers}>
-                            <AdminDrawer.Card className="grid grid-cols-2 gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, type: 'POINTS_PACKAGE' })}
-                                    className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${formData.type === 'POINTS_PACKAGE'
-                                        ? 'border-indigo-500 bg-indigo-50/50 text-indigo-700 shadow-sm'
-                                        : 'border-slate-100 hover:border-slate-200 text-slate-400'
-                                        }`}
-                                >
-                                    <Coins size={20} />
-                                    <span className="font-bold text-sm text-left">积分加油包</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, type: 'VIP_MONTHLY' })}
-                                    className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${formData.type === 'VIP_MONTHLY'
-                                        ? 'border-amber-500 bg-amber-50/50 text-amber-700 shadow-sm'
-                                        : 'border-slate-100 hover:border-slate-200 text-slate-400'
-                                        }`}
-                                >
-                                    <Crown size={20} />
-                                    <span className="font-bold text-sm text-left">VIP 会员</span>
-                                </button>
+                            <AdminDrawer.Card>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, type: 'POINTS_PACKAGE' })}
+                                        className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${formData.type === 'POINTS_PACKAGE'
+                                            ? 'border-indigo-500 bg-indigo-50/50 text-indigo-700 shadow-sm'
+                                            : 'border-slate-100 hover:border-slate-200 text-slate-400'
+                                            }`}
+                                    >
+                                        <Coins size={20} />
+                                        <span className="font-bold text-sm text-left">积分加油包</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, type: 'VIP_MONTHLY' })}
+                                        className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all ${formData.type === 'VIP_MONTHLY'
+                                            ? 'border-amber-500 bg-amber-50/50 text-amber-700 shadow-sm'
+                                            : 'border-slate-100 hover:border-slate-200 text-slate-400'
+                                            }`}
+                                    >
+                                        <Crown size={20} />
+                                        <span className="font-bold text-sm text-left">VIP 会员</span>
+                                    </button>
+                                </div>
                             </AdminDrawer.Card>
                         </AdminDrawer.Section>
 

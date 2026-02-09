@@ -1,9 +1,9 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Copy, Clock, CheckCircle, XCircle, RefreshCcw, AlertTriangle, User, Box, DollarSign, Shield, CreditCard, Activity, ChevronRight, Loader2 } from 'lucide-react';
+import { Copy, Clock, CheckCircle, XCircle, RefreshCcw, AlertTriangle, User, Box, DollarSign, Shield, CreditCard, Activity, ChevronRight, Loader2, ShoppingBag } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import * as AdminApi from '../../../api/admin';
-import { AdminStatusBadge, AdminDrawer } from '../shared';
+import { AdminStatusBadge, AdminDrawer, AdminAvatar } from '../shared';
 
 interface OrderDetailDrawerProps {
     orderId: string | null;
@@ -43,7 +43,7 @@ export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({ orderId, i
             onClose={onClose}
             title="订单详情"
             description="查看完整的订单履约与支付记录"
-            width="wide"
+            width="narrow"
         >
             {isLoading ? (
                 <div className="flex flex-col items-center justify-center h-64 gap-4 text-slate-400">
@@ -57,44 +57,30 @@ export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({ orderId, i
                 </div>
             ) : (
                 <>
-                    {/* 1. Status & Key Metrics */}
-                    <div className="flex flex-wrap gap-4">
-                        <AdminDrawer.Card className="flex-1 min-w-[140px] relative group" noPadding>
-                            <div className="p-4 flex flex-col gap-2">
-                                <div className="absolute right-0 top-0 w-16 h-16 bg-gradient-to-br from-indigo-50 to-transparent rounded-bl-full -mr-4 -mt-4 opacity-50 group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Order Status</span>
-                                <div className="flex items-center gap-2 mt-auto">
-                                    <AdminStatusBadge
-                                        status={order.status}
-                                        configs={{
-                                            'PAID': { label: '已支付', className: 'bg-emerald-50 text-emerald-600 border-emerald-100', icon: <CheckCircle size={14} /> },
-                                            'PENDING': { label: '待支付', className: 'bg-amber-50 text-amber-600 border-amber-100', icon: <Clock size={14} /> },
-                                            'REFUNDED': { label: '已退款', className: 'bg-slate-50 text-slate-500 border-slate-200', icon: <RefreshCcw size={14} /> },
-                                            'CANCELLED': { label: '已取消', className: 'bg-rose-50 text-rose-400 border-rose-100' },
-                                            'FAILED': { label: '支付失败', className: 'bg-rose-50 text-rose-600 border-rose-100', icon: <XCircle size={14} /> }
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        </AdminDrawer.Card>
-
-                        <AdminDrawer.Card className="flex-1 min-w-[140px] relative" noPadding>
-                            <div className="p-4 flex flex-col gap-1">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Amount</span>
-                                <div className="flex items-baseline gap-1 mt-auto">
-                                    <span className="text-2xl font-black text-slate-900">¥{(order.finalPrice ?? 0).toFixed(2)}</span>
-                                    {order.discountPrice && parseFloat(String(order.discountPrice)) > 0 && (
-                                        <span className="text-xs text-slate-400 line-through">¥{order.originalPrice}</span>
-                                    )}
-                                </div>
-                                {order.discountPrice && parseFloat(String(order.discountPrice)) > 0 && (
-                                    <span className="text-[10px] text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded w-fit font-bold">
-                                        已优惠 ¥{order.discountPrice}
-                                    </span>
-                                )}
-                            </div>
-                        </AdminDrawer.Card>
-                    </div>
+                    <AdminDrawer.HeadCard
+                        title={`Order ${order.orderNo}`}
+                        description={formatDate(order.createdAt)}
+                        icon={ShoppingBag}
+                        variant="primary"
+                    >
+                        <div className="flex flex-wrap gap-2 mt-4">
+                            <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-white/20 text-white border border-white/20 uppercase flex items-center gap-1">
+                                <DollarSign size={10} /> ¥{(order.finalPrice ?? 0).toFixed(2)}
+                            </span>
+                            <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase border flex items-center gap-1 ${order.status === 'PAID' ? 'bg-emerald-500/20 text-emerald-200 border-emerald-500/50' :
+                                order.status === 'PENDING' ? 'bg-amber-500/20 text-amber-200 border-amber-500/50' :
+                                    'bg-white/10 text-white/60 border-white/10'
+                                }`}>
+                                {order.status === 'PAID' ? <CheckCircle size={10} /> : order.status === 'PENDING' ? <Clock size={10} /> : null}
+                                {order.status}
+                            </span>
+                            {order.discountPrice && parseFloat(String(order.discountPrice)) > 0 && (
+                                <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-rose-500/20 text-rose-200 border border-rose-500/50 uppercase">
+                                    Saved ¥{order.discountPrice}
+                                </span>
+                            )}
+                        </div>
+                    </AdminDrawer.HeadCard>
 
                     {/* 2. User & Risk Info */}
                     <AdminDrawer.Section
@@ -111,8 +97,8 @@ export const OrderDetailDrawer: React.FC<OrderDetailDrawerProps> = ({ orderId, i
                     >
                         <AdminDrawer.Card noPadding>
                             <div className="p-4 flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 text-lg font-black shrink-0 font-sans">
-                                    {order.user?.avatar ? <img src={order.user.avatar} className="w-full h-full rounded-full object-cover" /> : (order.user?.nickname?.[0]?.toUpperCase() || 'U')}
+                                <div className="shrink-0">
+                                    <AdminAvatar src={order.user?.avatar} fallback={order.user?.nickname || order.user?.email} size="lg" className="bg-indigo-50 text-indigo-600 border border-indigo-100" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">

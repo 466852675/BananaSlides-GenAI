@@ -63,8 +63,8 @@ export const RoleManagement: React.FC = () => {
 
     // Merge backend roles with frontend definitions to ensure consistent UI for new roles
     const displayRoles = [
-        { id: 'SUPER_ADMIN', name: '系统管理员', description: '拥有系统所有权限及其最高管理权', icon: <Lock className="text-amber-500" size={24} />, color: 'amber' },
-        { id: 'ADMIN', name: '业务管理员', description: '负责日常业务运营与用户管理', icon: <Shield className="text-blue-500" size={24} />, color: 'blue' },
+        { id: 'SUPER_ADMIN', name: '系统管理员 (Lv10)', description: '拥有系统所有权限及其最高管理权', icon: <Lock className="text-amber-500" size={24} />, color: 'amber' },
+        { id: 'ADMIN', name: '业务管理员 (Lv9)', description: '负责日常业务运营与用户管理', icon: <Shield className="text-blue-500" size={24} />, color: 'blue' },
         { id: 'ENTERPRISE', name: '企业用户 (Lv4)', description: '享有企业级权益与高级功能', icon: <Briefcase className="text-indigo-500" size={24} />, color: 'indigo' },
         { id: 'PREMIUM', name: '尊享用户 (Lv3)', description: '高级订阅用户，解锁顶配 AI 能力', icon: <Gem className="text-amber-500" size={24} />, color: 'amber' },
         { id: 'PROFESSIONAL', name: '专业用户 (Lv2)', description: '解锁高级排版与高清输出能力', icon: <Gem className="text-violet-500" size={24} />, color: 'violet' },

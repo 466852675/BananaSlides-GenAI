@@ -34,6 +34,17 @@ import { PermissionTooltip } from '../PermissionTooltip';
 import * as AdminAPI from '../../api/admin';
 import { useAuth } from '../../contexts/AuthContext';
 
+// 角色与VIP等级严格对应关系
+const ROLE_VIP_MAP: Record<string, number> = {
+    'USER': 0,
+    'BASIC': 1,
+    'PROFESSIONAL': 2,
+    'PREMIUM': 3,
+    'ENTERPRISE': 4,
+    'ADMIN': 9,
+    'SUPER_ADMIN': 10
+};
+
 export const UserManagement: React.FC = () => {
     const { user: currentUser } = useAuth(); // 获取当前登录管理员
     const [users, setUsers] = useState<AdminAPI.AdminUser[]>([]);
@@ -303,7 +314,9 @@ export const UserManagement: React.FC = () => {
             1: { label: 'Lv1', style: 'bg-blue-100 text-blue-600 border-blue-200' },
             2: { label: 'Lv2', style: 'bg-violet-100 text-violet-600 border-violet-200' },
             3: { label: 'Lv3', style: 'bg-amber-100 text-amber-600 border-amber-200' },
-            4: { label: 'Lv4', style: 'bg-indigo-100 text-indigo-600 border-indigo-200' }
+            4: { label: 'Lv4', style: 'bg-indigo-100 text-indigo-600 border-indigo-200' },
+            9: { label: 'Lv9', style: 'bg-rose-100 text-rose-600 border-rose-200' },
+            10: { label: 'Lv10', style: 'bg-amber-200 text-amber-800 border-amber-300' }
         };
         const { label, style } = config[level] || config[0];
         return (
@@ -388,13 +401,13 @@ export const UserManagement: React.FC = () => {
                             className="pl-7 pr-6 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 focus:bg-white focus:border-violet-500 outline-none appearance-none cursor-pointer hover:bg-white transition-all min-w-[85px]"
                         >
                             <option value="">角色</option>
-                            <option value="SUPER_ADMIN">中心管理</option>
-                            <option value="ADMIN">业务管理</option>
-                            <option value="ENTERPRISE">企业</option>
-                            <option value="PREMIUM">尊享</option>
-                            <option value="PROFESSIONAL">专业</option>
-                            <option value="BASIC">基础</option>
-                            <option value="USER">免费</option>
+                            <option value="SUPER_ADMIN">系统管理员 (Lv10)</option>
+                            <option value="ADMIN">业务管理员 (Lv9)</option>
+                            <option value="ENTERPRISE">企业用户 (Lv4)</option>
+                            <option value="PREMIUM">尊享用户 (Lv3)</option>
+                            <option value="PROFESSIONAL">专业用户 (Lv2)</option>
+                            <option value="BASIC">基础用户 (Lv1)</option>
+                            <option value="USER">免费用户 (Lv0)</option>
                         </select>
                         <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                             <Filter size={10} />
@@ -414,6 +427,8 @@ export const UserManagement: React.FC = () => {
                             <option value="2">Lv2 (专业)</option>
                             <option value="3">Lv3 (尊享)</option>
                             <option value="4">Lv4 (企业)</option>
+                            <option value="9">Lv9 (业务管理)</option>
+                            <option value="10">Lv10 (系统管理)</option>
                         </select>
                         <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                             <Filter size={10} />
@@ -610,7 +625,7 @@ export const UserManagement: React.FC = () => {
                                             <RoleBadge role={user.role} />
                                         </td>
                                         <td className="px-3 py-3 whitespace-nowrap">
-                                            <VipBadge level={user.vipLevel} />
+                                            <VipBadge level={ROLE_VIP_MAP[user.role] ?? user.vipLevel} />
                                         </td>
                                         <td className="px-3 py-3 whitespace-nowrap">
                                             <StatusBadge status={user.status} />

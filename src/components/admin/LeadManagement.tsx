@@ -247,10 +247,10 @@ export const LeadManagement: React.FC = () => {
                                         <MessageSquare size={16} />
                                     </button>
                                 </PermissionTooltip>
-                                {lead.status === 'PENDING' && (
+                                {lead.status !== 'CLOSED' && lead.status !== 'CONVERTED' && (
                                     <PermissionTooltip requiredPermission="admin.leads.manage.status">
-                                        <button onClick={() => handleStatusUpdate(lead, 'CONTACTED')} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="标记已联系">
-                                            <CheckCircle2 size={16} />
+                                        <button onClick={() => handleStatusUpdate(lead, 'CLOSED')} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors" title="关闭线索">
+                                            <X size={16} />
                                         </button>
                                     </PermissionTooltip>
                                 )}

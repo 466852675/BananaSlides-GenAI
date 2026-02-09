@@ -70,13 +70,17 @@ export const DrawerCard: React.FC<{
     );
 };
 
+import { AdminAvatar } from './AdminAvatar';
+
 export const DrawerHeadCard: React.FC<{
     title: string;
     description?: string;
     icon?: LucideIcon;
+    avatarUrl?: string | null;
+    avatarFallback?: string;
     variant?: 'primary' | 'warning' | 'danger' | 'info' | 'dark';
     children?: React.ReactNode;
-}> = ({ title, description, icon: Icon, variant = 'primary', children }) => {
+}> = ({ title, description, icon: Icon, avatarUrl, avatarFallback, variant = 'primary', children }) => {
     const variants = {
         primary: 'from-indigo-500 to-violet-600 text-white shadow-indigo-200',
         dark: 'from-slate-800 to-slate-900 text-white shadow-slate-200',
@@ -91,15 +95,19 @@ export const DrawerHeadCard: React.FC<{
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
             )}
             <div className="flex items-start gap-4 h-full relative z-10">
-                {Icon && (
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${variant === 'info' ? 'bg-white shadow-sm text-indigo-600' : 'bg-white/20 text-white'}`}>
-                        <Icon size={24} />
-                    </div>
-                )}
-                <div className="flex-1">
-                    <h4 className="text-lg font-black tracking-tight">{title}</h4>
+                <div className="shrink-0">
+                    <AdminAvatar
+                        src={avatarUrl}
+                        fallback={avatarFallback || (Icon ? undefined : title)}
+                        icon={Icon}
+                        size="lg"
+                        className={variant === 'info' ? 'bg-white shadow-sm ring-2 ring-white/50' : 'bg-white/20 ring-2 ring-white/20'}
+                    />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <h4 className="text-lg font-black tracking-tight truncate">{title}</h4>
                     {description && (
-                        <p className={`text-[10px] mt-1 font-bold uppercase tracking-wider ${variant === 'info' ? 'text-slate-400' : 'text-white/60'}`}>
+                        <p className={`text-[10px] mt-1 font-bold uppercase tracking-wider truncate ${variant === 'info' ? 'text-slate-400' : 'text-white/60'}`}>
                             {description}
                         </p>
                     )}

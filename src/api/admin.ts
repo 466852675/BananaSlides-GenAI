@@ -677,6 +677,7 @@ export interface Lead {
     teamSize: string | null;
     industry: string | null;
     needs: string | null;
+    score: number; // Added
     status: 'PENDING' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED' | 'CLOSED';
     priority: 'LOW' | 'MEDIUM' | 'HIGH';
     assigneeId: string | null;

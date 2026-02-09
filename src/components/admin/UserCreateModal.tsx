@@ -9,12 +9,22 @@ interface UserCreateModalProps {
     onSuccess: () => void;
 }
 
+// 角色与VIP等级严格对应关系
+const ROLE_VIP_MAP: Record<string, number> = {
+    'USER': 0,
+    'BASIC': 1,
+    'PROFESSIONAL': 2,
+    'PREMIUM': 3,
+    'ENTERPRISE': 4,
+    'ADMIN': 9,
+    'SUPER_ADMIN': 10
+};
+
 export const UserCreateModal: React.FC<UserCreateModalProps> = ({ isOpen, onClose, onSuccess }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [nickname, setNickname] = useState('');
     const [role, setRole] = useState('USER');
-    const [vipLevel, setVipLevel] = useState(0);
     const [points, setPoints] = useState(0);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -30,7 +40,7 @@ export const UserCreateModal: React.FC<UserCreateModalProps> = ({ isOpen, onClos
                 password,
                 nickname,
                 role,
-                vipLevel: Number(vipLevel),
+                vipLevel: ROLE_VIP_MAP[role] ?? 0,
                 points: Number(points)
             });
             onSuccess();
@@ -40,7 +50,7 @@ export const UserCreateModal: React.FC<UserCreateModalProps> = ({ isOpen, onClos
             setPassword('');
             setNickname('');
             setRole('USER');
-            setVipLevel(0);
+            // VIP等级由角色自动决定，无需重置
             setPoints(0);
         } catch (err: any) {
             setError(err.message || '创建用户失败');
@@ -152,31 +162,23 @@ export const UserCreateModal: React.FC<UserCreateModalProps> = ({ isOpen, onClos
                                         onChange={(e) => setRole(e.target.value)}
                                         className="w-full pl-12 pr-10 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[11px] font-black focus:bg-white focus:border-indigo-500 outline-none appearance-none cursor-pointer"
                                     >
-                                        <option value="USER">USER</option>
-                                        <option value="BASIC">BASIC</option>
-                                        <option value="PROFESSIONAL">PROFESSIONAL</option>
-                                        <option value="PREMIUM">PREMIUM</option>
-                                        <option value="ENTERPRISE">ENTERPRISE</option>
-                                        <option value="ADMIN">ADMIN</option>
-                                        <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                                        <option value="USER">免费用户 (Lv0)</option>
+                                        <option value="BASIC">基础用户 (Lv1)</option>
+                                        <option value="PROFESSIONAL">专业用户 (Lv2)</option>
+                                        <option value="PREMIUM">尊享用户 (Lv3)</option>
+                                        <option value="ENTERPRISE">企业用户 (Lv4)</option>
+                                        <option value="ADMIN">业务管理员 (Lv9)</option>
+                                        <option value="SUPER_ADMIN">系统管理员 (Lv10)</option>
                                     </select>
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">VIP 等级</label>
+                                <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">VIP 等级（自动）</label>
                                 <div className="relative group text-left">
-                                    <Star className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
-                                    <select
-                                        value={vipLevel}
-                                        onChange={(e) => setVipLevel(Number(e.target.value))}
-                                        className="w-full pl-12 pr-10 py-3 bg-slate-50 border-2 border-slate-100 rounded-2xl text-[11px] font-black focus:bg-white focus:border-indigo-500 outline-none appearance-none cursor-pointer"
-                                    >
-                                        <option value={0}>VIP 0</option>
-                                        <option value={1}>VIP 1</option>
-                                        <option value={2}>VIP 2</option>
-                                        <option value={3}>VIP 3</option>
-                                        <option value={4}>VIP 4</option>
-                                    </select>
+                                    <Star className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500 transition-colors" size={18} />
+                                    <div className="w-full pl-12 pr-4 py-3 bg-slate-100 border-2 border-slate-200 rounded-2xl text-[11px] font-black text-slate-600">
+                                        Lv{ROLE_VIP_MAP[role] ?? 0}
+                                    </div>
                                 </div>
                             </div>
                         </div>

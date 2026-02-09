@@ -326,7 +326,7 @@ export const RefundDetailDrawer: React.FC<RefundDetailDrawerProps> = ({
             onClose={onClose}
             title="智能决策座舱"
             description="Decision Intelligence Hub & Audit Pipeline"
-            width="wide"
+            width="narrow"
             footer={auditFooter}
             headerExtra={
                 data?.refund && (
@@ -358,23 +358,15 @@ export const RefundDetailDrawer: React.FC<RefundDetailDrawerProps> = ({
                     <AdminDrawer.HeadCard
                         title={data.userProfile.nickname || data.userProfile.email || 'Anonymous'}
                         description={data.userProfile.email || 'No email attached'}
-                        icon={UserCircle2}
+                        avatarFallback={data.userProfile.nickname || data.userProfile.email || 'User'}
                         variant="dark"
                     >
-                        <div className="grid grid-cols-4 gap-3 mt-6">
-                            <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 text-center">
-                                <p className="text-[9px] text-white/40 font-black uppercase mb-1 tracking-tighter">Account Age</p>
-                                <p className="text-sm font-black text-white">{data.userProfile.accountAgeDays} D</p>
-                            </div>
-                            <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 text-center">
+                        <div className="grid grid-cols-2 gap-3 mt-6">
+                            <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 flex flex-col items-center justify-center mx-auto w-full">
                                 <p className="text-[9px] text-white/40 font-black uppercase mb-1 tracking-tighter">VIP Level</p>
                                 <p className="text-sm font-black text-white">Lv.{data.userProfile.vipLevel}</p>
                             </div>
-                            <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 text-center">
-                                <p className="text-[9px] text-white/40 font-black uppercase mb-1 tracking-tighter">Points</p>
-                                <p className="text-sm font-black text-white">{data.userProfile.currentPoints}</p>
-                            </div>
-                            <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 text-center">
+                            <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 flex flex-col items-center justify-center mx-auto w-full">
                                 <p className="text-[9px] text-white/40 font-black uppercase mb-1 tracking-tighter">Risk Score</p>
                                 <p className={`text-sm font-black ${data.userProfile.riskScore >= 50 ? 'text-rose-400' : 'text-emerald-400'}`}>
                                     {data.userProfile.riskScore}
@@ -389,7 +381,7 @@ export const RefundDetailDrawer: React.FC<RefundDetailDrawerProps> = ({
                     {/* Request Details */}
                     <AdminDrawer.Section title="退款申请详情" description="Order & request verification" icon={FileText}>
                         <AdminDrawer.Card className="space-y-4">
-                            <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                            <div className="grid grid-cols-1 gap-y-4">
                                 <AdminDrawer.KeyValue label="退款流水号" value={data.refund.refundNo} />
                                 <AdminDrawer.KeyValue label="关联订单号" value={data.order.orderNo} />
                                 <AdminDrawer.KeyValue label="申请金额" value={`¥${data.refund.amount.toFixed(2)}`} valueClassName="text-rose-600 font-black" />
@@ -430,7 +422,7 @@ export const RefundDetailDrawer: React.FC<RefundDetailDrawerProps> = ({
                                     <span className="text-emerald-500">Suggested Refund: ¥{data.equityAudit.suggestedRefundAmount.toFixed(2)}</span>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-2 gap-3">
                                 <AdminDrawer.Card className="text-center py-4 bg-slate-50/50" noPadding>
                                     <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Points Granted</p>
                                     <p className="text-lg font-black text-slate-800">{data.equityAudit.pointsGranted}</p>
@@ -439,7 +431,7 @@ export const RefundDetailDrawer: React.FC<RefundDetailDrawerProps> = ({
                                     <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Points Used</p>
                                     <p className="text-lg font-black text-slate-800">{data.equityAudit.totalConsumedPoints}</p>
                                 </AdminDrawer.Card>
-                                <AdminDrawer.Card className="text-center py-4 bg-slate-50/50" noPadding>
+                                <AdminDrawer.Card className="text-center py-4 bg-slate-50/50 col-span-2" noPadding>
                                     <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Projects Built</p>
                                     <p className="text-lg font-black text-slate-800">{data.equityAudit.projectsCreatedAfterOrder}</p>
                                 </AdminDrawer.Card>

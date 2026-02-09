@@ -73,6 +73,12 @@ router.put('/roles/:role/permissions', requireSuperAdmin, AdminController.update
 router.get('/system/stats', AdminController.getSystemStats);
 
 // ============================================================
+// 系统运行配置
+// ============================================================
+router.get('/config', AdminController.getSystemConfig);
+router.put('/config', authenticate, requireSuperAdmin, AdminController.updateSystemConfig);
+
+// ============================================================
 router.get('/growth/stats', AdminController.getGrowthStats);
 
 router.get('/refunds', authenticate, requireAdmin, requirePermission('admin.refunds.view'), async (req, res) => {

@@ -114,19 +114,37 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
             onClose={onClose}
             title="线索详情报告"
             description="View full lead engagement & context"
-            width="wide"
-            headerExtra={
-                <button
-                    onClick={onExpand}
-                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-full transition-all"
-                    title="展开完整视图"
-                >
-                    <ChevronRight size={20} />
-                </button>
-            }
+            width="narrow"
+
             footer={
-                <div className="flex items-center gap-3 w-full">
-                    {/* 第一阶段：记跟进 (仅针对未归档线索) */}
+                <div className="flex items-center gap-2 w-full">
+                    {/* Delete Action (Danger) */}
+                    {['PENDING', 'CONTACTED', 'QUALIFIED'].includes(lead.status) && (
+                        <PermissionTooltip requiredPermission="admin.leads.delete">
+                            <button
+                                onClick={() => onDelete?.(lead.id, lead.name)}
+                                className="p-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all border border-rose-100"
+                                title="删除线索"
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                        </PermissionTooltip>
+                    )}
+
+                    {/* Close Action (Secondary) */}
+                    {lead.status !== 'CLOSED' && lead.status !== 'CONVERTED' && (
+                        <PermissionTooltip requiredPermission="admin.leads.manage.status">
+                            <button
+                                onClick={() => onStatusUpdate?.(lead, 'CLOSED')}
+                                className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-slate-100 hover:text-slate-600 transition-all border border-slate-100"
+                                title="关闭线索"
+                            >
+                                <XCircle size={18} />
+                            </button>
+                        </PermissionTooltip>
+                    )}
+
+                    {/* Log Note Action (Primary/Secondary) */}
                     {['PENDING', 'CONTACTED', 'QUALIFIED'].includes(lead.status) && (
                         <PermissionTooltip requiredPermission="admin.leads.manage.note" className="flex-1">
                             <button
@@ -139,7 +157,7 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
                         </PermissionTooltip>
                     )}
 
-                    {/* 第二阶段：人工判定高意向 */}
+                    {/* Qualify Action (Primary) */}
                     {(lead.status === 'PENDING' || lead.status === 'CONTACTED') && (
                         <PermissionTooltip requiredPermission="admin.leads.manage.status" className="flex-1">
                             <button
@@ -151,70 +169,39 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
                             </button>
                         </PermissionTooltip>
                     )}
-
-                    {/* 第三阶段：关闭线索 */}
-                    {lead.status !== 'CLOSED' && lead.status !== 'CONVERTED' && (
-                        <PermissionTooltip requiredPermission="admin.leads.manage.status">
-                            <button
-                                onClick={() => onStatusUpdate?.(lead, 'CLOSED')}
-                                className="p-3 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
-                                title="关闭线索"
-                            >
-                                <XCircle size={20} />
-                            </button>
-                        </PermissionTooltip>
-                    )}
-
-                    {['PENDING', 'CONTACTED', 'QUALIFIED'].includes(lead.status) && (
-                        <PermissionTooltip requiredPermission="admin.leads.delete">
-                            <button
-                                onClick={() => onDelete?.(lead.id, lead.name)}
-                                className="p-3 text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                                title="删除线索"
-                            >
-                                <Trash2 size={20} />
-                            </button>
-                        </PermissionTooltip>
-                    )}
                 </div>
             }
         >
-            {/* Header: Identity Card */}
-            <AdminDrawer.HeadCard
-                title={lead.name}
-                description={lead.company || '个人客户'}
-                icon={User}
-                variant="dark"
-            >
-                <div className="flex flex-wrap gap-3 mt-4">
-                    <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 flex items-center gap-3 flex-1 min-w-[140px]">
-                        <Phone size={14} className="text-slate-300" />
-                        <span className="text-xs font-bold font-mono text-white/90">{lead.phone}</span>
+            <div className="space-y-6">
+                <AdminDrawer.HeadCard
+                    title={lead.name || 'Unknown Lead'}
+                    description={lead.company || lead.email || 'No company info'}
+                    avatarFallback={lead.name || lead.email || 'Lead'}
+                    variant="info"
+                >
+                    <div className="flex flex-wrap gap-2 mt-4">
+                        <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase border ${lead.status === 'PENDING' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                            lead.status === 'CONTACTED' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                lead.status === 'QUALIFIED' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                                    lead.status === 'CONVERTED' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' :
+                                        'bg-slate-50 text-slate-500 border-slate-200'
+                            }`}>
+                            {lead.status}
+                        </span>
+                        {lead.source && (
+                            <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-white/50 text-slate-500 border border-slate-200 uppercase flex items-center gap-1">
+                                <Globe size={10} /> {lead.source}
+                            </span>
+                        )}
+                        <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-white/50 text-slate-500 border border-slate-200 uppercase flex items-center gap-1">
+                            <Star size={10} className={lead.score >= 80 ? "text-amber-500 fill-amber-500" : "text-slate-300"} />
+                            Score: {lead.score}
+                        </span>
                     </div>
-                    <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/10 flex items-center gap-3 flex-1 min-w-[140px]">
-                        <Mail size={14} className="text-slate-300" />
-                        <span className="text-xs font-bold truncate text-white/90">{lead.email || 'N/A'}</span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3 mt-6">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border uppercase ${lead.status === 'PENDING' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
-                        lead.status === 'CONTACTED' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                            lead.status === 'QUALIFIED' ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' :
-                                lead.status === 'CONVERTED' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                                    'bg-slate-500/20 text-slate-400 border-slate-500/30'
-                        }`}>
-                        {lead.status === 'PENDING' ? '待处理' :
-                            lead.status === 'CONTACTED' ? '已跟进' :
-                                lead.status === 'QUALIFIED' ? '高意向' :
-                                    lead.status === 'CONVERTED' ? '已转单' : '已关闭'}
-                    </span>
-                    <div className="h-4 w-px bg-white/10" />
-                    <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4].map(i => <Star key={i} size={10} className="text-amber-400 fill-amber-400" />)}
-                        <Star size={10} className="text-white/20" />
-                    </div>
-                </div>
-            </AdminDrawer.HeadCard>
+                </AdminDrawer.HeadCard>
+
+
+            </div>
 
             {/* Tabs Navigation */}
             <div className="bg-white rounded-2xl p-1 shadow-sm border border-slate-200 flex sticky top-0 z-20">
@@ -292,38 +279,40 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
                                         <div className="text-2xl mb-2">🧊</div>
                                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">No activities recorded yet</div>
                                     </div>
-                                ) : activities.map((record) => {
-                                    const config = TYPE_CONFIG[record.type as keyof typeof TYPE_CONFIG] || TYPE_CONFIG.NOTE;
-                                    return (
-                                        <AdminDrawer.Card key={record.id} className="relative group hover:border-indigo-100 transition-colors shadow-sm" noPadding>
-                                            <div className="p-4 border-l-4 border-indigo-500/30">
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${config.bgColor} ${config.textColor}`}>
-                                                            {config.label}
-                                                        </span>
-                                                        <span className="text-[10px] font-mono text-slate-300">
-                                                            {format(new Date(record.createdAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <p className="text-sm text-slate-700 leading-relaxed font-bold">
-                                                    {record.content}
-                                                </p>
-                                                <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 uppercase">
-                                                            A
+                                ) : activities
+                                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                                    .map((record) => {
+                                        const config = TYPE_CONFIG[record.type as keyof typeof TYPE_CONFIG] || TYPE_CONFIG.NOTE;
+                                        return (
+                                            <AdminDrawer.Card key={record.id} className="relative group hover:border-indigo-100 transition-colors shadow-sm" noPadding>
+                                                <div className="p-4 border-l-4 border-indigo-500/30">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${config.bgColor} ${config.textColor}`}>
+                                                                {config.label}
+                                                            </span>
+                                                            <span className="text-[10px] font-mono text-slate-300">
+                                                                {format(new Date(record.createdAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
+                                                            </span>
                                                         </div>
-                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                                            {record.type === 'SYSTEM' ? 'SYSTEM' : 'ADMIN'}
-                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-slate-700 leading-relaxed font-bold">
+                                                        {record.content}
+                                                    </p>
+                                                    <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 uppercase">
+                                                                A
+                                                            </div>
+                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                                {record.type === 'SYSTEM' ? 'SYSTEM' : 'ADMIN'}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </AdminDrawer.Card>
-                                    );
-                                })}
+                                            </AdminDrawer.Card>
+                                        );
+                                    })}
                             </div>
                         </AdminDrawer.Section>
                     </div>
@@ -401,7 +390,7 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
                     </div>
                 )}
             </div>
-        </AdminDrawer>
+        </AdminDrawer >
     );
 };
 
