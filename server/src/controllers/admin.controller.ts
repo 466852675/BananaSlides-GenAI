@@ -658,250 +658,251 @@ export async function updateSystemConfig(req: Request, res: Response): Promise<v
             error: { code: 'INTERNAL_ERROR', message: '更新系统配置失败' }
         });
     }
+}
 
-    // ============================================================
-    // 增长运营统计
-    // ============================================================
+// ============================================================
+// 增长运营统计
+// ============================================================
 
-    import { growthService } from '../services/growth.service';
+import { growthService } from '../services/growth.service';
 
-    /**
-     * 获取增长运营统计
-     * GET /api/admin/growth/stats
-     */
-    export async function getGrowthStats(req: Request, res: Response): Promise<void> {
-        try {
-            const stats = await growthService.getGrowthStats();
-            res.json({ success: true, data: stats });
-        } catch (error) {
-            console.error('[Admin] 获取增长统计失败:', error);
-            res.status(500).json({
-                success: false,
-                error: { code: 'INTERNAL_ERROR', message: '获取增长统计失败' }
-            });
-        }
+/**
+ * 获取增长运营统计
+ * GET /api/admin/growth/stats
+ */
+export async function getGrowthStats(req: Request, res: Response): Promise<void> {
+    try {
+        const stats = await growthService.getGrowthStats();
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        console.error('[Admin] 获取增长统计失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取增长统计失败' }
+        });
     }
+}
 
-    // ============================================================
-    // 商品管理
-    // ============================================================
+// ============================================================
+// 商品管理
+// ============================================================
 
-    /**
-     * 获取商品列表 (管理端返回全量)
-     * GET /api/admin/products
-     */
-    export async function listProducts(req: Request, res: Response): Promise<void> {
-        try {
-            const products = await productService.listAllProducts();
-            res.json({ success: true, data: products });
-        } catch (error) {
-            console.error('[Admin] 获取商品列表失败:', error);
-            res.status(500).json({
-                success: false,
-                error: { code: 'INTERNAL_ERROR', message: '获取商品列表失败' }
-            });
-        }
+/**
+ * 获取商品列表 (管理端返回全量)
+ * GET /api/admin/products
+ */
+export async function listProducts(req: Request, res: Response): Promise<void> {
+    try {
+        const products = await productService.listAllProducts();
+        res.json({ success: true, data: products });
+    } catch (error) {
+        console.error('[Admin] 获取商品列表失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取商品列表失败' }
+        });
     }
+}
 
-    /**
-     * 创建商品
-     * POST /api/admin/products
-     */
-    export async function createProduct(req: Request, res: Response): Promise<void> {
-        try {
-            const { type, name, price, originalPrice, points, tags, features, roleToGrant, discountEnd, sortOrder, effectiveAt, period } = req.body;
+/**
+ * 创建商品
+ * POST /api/admin/products
+ */
+export async function createProduct(req: Request, res: Response): Promise<void> {
+    try {
+        const { type, name, price, originalPrice, points, tags, features, roleToGrant, discountEnd, sortOrder, effectiveAt, period } = req.body;
 
-            if (!type || !name || price === undefined || points === undefined) {
-                res.status(400).json({
-                    success: false,
-                    error: { code: 'INVALID_PARAMS', message: '缺少必要参数: type, name, price, points' }
-                });
-                return;
-            }
-
-            const product = await productService.createProduct({
-                type,
-                name,
-                price: Number(price),
-                originalPrice: originalPrice ? Number(originalPrice) : undefined,
-                points: Number(points),
-                tags,
-                features,
-                roleToGrant,
-                discountEnd: discountEnd ? new Date(discountEnd) : undefined,
-                sortOrder: sortOrder ? Number(sortOrder) : undefined,
-                createdById: req.user?.id,
-                effectiveAt: effectiveAt ? new Date(effectiveAt) : undefined,
-                period
-            });
-
-            res.json({ success: true, data: product });
-        } catch (error) {
-            console.error('[Admin] 创建商品失败:', error);
-            res.status(500).json({
-                success: false,
-                error: { code: 'INTERNAL_ERROR', message: '创建商品失败' }
-            });
-        }
-    }
-
-    /**
-     * 更新商品
-     * PUT /api/admin/products/:id
-     */
-    export async function updateProduct(req: Request, res: Response): Promise<void> {
-        try {
-            const id = req.params.id as string;
-            const updateData = req.body;
-
-            // 转换数值类型
-            if (updateData.price !== undefined) updateData.price = Number(updateData.price);
-            if (updateData.originalPrice !== undefined) updateData.originalPrice = Number(updateData.originalPrice);
-            if (updateData.points !== undefined) updateData.points = Number(updateData.points);
-            if (updateData.sortOrder !== undefined) updateData.sortOrder = Number(updateData.sortOrder);
-            if (updateData.discountEnd) updateData.discountEnd = new Date(updateData.discountEnd);
-            if (updateData.effectiveAt) updateData.effectiveAt = new Date(updateData.effectiveAt);
-
-            const product = await productService.updateProduct(id, updateData);
-            res.json({ success: true, data: product });
-        } catch (error) {
-            console.error('[Admin] 更新商品失败:', error);
-            res.status(500).json({
-                success: false,
-                error: { code: 'INTERNAL_ERROR', message: '更新商品失败' }
-            });
-        }
-    }
-
-    /**
-     * 删除商品
-     * DELETE /api/admin/products/:id
-     */
-    export async function deleteProduct(req: Request, res: Response): Promise<void> {
-        try {
-            const id = req.params.id as string;
-            await productService.deleteProduct(id);
-            res.json({ success: true, message: '商品已删除' });
-        } catch (error) {
-            console.error('[Admin] 删除商品失败:', error);
-            res.status(500).json({
-                success: false,
-                error: { code: 'INTERNAL_ERROR', message: '删除商品失败' }
-            });
-        }
-    }
-
-    // ============================================================
-    // AI 引擎规则管理
-    // ============================================================
-
-    /**
-     * 获取所有 AI 引擎规则
-     * GET /api/admin/ai-engine-rules
-     */
-    export async function listEngineRules(req: Request, res: Response): Promise<void> {
-        try {
-            const rules = await AdminService.listEngineRules();
-            res.json({ success: true, data: rules });
-        } catch (error: any) {
-            console.error('[Admin] 获取引擎规则列表失败:', error);
-            res.status(500).json({
-                success: false,
-                error: { code: 'INTERNAL_ERROR', message: '获取引擎规则失败' }
-            });
-        }
-    }
-
-    /**
-     * 创建 AI 引擎规则
-     * POST /api/admin/ai-engine-rules
-     */
-    export async function createEngineRule(req: Request, res: Response): Promise<void> {
-        try {
-            const { name, provider, config, description } = req.body;
-
-            if (!name || !provider || !config) {
-                res.status(400).json({
-                    success: false,
-                    error: { code: 'MISSING_FIELDS', message: '名称、厂商和配置为必填项' }
-                });
-                return;
-            }
-
-            const rule = await AdminService.createEngineRule({
-                name,
-                provider,
-                config: typeof config === 'string' ? config : JSON.stringify(config),
-                description
-            });
-
-            res.json({ success: true, data: rule });
-        } catch (error: any) {
-            console.error('[Admin] 创建引擎规则失败:', error);
+        if (!type || !name || price === undefined || points === undefined) {
             res.status(400).json({
                 success: false,
-                error: { code: 'CREATE_FAILED', message: error.message || '创建规则失败' }
+                error: { code: 'INVALID_PARAMS', message: '缺少必要参数: type, name, price, points' }
             });
+            return;
         }
+
+        const product = await productService.createProduct({
+            type,
+            name,
+            price: Number(price),
+            originalPrice: originalPrice ? Number(originalPrice) : undefined,
+            points: Number(points),
+            tags,
+            features,
+            roleToGrant,
+            discountEnd: discountEnd ? new Date(discountEnd) : undefined,
+            sortOrder: sortOrder ? Number(sortOrder) : undefined,
+            createdById: req.user?.id,
+            effectiveAt: effectiveAt ? new Date(effectiveAt) : undefined,
+            period
+        });
+
+        res.json({ success: true, data: product });
+    } catch (error) {
+        console.error('[Admin] 创建商品失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '创建商品失败' }
+        });
     }
+}
 
-    /**
-     * 更新 AI 引擎规则
-     * PUT /api/admin/ai-engine-rules/:id
-     */
-    export async function updateEngineRule(req: Request, res: Response): Promise<void> {
-        try {
-            const id = req.params.id as string;
-            const updateData = req.body;
+/**
+ * 更新商品
+ * PUT /api/admin/products/:id
+ */
+export async function updateProduct(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const updateData = req.body;
 
-            // 如果传入了 config 对象，序列化为字符串
-            if (updateData.config && typeof updateData.config !== 'string') {
-                updateData.config = JSON.stringify(updateData.config);
-            }
+        // 转换数值类型
+        if (updateData.price !== undefined) updateData.price = Number(updateData.price);
+        if (updateData.originalPrice !== undefined) updateData.originalPrice = Number(updateData.originalPrice);
+        if (updateData.points !== undefined) updateData.points = Number(updateData.points);
+        if (updateData.sortOrder !== undefined) updateData.sortOrder = Number(updateData.sortOrder);
+        if (updateData.discountEnd) updateData.discountEnd = new Date(updateData.discountEnd);
+        if (updateData.effectiveAt) updateData.effectiveAt = new Date(updateData.effectiveAt);
 
-            const rule = await AdminService.updateEngineRule(id, updateData);
-            res.json({ success: true, data: rule });
-        } catch (error: any) {
-            console.error('[Admin] 更新引擎规则失败:', error);
+        const product = await productService.updateProduct(id, updateData);
+        res.json({ success: true, data: product });
+    } catch (error) {
+        console.error('[Admin] 更新商品失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '更新商品失败' }
+        });
+    }
+}
+
+/**
+ * 删除商品
+ * DELETE /api/admin/products/:id
+ */
+export async function deleteProduct(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        await productService.deleteProduct(id);
+        res.json({ success: true, message: '商品已删除' });
+    } catch (error) {
+        console.error('[Admin] 删除商品失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '删除商品失败' }
+        });
+    }
+}
+
+// ============================================================
+// AI 引擎规则管理
+// ============================================================
+
+/**
+ * 获取所有 AI 引擎规则
+ * GET /api/admin/ai-engine-rules
+ */
+export async function listEngineRules(req: Request, res: Response): Promise<void> {
+    try {
+        const rules = await AdminService.listEngineRules();
+        res.json({ success: true, data: rules });
+    } catch (error: any) {
+        console.error('[Admin] 获取引擎规则列表失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取引擎规则失败' }
+        });
+    }
+}
+
+/**
+ * 创建 AI 引擎规则
+ * POST /api/admin/ai-engine-rules
+ */
+export async function createEngineRule(req: Request, res: Response): Promise<void> {
+    try {
+        const { name, provider, config, description } = req.body;
+
+        if (!name || !provider || !config) {
             res.status(400).json({
                 success: false,
-                error: { code: 'UPDATE_FAILED', message: error.message || '更新规则失败' }
+                error: { code: 'MISSING_FIELDS', message: '名称、厂商和配置为必填项' }
             });
+            return;
         }
-    }
 
-    /**
-     * 激活 AI 引擎规则
-     * POST /api/admin/ai-engine-rules/:id/activate
-     */
-    export async function activateEngineRule(req: Request, res: Response): Promise<void> {
-        try {
-            const id = req.params.id as string;
-            const rule = await AdminService.activateEngineRule(id);
-            res.json({ success: true, data: rule, message: '规则已激活' });
-        } catch (error: any) {
-            console.error('[Admin] 激活引擎规则失败:', error);
-            res.status(400).json({
-                success: false,
-                error: { code: 'ACTIVATE_FAILED', message: error.message || '激活规则失败' }
-            });
-        }
-    }
+        const rule = await AdminService.createEngineRule({
+            name,
+            provider,
+            config: typeof config === 'string' ? config : JSON.stringify(config),
+            description
+        });
 
-    /**
-     * 删除 AI 引擎规则
-     * DELETE /api/admin/ai-engine-rules/:id
-     */
-    export async function deleteEngineRule(req: Request, res: Response): Promise<void> {
-        try {
-            const id = req.params.id as string;
-            await AdminService.deleteEngineRule(id);
-            res.json({ success: true, message: '规则已删除' });
-        } catch (error: any) {
-            console.error('[Admin] 删除引擎规则失败:', error);
-            res.status(400).json({
-                success: false,
-                error: { code: 'DELETE_FAILED', message: error.message || '删除规则失败' }
-            });
-        }
+        res.json({ success: true, data: rule });
+    } catch (error: any) {
+        console.error('[Admin] 创建引擎规则失败:', error);
+        res.status(400).json({
+            success: false,
+            error: { code: 'CREATE_FAILED', message: error.message || '创建规则失败' }
+        });
     }
+}
+
+/**
+ * 更新 AI 引擎规则
+ * PUT /api/admin/ai-engine-rules/:id
+ */
+export async function updateEngineRule(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const updateData = req.body;
+
+        // 如果传入了 config 对象，序列化为字符串
+        if (updateData.config && typeof updateData.config !== 'string') {
+            updateData.config = JSON.stringify(updateData.config);
+        }
+
+        const rule = await AdminService.updateEngineRule(id, updateData);
+        res.json({ success: true, data: rule });
+    } catch (error: any) {
+        console.error('[Admin] 更新引擎规则失败:', error);
+        res.status(400).json({
+            success: false,
+            error: { code: 'UPDATE_FAILED', message: error.message || '更新规则失败' }
+        });
+    }
+}
+
+/**
+ * 激活 AI 引擎规则
+ * POST /api/admin/ai-engine-rules/:id/activate
+ */
+export async function activateEngineRule(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        const rule = await AdminService.activateEngineRule(id);
+        res.json({ success: true, data: rule, message: '规则已激活' });
+    } catch (error: any) {
+        console.error('[Admin] 激活引擎规则失败:', error);
+        res.status(400).json({
+            success: false,
+            error: { code: 'ACTIVATE_FAILED', message: error.message || '激活规则失败' }
+        });
+    }
+}
+
+/**
+ * 删除 AI 引擎规则
+ * DELETE /api/admin/ai-engine-rules/:id
+ */
+export async function deleteEngineRule(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id as string;
+        await AdminService.deleteEngineRule(id);
+        res.json({ success: true, message: '规则已删除' });
+    } catch (error: any) {
+        console.error('[Admin] 删除引擎规则失败:', error);
+        res.status(400).json({
+            success: false,
+            error: { code: 'DELETE_FAILED', message: error.message || '删除规则失败' }
+        });
+    }
+}

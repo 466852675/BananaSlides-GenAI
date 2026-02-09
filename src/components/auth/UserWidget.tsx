@@ -255,6 +255,17 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
 /**
  * 角色标签组件
  */
+// 角色与VIP等级严格对应关系
+const ROLE_VIP_MAP: Record<string, number> = {
+    'USER': 0,
+    'BASIC': 1,
+    'PROFESSIONAL': 2,
+    'PREMIUM': 3,
+    'ENTERPRISE': 4,
+    'ADMIN': 9,
+    'SUPER_ADMIN': 10
+};
+
 const UserRoleTag: React.FC<{ user: any, isAdmin: boolean, isSuperAdmin: boolean, compact?: boolean }> = ({ user, isAdmin, isSuperAdmin, compact }) => {
     // 逻辑：超级管理员 > 管理员 > 企业用户 > 专业用户 > 基础用户
     let label = "基础用户";
@@ -275,10 +286,29 @@ const UserRoleTag: React.FC<{ user: any, isAdmin: boolean, isSuperAdmin: boolean
         style = "bg-violet-50 text-violet-600 border-violet-200";
     }
 
+    // 计算VIP等级（根据角色）
+    const vipLevel = ROLE_VIP_MAP[user.role] ?? user.vipLevel ?? 0;
+
+    // VIP等级徽章样式
+    const getVipStyle = (level: number) => {
+        if (level >= 10) return "bg-amber-200 text-amber-800 border-amber-300";
+        if (level >= 9) return "bg-rose-100 text-rose-600 border-rose-200";
+        if (level >= 4) return "bg-indigo-100 text-indigo-600 border-indigo-200";
+        if (level >= 3) return "bg-amber-100 text-amber-600 border-amber-200";
+        if (level >= 2) return "bg-violet-100 text-violet-600 border-violet-200";
+        if (level >= 1) return "bg-blue-100 text-blue-600 border-blue-200";
+        return "bg-slate-100 text-slate-500 border-slate-200";
+    };
+
     return (
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg border text-xs font-bold whitespace-nowrap ${style} ${compact ? 'text-[10px] py-0' : ''}`}>
-            {label}
-        </span>
+        <div className="inline-flex items-center gap-1.5">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg border text-xs font-bold whitespace-nowrap ${style} ${compact ? 'text-[10px] py-0' : ''}`}>
+                {label}
+            </span>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-black whitespace-nowrap ${getVipStyle(vipLevel)} ${compact ? 'text-[9px] py-0' : ''}`}>
+                Lv{vipLevel}
+            </span>
+        </div>
     );
 };
 
