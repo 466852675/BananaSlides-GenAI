@@ -31,6 +31,7 @@ import { DeliveryShowcase } from './DeliveryShowcase';
 import { MagneticButton } from './MagneticButton';
 import { MacWindowHeader } from './MacWindowHeader';
 import { UserWidget } from './auth';
+import { NotificationBell } from './message';
 import { useAuth } from '../contexts/AuthContext';
 import { getProducts, Product } from '../api/admin';
 import { PurchaseModal } from './PurchaseModal';
@@ -403,6 +404,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                             >
                                 {isFullscreen ? <Minimize size={18} /> : <Maximize2 size={18} />}
                             </button>
+                            <div className="hidden md:block">
+                                {user && <NotificationBell />}
+                            </div>
                             <div className="hidden md:block">
                                 <UserWidget compact onEnterApp={onEnter} />
                             </div>

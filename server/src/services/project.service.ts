@@ -190,10 +190,24 @@ export class ProjectService {
             (data as any).updatedAt = new Date();
         }
 
-        return prisma.project.update({
+        const result = await prisma.project.update({
             where: { id },
             data: data
         });
+
+        // 检查是否刚刚完成 (状态变为 completed)
+        if (data.status === 'completed' && current?.status !== 'completed' && result.userId) {
+            // 异步发送通知，不阻塞主流程
+            import('./ai-notification.service').then(({ notifyPPTGenerated }) => {
+                notifyPPTGenerated({
+                    userId: result.userId!,
+                    projectId: id,
+                    title: result.title
+                }).catch(err => console.error('[ProjectService] Failed to send AI notification:', err));
+            });
+        }
+
+        return result;
     }
 
     // Set Pinned Status

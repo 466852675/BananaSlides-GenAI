@@ -19,6 +19,7 @@ import {
     ShoppingBag
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { NotificationBell } from '../message/NotificationBell';
 
 interface UserWidgetProps {
     /** compact 模式：在落地页等场景只显示登录按钮，登录后显示简洁的"进入创作室"按钮 */
@@ -89,6 +90,9 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
     // 已登录状态（完整模式）：显示用户信息、角色标签、积分面板
     return (
         <div className="flex items-center gap-2 lg:gap-3 ml-auto" ref={dropdownRef}>
+            {/* 1.5. 消息通知铃铛 - 移至最左侧 */}
+            <NotificationBell />
+
             {/* 0. 全屏切换按钮 - 根据灵动岛状态动态对齐 */}
             <button
                 onClick={toggleFullscreen}
@@ -104,6 +108,8 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
                     <UserRoleTag user={user} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} />
                 </div>
             )}
+
+
 
             {/* 2. 剩余积分标签 (Points Label) - 点击可查看明细 */}
             {/* 低积分预警：≤50 红色闪烁 / ≤100 橙色 / >100 正常 */}

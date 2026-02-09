@@ -4,6 +4,7 @@
 import { UserRole, UserStatus, OrderStatus } from '@prisma/client';
 import { hashPassword } from '../utils/password.util';
 import { prisma } from '../db';
+import { notifyVipChange } from './vip-notification.service';
 
 // ============================================================
 // 用户管理
@@ -337,6 +338,15 @@ export async function updateUser(
             points: true,
         },
     });
+
+    // 发送 VIP 等级变动通知
+    if (data.vipLevel !== undefined && data.vipLevel !== user.vipLevel) {
+        notifyVipChange({
+            userId: id,
+            oldLevel: user.vipLevel,
+            newLevel: data.vipLevel,
+        }).catch(err => console.error('[VipNotify] VIP变动通知发送失败:', err));
+    }
 
     return updated;
 }

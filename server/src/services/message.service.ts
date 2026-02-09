@@ -62,7 +62,16 @@ export async function getMessages(
     if (type) where.type = type;
     if (isRead !== undefined) where.isRead = isRead;
     if (isImportant !== undefined) where.isImportant = isImportant;
-    if (bizType) where.bizType = bizType;
+    if (isRead !== undefined) where.isRead = isRead;
+    if (isImportant !== undefined) where.isImportant = isImportant;
+    if (bizType) {
+        if (bizType.includes(',')) {
+            // Support multiple bizTypes (e.g. admin_lead,admin_report)
+            where.bizType = { in: bizType.split(',') };
+        } else {
+            where.bizType = bizType;
+        }
+    }
 
     if (startDate || endDate) {
         where.createdAt = {};

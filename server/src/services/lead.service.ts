@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { UserRole, UserStatus } from '@prisma/client';
 import { hashPassword } from '../utils/password.util';
+import { notifyAdminNewLead } from './admin-notification.service';
 
 /**
  * LeadService - 销售线索 CRM 业务逻辑
@@ -11,7 +12,7 @@ import { hashPassword } from '../utils/password.util';
  */
 export async function createLead(data: any) {
     const { userId, name, phone, company, position, email, teamSize, industry, needs, source } = data;
-    return await prisma.lead.create({
+    const newLead = await prisma.lead.create({
         data: {
             userId,
             name,
@@ -27,6 +28,18 @@ export async function createLead(data: any) {
             priority: 'MEDIUM'
         }
     });
+
+    // 通知管理员
+    notifyAdminNewLead({
+        id: newLead.id,
+        name: newLead.name,
+        company: newLead.company,
+        phone: newLead.phone,
+        industry: newLead.industry,
+        needs: newLead.needs
+    }).catch(err => console.error('[LeadNotify] 管理员通知发送失败:', err));
+
+    return newLead;
 }
 
 /**

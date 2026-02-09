@@ -112,6 +112,7 @@ import { InviteModal } from './components/InviteModal';
 import { PointsGuard } from './components/PointsGuard';
 import { PurchaseSuccessModal } from './components/PurchaseSuccessModal';
 import { AdminLayout } from "./components/admin";
+import { MessagesPage } from "./components/message";
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from './api/projects';
 import { useTemplates, useSaveTemplate } from './api/templates';
 import { useFavorites, useAddFavorite, useRemoveFavorite } from './api/favorites';
@@ -813,12 +814,13 @@ const App: React.FC = () => {
   // --- State ---
   const { user, isAuthenticated, isAdmin, isSuperAdmin, refreshUser } = useAuth();
   const [viewMode, setViewMode] = useState<
-    "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "admin" | "login"
+    "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "admin" | "login" | "messages"
   >(() => {
     const urlParams = new URLSearchParams(window.location.search);
     // 检查是否访问管理后台
     if (window.location.pathname === '/admin') return 'admin';
     if (window.location.pathname === '/login') return 'login';
+    if (window.location.pathname === '/messages') return 'messages';
     return urlParams.get('project') ? 'workbench' : 'landing';
   });
 
@@ -1169,6 +1171,10 @@ const App: React.FC = () => {
       if (url.searchParams.has('project')) {
         url.searchParams.delete('project');
         window.history.pushState({}, '', url.toString());
+      }
+    } else if (viewMode === 'messages') {
+      if (window.location.pathname !== '/messages') {
+        window.history.pushState({}, '', '/messages');
       }
     }
   }, [viewMode, currentProjectId]);
@@ -4234,6 +4240,8 @@ const App: React.FC = () => {
           )}
           {viewMode === "admin" ? (
             <AdminLayout onBack={() => setViewMode('dashboard')} />
+          ) : viewMode === "messages" ? (
+            <MessagesPage />
           ) : viewMode === "landing" ? (
             <LandingPage
               onEnter={() => setViewMode('dashboard')}

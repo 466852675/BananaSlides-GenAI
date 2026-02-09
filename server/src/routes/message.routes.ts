@@ -10,6 +10,10 @@ import {
     getUnreadCount,
     getUnreadCountByType,
 } from '../services/message.service';
+import {
+    getMessageSettings,
+    updateMessageSettings,
+} from '../services/message-settings.service';
 
 const router = Router();
 
@@ -22,11 +26,12 @@ router.get('/', async (req, res) => {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 20;
         const type = req.query.type as any;
+        const bizType = req.query.bizType as string;
         const isRead = req.query.isRead === 'true' ? true :
-                       req.query.isRead === 'false' ? false : undefined;
+            req.query.isRead === 'false' ? false : undefined;
 
         const result = await getMessages(
-            { userId, type, isRead },
+            { userId, type, isRead, bizType },
             { page, limit }
         );
 
@@ -41,6 +46,30 @@ router.get('/', async (req, res) => {
             code: 'SYSTEM_ERROR',
             message: '获取消息列表失败',
         });
+    }
+});
+
+// 获取用户消息设置
+router.get('/settings', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const settings = await getMessageSettings(userId);
+        res.json({ success: true, data: settings });
+    } catch (error: any) {
+        console.error('[MessageRoute] 获取设置失败:', error);
+        res.status(500).json({ success: false, message: '获取设置失败' });
+    }
+});
+
+// 更新用户消息设置
+router.put('/settings', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const updated = await updateMessageSettings(userId, req.body);
+        res.json({ success: true, data: updated });
+    } catch (error: any) {
+        console.error('[MessageRoute] 更新设置失败:', error);
+        res.status(500).json({ success: false, message: '更新设置失败' });
     }
 });
 

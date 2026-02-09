@@ -1,6 +1,7 @@
 import { OrderStatus, RefundStatus, Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { RefundProcessorService } from './refund-processor.service';
+import { notifyAdminNewRefund } from './admin-notification.service';
 
 export interface RefundApplyDTO {
     orderId: string;
@@ -321,6 +322,15 @@ export async function applyRefund(
                 message = '退款申请已提交，自动处理失败，已转人工审核';
             }
         }
+
+        // 通知管理员有新退款申请
+        notifyAdminNewRefund({
+            id: refund.id,
+            refundNo: refund.refundNo,
+            amount: refund.amount,
+            reason: refund.reason,
+            orderId: refund.orderId
+        }).catch(err => console.error('[RefundNotify] 管理员通知发送失败:', err));
 
         return {
             success: true,

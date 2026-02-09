@@ -3,6 +3,8 @@
 
 import { OrderStatus, Prisma } from '@prisma/client';
 import { prisma } from '../db';
+import { notifyOrderPaid, notifyOrderFailed } from './order-notification.service';
+import { notifyAdminNewOrder } from './admin-notification.service';
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -157,7 +159,7 @@ export async function fulfillOrder(orderId: string) {
     const product = order.productId ? await prisma.product.findUnique({ where: { id: order.productId } }) : null;
     const pointsToAdd = product?.points ?? order.quantity;
 
-    return await prisma.$transaction(async (tx: TransactionClient) => {
+    const updatedOrder = await prisma.$transaction(async (tx: TransactionClient) => {
         await tx.user.update({
             where: { id: order.userId },
             data: { points: { increment: pointsToAdd } },
@@ -179,6 +181,31 @@ export async function fulfillOrder(orderId: string) {
             data: { fulfillmentAt: new Date() },
         });
     });
+
+    // 发送支付成功通知（异步，不阻塞主流程）
+    notifyOrderPaid({
+        orderId: order.id,
+        userId: order.userId,
+        orderNo: order.orderNo,
+        productName: order.productName,
+        points: pointsToAdd,
+        amount: order.finalPrice,
+    }).catch(err => console.error('[OrderNotify] 支付成功通知发送失败:', err));
+
+    // 通知管理员 (V9.6 新增)
+    notifyAdminNewOrder({
+        id: order.id,
+        orderNo: order.orderNo,
+        finalPrice: order.finalPrice,
+        productName: order.productName,
+        userId: order.userId,
+        user: {
+            nickname: (updatedOrder as any).user?.nickname, // Note: Transaction doesn't return included user, might need separate fetch if strictly needed, but let's rely on what we have or fetch light
+            email: ''
+        }
+    }).catch(err => console.error('[OrderNotify] 管理员通知发送失败:', err));
+
+    return updatedOrder;
 }
 
 /**

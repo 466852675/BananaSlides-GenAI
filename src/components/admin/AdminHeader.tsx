@@ -2,8 +2,9 @@
 // 管理后台头部
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Search, Maximize2, Minimize } from 'lucide-react';
+import { Search, Maximize2, Minimize } from 'lucide-react';
 import { UserWidget } from '../auth/UserWidget';
+import { NotificationBell } from '../message';
 
 interface AdminHeaderProps {
     title: string;
@@ -59,11 +60,8 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ title, subtitle, onBac
                     />
                 </div>
 
-                {/* 通知按钮 */}
-                <button className="relative p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
-                    <Bell size={18} />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-                </button>
+                {/* 通知按钮 - 已集成在 UserWidget 中 */}
+                {/* <NotificationBell /> */}
 
                 {/* 用户信息 - 复用主应用的 UserWidget */}
                 <UserWidget

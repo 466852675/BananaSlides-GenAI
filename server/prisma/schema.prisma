@@ -50,6 +50,7 @@ model User {
   refundRequests     RefundRequest[]
   refundStats        UserRefundStats?
   messages           UserMessage[]
+  messageSettings    UserMessageSettings?
   assignedLeads      Lead[]          @relation("LeadAssignee")
 
   @@index([role])
@@ -565,4 +566,19 @@ model MessageTemplate {
   isActive    Boolean     @default(true)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+}
+
+model UserMessageSettings {
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Global switches
+  emailEnabled   Boolean  @default(true)
+  browserEnabled Boolean  @default(true)
+
+  // Granular types config (JSON String)
+  // Structure: Record<MessageType, { email: boolean, browser: boolean }>
+  preferences    String   @default("{}") 
+
+  updatedAt      DateTime @updatedAt
 }
