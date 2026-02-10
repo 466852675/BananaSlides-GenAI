@@ -2,15 +2,8 @@
 import { MessageType, UserRole } from '@prisma/client';
 import { prisma } from '../db';
 import { createMessage } from './message.service';
+import { renderTemplate } from './message-template.service';
 
-/**
- * 管理员通知服务
- * 用于向管理员发送关键业务事件通知
- */
-
-/**
- * 获取所有管理员ID
- */
 async function getAdminIds(): Promise<string[]> {
     const admins = await prisma.user.findMany({
         where: {
@@ -24,9 +17,6 @@ async function getAdminIds(): Promise<string[]> {
     return admins.map(a => a.id);
 }
 
-/**
- * 通知管理员：新订单
- */
 export async function notifyAdminNewOrder(order: {
     id: string;
     orderNo: string;
@@ -41,17 +31,36 @@ export async function notifyAdminNewOrder(order: {
 
         const userName = order.user?.nickname || order.user?.email || '用户';
 
+        let title = '💰 新订单入账';
+        let content = `用户 ${userName} 购买了 ${order.productName}，金额 ¥${order.finalPrice}`;
+
+        try {
+            const template = await renderTemplate({
+                code: 'ADMIN_NEW_ORDER',
+                variables: {
+                    userName,
+                    productName: order.productName,
+                    amount: order.finalPrice.toFixed(2),
+                    orderNo: order.orderNo,
+                },
+            });
+            title = template.title;
+            content = template.content;
+        } catch {
+            // 模板不存在时使用默认内容
+        }
+
         await Promise.all(adminIds.map(adminId =>
             createMessage({
                 userId: adminId,
                 type: MessageType.ORDER,
-                title: '💰 新订单入账',
-                content: `用户 ${userName} 购买了 ${order.productName}，金额 ¥${order.finalPrice}`,
+                title,
+                content,
                 summary: `入账: ¥${order.finalPrice}`,
                 bizType: 'admin_order',
                 bizId: order.id,
-                actionUrl: '/admin/orders',
-                isImportant: order.finalPrice > 100 // 大额订单标记为重要
+                actionUrl: `/admin/orders?id=${order.id}`,
+                isImportant: order.finalPrice > 100
             })
         ));
     } catch (error) {
@@ -59,9 +68,6 @@ export async function notifyAdminNewOrder(order: {
     }
 }
 
-/**
- * 通知管理员：新退款申请
- */
 export async function notifyAdminNewRefund(refund: {
     id: string;
     refundNo: string;
@@ -73,16 +79,34 @@ export async function notifyAdminNewRefund(refund: {
         const adminIds = await getAdminIds();
         if (adminIds.length === 0) return;
 
+        let title = '⚠️ 新退款申请待审核';
+        let content = `收到一笔新的退款申请。\n单号: ${refund.refundNo}\n金额: ¥${refund.amount}\n原因: ${refund.reason}`;
+
+        try {
+            const template = await renderTemplate({
+                code: 'ADMIN_NEW_REFUND',
+                variables: {
+                    refundNo: refund.refundNo,
+                    amount: refund.amount.toFixed(2),
+                    reason: refund.reason,
+                },
+            });
+            title = template.title;
+            content = template.content;
+        } catch {
+            // 模板不存在时使用默认内容
+        }
+
         await Promise.all(adminIds.map(adminId =>
             createMessage({
                 userId: adminId,
                 type: MessageType.REFUND,
-                title: '⚠️ 新退款申请待审核',
-                content: `收到一笔新的退款申请。\n单号: ${refund.refundNo}\n金额: ¥${refund.amount}\n原因: ${refund.reason}`,
+                title,
+                content,
                 summary: `待审核: ¥${refund.amount}`,
                 bizType: 'admin_refund',
                 bizId: refund.id,
-                actionUrl: '/admin/orders?tab=refunds',
+                actionUrl: `/admin/refunds?id=${refund.id}`,
                 isImportant: true
             })
         ));
@@ -91,16 +115,13 @@ export async function notifyAdminNewRefund(refund: {
     }
 }
 
-/**
- * 通知管理员：新线索
- */
 export async function notifyAdminNewLead(lead: {
     id: string;
     name: string;
-    company?: string | null; // Allow null
-    phone?: string | null;   // Allow null
-    industry?: string | null; // Allow null
-    needs?: string | null;    // Allow null
+    company?: string | null;
+    phone?: string | null;
+    industry?: string | null;
+    needs?: string | null;
 }) {
     try {
         const adminIds = await getAdminIds();
@@ -109,16 +130,35 @@ export async function notifyAdminNewLead(lead: {
         const companyInfo = lead.company ? `\n公司: ${lead.company}` : '';
         const phoneInfo = lead.phone ? `\n电话: ${lead.phone}` : '';
 
+        let title = '📈 收到新销售线索';
+        let content = `有新的潜在客户提交了信息。${companyInfo}\n联系人: ${lead.name}${phoneInfo}`;
+
+        try {
+            const template = await renderTemplate({
+                code: 'ADMIN_NEW_LEAD',
+                variables: {
+                    name: lead.name,
+                    company: lead.company || '',
+                    phone: lead.phone || '',
+                    industry: lead.industry || '',
+                },
+            });
+            title = template.title;
+            content = template.content;
+        } catch {
+            // 模板不存在时使用默认内容
+        }
+
         await Promise.all(adminIds.map(adminId =>
             createMessage({
                 userId: adminId,
-                type: MessageType.SYSTEM, // 使用 SYSTEM 类型，直到添加 LEAD 类型
-                title: '📈 收到新销售线索',
-                content: `有新的潜在客户提交了信息。${companyInfo}\n联系人: ${lead.name}${phoneInfo}`,
+                type: MessageType.LEAD,
+                title,
+                content,
                 summary: `新线索: ${lead.name}`,
-                bizType: 'admin_lead',
+                bizType: 'lead',
                 bizId: lead.id,
-                actionUrl: '/admin/users?tab=leads',
+                actionUrl: `/admin/leads?id=${lead.id}`,
                 isImportant: false
             })
         ));

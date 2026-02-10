@@ -23,10 +23,15 @@ export function useUnreadCount() {
 /**
  * 获取消息列表
  */
-export function useMessages(params: MessageApi.MessageListParams = {}) {
+export function useMessages(params: MessageApi.MessageListParams & { keyword?: string } = {}) {
     return useQuery({
         queryKey: [MESSAGES_KEY, params],
-        queryFn: () => MessageApi.getMessages(params),
+        queryFn: () => {
+            if (params.keyword) {
+                return MessageApi.getMessagesWithSearch(params);
+            }
+            return MessageApi.getMessages(params);
+        },
     });
 }
 
@@ -82,6 +87,42 @@ export function useDeleteMessage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: [MESSAGES_KEY] });
             queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
+        },
+    });
+}
+
+export function useBatchMarkAsRead() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: MessageApi.batchMarkAsRead,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [MESSAGES_KEY] });
+            queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
+        },
+    });
+}
+
+export function useBatchDeleteMessages() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: MessageApi.batchDeleteMessages,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [MESSAGES_KEY] });
+            queryClient.invalidateQueries({ queryKey: [UNREAD_COUNT_KEY] });
+        },
+    });
+}
+
+export function useMarkMessageAsHandled() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ id, action }: { id: string; action: string }) =>
+            MessageApi.markMessageAsHandled(id, action),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [MESSAGES_KEY] });
         },
     });
 }

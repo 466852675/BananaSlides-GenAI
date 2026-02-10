@@ -109,6 +109,15 @@ export const RefundManagement: React.FC = () => {
     // [智能决策座舱] 详情抽屉状态
     const [drawerRefundId, setDrawerRefundId] = useState<string | null>(null);
 
+    // Deep Linking: Auto-open refund detail if id is provided in URL
+    React.useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const refundId = params.get('id');
+        if (refundId) {
+            setDrawerRefundId(refundId);
+        }
+    }, []);
+
     const { data: stats, isLoading: isLoadingStats } = useQuery({
         queryKey: ['refund-stats'],
         queryFn: RefundApi.getRefundStats,

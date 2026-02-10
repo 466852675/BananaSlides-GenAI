@@ -3,11 +3,13 @@
 
 import React, { useState, useMemo } from 'react';
 // import { useNavigate } from 'react-router-dom';
-import { Bell, Check, CheckCheck, Loader2, Inbox } from 'lucide-react';
+import { Bell, Check, CheckCheck, Loader2, Inbox, Trash2, X, Settings } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMessages, useUnreadCount, useMarkAsRead, useMarkAllAsRead } from '../../hooks/useMessages';
 import { useAuth } from '../../contexts/AuthContext';
 import { MessageItem } from './MessageItem';
+import { batchDeleteMessages } from '../../api/message';
 import type { Message, MessageType } from '../../api/message';
 
 // 普通用户 Tab
@@ -21,10 +23,10 @@ const USER_TABS: { key: MessageType | 'all'; label: string }[] = [
 ];
 
 // 管理员 Tab (增加线索、报表等概念)
-// 注意：key 为 MessageType，实际请求时如果是 'LEAD' 需要特殊处理传 bizType
-const ADMIN_TABS: { key: string; label: string; type?: MessageType; bizType?: string }[] = [
+// 注意：LEAD 是独立的 MessageType，与 SYSTEM 平级
+const ADMIN_TABS: { key: string; label: string; type?: MessageType; bizType?: string; excludeBizType?: string }[] = [
     { key: 'all', label: '全部' },
-    { key: 'lead', label: '线索', type: 'SYSTEM', bizType: 'admin_lead' },
+    { key: 'lead', label: '线索', type: 'LEAD' },
     { key: 'order', label: '订单', type: 'ORDER' },
     { key: 'refund', label: '退款', type: 'REFUND' },
     { key: 'system', label: '系统', type: 'SYSTEM' },
@@ -58,7 +60,8 @@ export const MessagePanel: React.FC<MessagePanelProps> = ({ onClose }) => {
                 return {
                     limit: 20,
                     type: tab.type,
-                    bizType: tab.bizType
+                    bizType: tab.bizType,
+                    excludeBizType: tab.excludeBizType
                 };
             }
         } else {
@@ -81,6 +84,42 @@ export const MessagePanel: React.FC<MessagePanelProps> = ({ onClose }) => {
 
     const messages = messagesData?.items || [];
     const unreadCount = unreadData?.total || 0;
+
+    // 批量管理
+    const [isManaging, setIsManaging] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const queryClient = useQueryClient();
+
+    const batchDelete = useMutation({
+        mutationFn: (ids: string[]) => batchDeleteMessages(ids),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['messages'] });
+            queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+            setSelectedIds(new Set());
+            setIsManaging(false);
+        },
+    });
+
+    const toggleSelect = (id: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === messages.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(messages.map(m => m.id)));
+        }
+    };
+
+    const handleBatchDelete = () => {
+        if (selectedIds.size === 0) return;
+        batchDelete.mutate(Array.from(selectedIds));
+    };
 
     // 处理消息点击
     const handleMessageClick = async (message: Message) => {
@@ -115,20 +154,29 @@ export const MessagePanel: React.FC<MessagePanelProps> = ({ onClose }) => {
                             </span>
                         )}
                     </div>
-                    {unreadCount > 0 && (
+                    <div className="flex items-center gap-2">
+                        {!isManaging && unreadCount > 0 && (
+                            <button
+                                onClick={handleMarkAllRead}
+                                disabled={markAllAsRead.isPending}
+                                className="flex items-center gap-1 text-xs text-white/80 hover:text-white transition-colors"
+                            >
+                                {markAllAsRead.isPending ? (
+                                    <Loader2 size={12} className="animate-spin" />
+                                ) : (
+                                    <CheckCheck size={12} />
+                                )}
+                                全部已读
+                            </button>
+                        )}
                         <button
-                            onClick={handleMarkAllRead}
-                            disabled={markAllAsRead.isPending}
+                            onClick={() => { setIsManaging(!isManaging); setSelectedIds(new Set()); }}
                             className="flex items-center gap-1 text-xs text-white/80 hover:text-white transition-colors"
                         >
-                            {markAllAsRead.isPending ? (
-                                <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                                <CheckCheck size={12} />
-                            )}
-                            全部已读
+                            {isManaging ? <X size={12} /> : <Settings size={12} />}
+                            {isManaging ? '取消' : '管理'}
                         </button>
-                    )}
+                    </div>
                 </div>
             </div>
 
@@ -172,11 +220,25 @@ export const MessagePanel: React.FC<MessagePanelProps> = ({ onClose }) => {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, scale: 0.95 }}
                                     transition={{ duration: 0.15 }}
+                                    className="flex items-start gap-2"
                                 >
-                                    <MessageItem
-                                        message={message}
-                                        onClick={handleMessageClick}
-                                    />
+                                    {isManaging && (
+                                        <button
+                                            onClick={() => toggleSelect(message.id)}
+                                            className={`mt-3 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${selectedIds.has(message.id)
+                                                    ? 'bg-violet-500 border-violet-500 text-white'
+                                                    : 'border-slate-300 hover:border-violet-400'
+                                                }`}
+                                        >
+                                            {selectedIds.has(message.id) && <Check size={10} />}
+                                        </button>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <MessageItem
+                                            message={message}
+                                            onClick={isManaging ? () => toggleSelect(message.id) : handleMessageClick}
+                                        />
+                                    </div>
                                 </motion.div>
                             ))}
                         </AnimatePresence>
@@ -185,7 +247,28 @@ export const MessagePanel: React.FC<MessagePanelProps> = ({ onClose }) => {
             </div>
 
             {/* 底部 */}
-            {messages.length > 0 && (
+            {isManaging && messages.length > 0 ? (
+                <div className="px-4 py-2 border-t border-slate-100 flex items-center justify-between">
+                    <button
+                        onClick={toggleSelectAll}
+                        className="text-xs text-slate-500 hover:text-violet-600 font-medium"
+                    >
+                        {selectedIds.size === messages.length ? '取消全选' : '全选'}
+                    </button>
+                    <button
+                        onClick={handleBatchDelete}
+                        disabled={selectedIds.size === 0 || batchDelete.isPending}
+                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        {batchDelete.isPending ? (
+                            <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                            <Trash2 size={12} />
+                        )}
+                        删除选中 ({selectedIds.size})
+                    </button>
+                </div>
+            ) : messages.length > 0 && (
                 <div className="px-4 py-2 border-t border-slate-100 text-center">
                     <button
                         onClick={() => {

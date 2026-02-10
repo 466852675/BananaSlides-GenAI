@@ -6,9 +6,15 @@ import {
     getMessageById,
     markAsRead,
     markAllAsRead,
+    markMessagesAsRead,
     deleteMessage,
+    deleteMessages,
     getUnreadCount,
     getUnreadCountByType,
+    markMessageAsHandled,
+    archiveMessage,
+    archiveMessages,
+    cleanupExpiredMessages,
 } from '../services/message.service';
 import {
     getMessageSettings,
@@ -27,11 +33,13 @@ router.get('/', async (req, res) => {
         const limit = parseInt(req.query.limit as string) || 20;
         const type = req.query.type as any;
         const bizType = req.query.bizType as string;
+        const excludeBizType = req.query.excludeBizType as string;
+        const keyword = req.query.keyword as string;
         const isRead = req.query.isRead === 'true' ? true :
             req.query.isRead === 'false' ? false : undefined;
 
         const result = await getMessages(
-            { userId, type, isRead, bizType },
+            { userId, type, isRead, bizType, excludeBizType, keyword },
             { page, limit }
         );
 
@@ -213,6 +221,188 @@ router.delete('/:id', async (req, res) => {
             success: false,
             code: 'SYSTEM_ERROR',
             message: '删除消息失败',
+        });
+    }
+});
+
+// 批量删除消息
+router.post('/batch-delete', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { ids } = req.body;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_PARAMS',
+                message: '请提供要删除的消息ID列表',
+            });
+        }
+
+        const count = await deleteMessages(ids, userId);
+
+        res.json({
+            success: true,
+            message: `已删除 ${count} 条消息`,
+            data: { count },
+        });
+    } catch (error: any) {
+        console.error('[MessageRoute] 批量删除消息失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 'SYSTEM_ERROR',
+            message: '批量删除消息失败',
+        });
+    }
+});
+
+// 批量标记消息为已读
+router.post('/batch-read', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { ids } = req.body;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_PARAMS',
+                message: '请提供要标记已读的消息ID列表',
+            });
+        }
+
+        const count = await markMessagesAsRead(ids, userId);
+
+        res.json({
+            success: true,
+            message: `已将 ${count} 条消息标记为已读`,
+            data: { count },
+        });
+    } catch (error: any) {
+        console.error('[MessageRoute] 批量标记已读失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 'SYSTEM_ERROR',
+            message: '批量标记已读失败',
+        });
+    }
+});
+
+// 标记消息为已处理（管理员）
+router.post('/:id/handle', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const messageId = req.params.id;
+        const { action } = req.body;
+
+        if (!action) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_PARAMS',
+                message: '请提供处理动作',
+            });
+        }
+
+        const success = await markMessageAsHandled(messageId, userId, action);
+
+        if (!success) {
+            return res.status(404).json({
+                success: false,
+                code: 'MESSAGE_NOT_FOUND',
+                message: '消息不存在',
+            });
+        }
+
+        res.json({
+            success: true,
+            message: '消息已标记为已处理',
+        });
+    } catch (error: any) {
+        console.error('[MessageRoute] 标记已处理失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 'SYSTEM_ERROR',
+            message: '标记已处理失败',
+        });
+    }
+});
+
+// 归档消息
+router.post('/:id/archive', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const messageId = req.params.id;
+
+        const success = await archiveMessage(messageId, userId);
+
+        if (!success) {
+            return res.status(404).json({
+                success: false,
+                code: 'MESSAGE_NOT_FOUND',
+                message: '消息不存在',
+            });
+        }
+
+        res.json({
+            success: true,
+            message: '消息已归档',
+        });
+    } catch (error: any) {
+        console.error('[MessageRoute] 归档消息失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 'SYSTEM_ERROR',
+            message: '归档消息失败',
+        });
+    }
+});
+
+// 批量归档消息
+router.post('/batch-archive', async (req, res) => {
+    try {
+        const userId = req.user!.id;
+        const { ids } = req.body;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({
+                success: false,
+                code: 'INVALID_PARAMS',
+                message: '请提供要归档的消息ID列表',
+            });
+        }
+
+        const count = await archiveMessages(ids, userId);
+
+        res.json({
+            success: true,
+            message: `已归档 ${count} 条消息`,
+            data: { count },
+        });
+    } catch (error: any) {
+        console.error('[MessageRoute] 批量归档消息失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 'SYSTEM_ERROR',
+            message: '批量归档消息失败',
+        });
+    }
+});
+
+// 清理过期消息（管理员）
+router.post('/cleanup-expired', async (req, res) => {
+    try {
+        const count = await cleanupExpiredMessages();
+
+        res.json({
+            success: true,
+            message: `已归档 ${count} 条过期消息`,
+            data: { count },
+        });
+    } catch (error: any) {
+        console.error('[MessageRoute] 清理过期消息失败:', error);
+        res.status(500).json({
+            success: false,
+            code: 'SYSTEM_ERROR',
+            message: '清理过期消息失败',
         });
     }
 });

@@ -7,7 +7,7 @@ import { client } from './client';
 // 类型定义
 // ============================================================
 
-export type MessageType = 'SYSTEM' | 'ORDER' | 'REFUND' | 'AI' | 'POINTS' | 'VIP' | 'ACTIVITY' | 'SECURITY';
+export type MessageType = 'SYSTEM' | 'ORDER' | 'REFUND' | 'AI' | 'POINTS' | 'VIP' | 'ACTIVITY' | 'SECURITY' | 'LEAD';
 
 export interface Message {
     id: string;
@@ -19,10 +19,13 @@ export interface Message {
     bizType?: string;
     bizId?: string;
     actionUrl?: string;
-    isRead?: boolean; // Changed from required to optional
+    isRead?: boolean;
     readAt?: string;
-    isImportant?: boolean; // Changed from required to optional
+    isImportant?: boolean;
     isDeleted: boolean;
+    handledBy?: string;
+    handledAt?: string;
+    handleAction?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -32,6 +35,8 @@ export interface MessageListParams {
     limit?: number;
     type?: MessageType;
     isRead?: boolean;
+    bizType?: string;
+    excludeBizType?: string;
 }
 
 export interface MessageListResponse {
@@ -62,6 +67,8 @@ export async function getMessages(params: MessageListParams = {}): Promise<Messa
     if (params.limit) queryParams.append('limit', String(params.limit));
     if (params.type) queryParams.append('type', params.type);
     if (params.isRead !== undefined) queryParams.append('isRead', String(params.isRead));
+    if (params.bizType) queryParams.append('bizType', params.bizType);
+    if (params.excludeBizType) queryParams.append('excludeBizType', params.excludeBizType);
 
     const queryString = queryParams.toString();
     const url = `/messages${queryString ? `?${queryString}` : ''}`;
@@ -124,6 +131,62 @@ export async function deleteMessage(id: string): Promise<void> {
     if (!result.success) {
         throw new Error(result.error?.message || '删除消息失败');
     }
+}
+
+/**
+ * 批量删除消息
+ */
+export async function batchDeleteMessages(ids: string[]): Promise<{ count: number }> {
+    const result = await client.post('/messages/batch-delete', { ids }) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '批量删除消息失败');
+}
+
+export async function batchMarkAsRead(ids: string[]): Promise<{ count: number }> {
+    const result = await client.post('/messages/batch-read', { ids }) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '批量标记已读失败');
+}
+
+/**
+ * 标记消息为已处理（管理员专用）
+ */
+export async function markMessageAsHandled(
+    id: string,
+    action: string
+): Promise<{ handledAt: string; handledBy: string }> {
+    const result = await client.post(`/messages/${id}/handle`, { action }) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '标记已处理失败');
+}
+
+/**
+ * 获取消息列表（带关键字搜索）
+ */
+export async function getMessagesWithSearch(params: MessageListParams & { keyword?: string }): Promise<MessageListResponse> {
+    const queryParams = new URLSearchParams();
+    if (params.page) queryParams.append('page', String(params.page));
+    if (params.limit) queryParams.append('limit', String(params.limit));
+    if (params.type) queryParams.append('type', params.type);
+    if (params.isRead !== undefined) queryParams.append('isRead', String(params.isRead));
+    if (params.bizType) queryParams.append('bizType', params.bizType);
+    if (params.excludeBizType) queryParams.append('excludeBizType', params.excludeBizType);
+    if (params.keyword) queryParams.append('keyword', params.keyword);
+
+    const queryString = queryParams.toString();
+    const url = `/messages${queryString ? `?${queryString}` : ''}`;
+
+    const result = await client.get(url) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取消息列表失败');
 }
 
 // ============================================================

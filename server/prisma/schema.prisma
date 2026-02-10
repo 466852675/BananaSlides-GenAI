@@ -52,6 +52,7 @@ model User {
   messages           UserMessage[]
   messageSettings    UserMessageSettings?
   assignedLeads      Lead[]          @relation("LeadAssignee")
+  handledMessages    UserMessage[]   @relation("MessageHandler")
 
   @@index([role])
   @@index([status])
@@ -462,6 +463,7 @@ model RefundRequest {
   @@index([createdAt])
 
   history           RefundHistory[]
+  retryLogs         RefundRetryLog[]
 }
 
 model RefundHistory {
@@ -496,6 +498,9 @@ model RefundRetryLog {
   error       String?
   scheduledAt DateTime
   executedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  
+  refundRequest RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
   
   @@index([refundId])
   @@index([scheduledAt])
@@ -525,6 +530,7 @@ enum MessageType {
   VIP
   ACTIVITY
   SECURITY
+  LEAD
 }
 
 model UserMessage {
@@ -543,16 +549,27 @@ model UserMessage {
   readAt        DateTime?
   isImportant   Boolean     @default(false)
   isDeleted     Boolean     @default(false)
+  isArchived    Boolean     @default(false)
+  archivedAt    DateTime?
+  expiresAt     DateTime?
+
+  handledBy     String?
+  handledAt     DateTime?
+  handleAction  String?
 
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
   user          User        @relation(fields: [userId], references: [id])
+  handler       User?       @relation("MessageHandler", fields: [handledBy], references: [id])
 
   @@index([userId])
   @@index([isRead])
+  @@index([isArchived])
   @@index([bizType])
   @@index([createdAt])
+  @@index([handledBy])
+  @@index([expiresAt])
 }
 
 model MessageTemplate {

@@ -118,6 +118,19 @@ export const LeadManagement: React.FC = () => {
         debouncedFetchLeads();
     }, [keyword, debouncedFetchLeads]);
 
+    // Deep Linking: Auto-open lead detail if id is provided in URL
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const leadId = params.get('id');
+        if (leadId && leads.length > 0) {
+            const lead = leads.find(l => l.id === leadId);
+            if (lead) {
+                setSelectedLead(lead);
+                setIsDetailOpen(true);
+            }
+        }
+    }, [leads]);
+
     const clearSearch = () => {
         setKeyword('');
     };

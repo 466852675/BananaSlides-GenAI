@@ -1,5 +1,6 @@
 import { MessageType, Prisma } from '@prisma/client';
 import { prisma } from '../db';
+import { shouldSendMessage } from './message-settings.service';
 
 export interface CreateMessageDTO {
     userId: string;
@@ -19,8 +20,11 @@ export interface MessageListFilters {
     isRead?: boolean;
     isImportant?: boolean;
     bizType?: string;
+    excludeBizType?: string;
     startDate?: Date;
     endDate?: Date;
+    keyword?: string;
+    includeArchived?: boolean;
 }
 
 export interface Pagination {
@@ -29,6 +33,12 @@ export interface Pagination {
 }
 
 export async function createMessage(dto: CreateMessageDTO) {
+    // 检查用户消息设置，如果关闭了浏览器推送则不创建消息
+    const shouldSend = await shouldSendMessage(dto.userId, dto.type, 'browser');
+    if (!shouldSend) {
+        return null;
+    }
+
     const message = await prisma.userMessage.create({
         data: {
             userId: dto.userId,
@@ -51,26 +61,34 @@ export async function getMessages(
     filters: MessageListFilters,
     pagination: Pagination
 ) {
-    const { userId, type, isRead, isImportant, bizType, startDate, endDate } = filters;
+    const { userId, type, isRead, isImportant, bizType, excludeBizType, startDate, endDate, keyword, includeArchived } = filters;
     const { page, limit } = pagination;
 
     const where: Prisma.UserMessageWhereInput = {
         userId,
         isDeleted: false,
+        ...(includeArchived ? {} : { isArchived: false }),
     };
 
     if (type) where.type = type;
     if (isRead !== undefined) where.isRead = isRead;
     if (isImportant !== undefined) where.isImportant = isImportant;
-    if (isRead !== undefined) where.isRead = isRead;
-    if (isImportant !== undefined) where.isImportant = isImportant;
     if (bizType) {
         if (bizType.includes(',')) {
-            // Support multiple bizTypes (e.g. admin_lead,admin_report)
             where.bizType = { in: bizType.split(',') };
         } else {
             where.bizType = bizType;
         }
+    }
+    if (excludeBizType) {
+        where.bizType = { not: excludeBizType };
+    }
+    if (keyword) {
+        where.OR = [
+            { title: { contains: keyword } },
+            { content: { contains: keyword } },
+            { summary: { contains: keyword } },
+        ];
     }
 
     if (startDate || endDate) {
@@ -163,6 +181,42 @@ export async function deleteMessage(messageId: string, userId: string) {
     return result.count > 0;
 }
 
+/**
+ * 批量删除消息（软删除）
+ */
+export async function deleteMessages(messageIds: string[], userId: string) {
+    const result = await prisma.userMessage.updateMany({
+        where: {
+            id: { in: messageIds },
+            userId,
+            isDeleted: false,
+        },
+        data: {
+            isDeleted: true,
+            updatedAt: new Date(),
+        },
+    });
+
+    return result.count;
+}
+
+export async function markMessagesAsRead(messageIds: string[], userId: string) {
+    const result = await prisma.userMessage.updateMany({
+        where: {
+            id: { in: messageIds },
+            userId,
+            isRead: false,
+            isDeleted: false,
+        },
+        data: {
+            isRead: true,
+            readAt: new Date(),
+        },
+    });
+
+    return result.count;
+}
+
 export async function getUnreadCount(userId: string) {
     const count = await prisma.userMessage.count({
         where: {
@@ -194,4 +248,84 @@ export async function getUnreadCountByType(userId: string) {
     }
 
     return result;
+}
+
+export async function markMessageAsHandled(
+    messageId: string,
+    userId: string,
+    action: string
+) {
+    const message = await prisma.userMessage.updateMany({
+        where: {
+            id: messageId,
+            isDeleted: false,
+        },
+        data: {
+            handledBy: userId,
+            handledAt: new Date(),
+            handleAction: action,
+        },
+    });
+
+    return message.count > 0;
+}
+
+export async function getMessagesByBizId(bizId: string, userId: string) {
+    return await prisma.userMessage.findMany({
+        where: {
+            bizId,
+            userId,
+            isDeleted: false,
+        },
+        orderBy: { createdAt: 'desc' },
+    });
+}
+
+export async function archiveMessage(messageId: string, userId: string) {
+    const result = await prisma.userMessage.updateMany({
+        where: {
+            id: messageId,
+            userId,
+            isDeleted: false,
+        },
+        data: {
+            isArchived: true,
+            archivedAt: new Date(),
+        },
+    });
+
+    return result.count > 0;
+}
+
+export async function archiveMessages(messageIds: string[], userId: string) {
+    const result = await prisma.userMessage.updateMany({
+        where: {
+            id: { in: messageIds },
+            userId,
+            isDeleted: false,
+        },
+        data: {
+            isArchived: true,
+            archivedAt: new Date(),
+        },
+    });
+
+    return result.count;
+}
+
+export async function cleanupExpiredMessages() {
+    const now = new Date();
+    const result = await prisma.userMessage.updateMany({
+        where: {
+            expiresAt: { lt: now },
+            isDeleted: false,
+            isArchived: false,
+        },
+        data: {
+            isArchived: true,
+            archivedAt: now,
+        },
+    });
+
+    return result.count;
 }
