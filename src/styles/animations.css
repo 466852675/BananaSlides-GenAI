@@ -55,3 +55,13 @@
 }
 
 /* Dark mode adjustment if needed, but for now fixed to slate-50 */
+
+/* Deep link highlight animation */
+@keyframes highlight-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+}
+
+.order-highlight-pulse {
+    animation: highlight-pulse 1s ease-in-out 3;
+}

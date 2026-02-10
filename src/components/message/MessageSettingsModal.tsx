@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Bell, Globe, Save, RefreshCw } from 'lucide-react';
 import { getMessageSettings, updateMessageSettings, MessageSettings, UpdateMessageSettingsDTO } from '../../api/message';
 import { toast } from 'react-hot-toast';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface MessageSettingsModalProps {
     isOpen: boolean;
@@ -11,17 +12,22 @@ interface MessageSettingsModalProps {
 }
 
 const MESSAGE_TYPES = [
-    { type: 'SYSTEM', label: '系统通知', desc: '平台公告、功能变更、维护通知' },
     { type: 'ORDER', label: '订单消息', desc: '订单状态变更、支付成功、发货提醒' },
     { type: 'REFUND', label: '退款消息', desc: '退款申请进度、审核结果' },
     { type: 'AI', label: 'AI创作', desc: 'PPT生成完成、AI任务进度' },
     { type: 'POINTS', label: '积分变动', desc: '积分获取、消耗、过期提醒' },
     { type: 'VIP', label: '会员权益', desc: '会员开通、续费、等级变更' },
     { type: 'ACTIVITY', label: '活动优惠', desc: '限时活动、优惠券领取' },
+    { type: 'SYSTEM', label: '系统通知', desc: '平台公告、功能变更、维护通知' },
     { type: 'SECURITY', label: '安全中心', desc: '登录异常、密码修改、风险提示' },
 ];
 
+const ADMIN_ONLY_TYPES = [
+    { type: 'LEAD', label: '线索提醒', desc: '新销售线索、客户咨询' },
+];
+
 export const MessageSettingsModal: React.FC<MessageSettingsModalProps> = ({ isOpen, onClose }) => {
+    const { isAdmin, isSuperAdmin } = useAuth();
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [settings, setSettings] = useState<MessageSettings | null>(null);
@@ -160,7 +166,7 @@ export const MessageSettingsModal: React.FC<MessageSettingsModalProps> = ({ isOp
                                         <section>
                                             <h3 className="text-sm font-bold text-slate-700 mb-4 px-1">消息类型管理</h3>
                                             <div className="space-y-3">
-                                                {MESSAGE_TYPES.map((item) => {
+                                                {((isAdmin || isSuperAdmin) ? [...ADMIN_ONLY_TYPES, ...MESSAGE_TYPES] : MESSAGE_TYPES).map((item) => {
                                                     const prefs = settings.preferences?.[item.type] || { email: true, browser: true };
                                                     return (
                                                         <div key={item.type} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl hover:border-slate-200 transition-colors shadow-sm hover:shadow-md">
@@ -224,8 +230,8 @@ const SwitchCard = ({ icon, label, desc, checked, onChange, color }: any) => (
     <div
         onClick={onChange}
         className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${checked
-                ? `bg-${color}-50 border-${color}-500/30`
-                : 'bg-white border-slate-100 hover:border-slate-200'
+            ? `bg-${color}-50 border-${color}-500/30`
+            : 'bg-white border-slate-100 hover:border-slate-200'
             }`}
     >
         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${checked ? `bg-${color}-500 text-white shadow-md shadow-${color}-200` : 'bg-slate-100 text-slate-400'

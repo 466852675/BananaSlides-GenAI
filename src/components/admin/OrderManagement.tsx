@@ -48,6 +48,19 @@ export const OrderManagement: React.FC = () => {
     const [keyword, setKeyword] = useState('');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
+
+    // Deep Linking: Auto-filter for refunds or auto-open order detail
+    React.useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('tab') === 'refunds') {
+            setStatusFilter('REFUND_PENDING');
+        }
+        const orderId = params.get('id');
+        if (orderId) {
+            setSelectedOrderId(orderId);
+            setIsDrawerOpen(true);
+        }
+    }, []);
     const [minAmount, setMinAmount] = useState<string>('');
     const [maxAmount, setMaxAmount] = useState<string>('');
     const [selectedIds, setSelectedIds] = useState<string[]>([]);

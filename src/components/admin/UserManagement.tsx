@@ -58,6 +58,14 @@ export const UserManagement: React.FC = () => {
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
     const [amountType, setAmountType] = useState<'points' | 'spent' | ''>('');
+
+    // Deep Linking: Auto-switch to Leads tab
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('tab') === 'leads') {
+            setStatusFilter('LEAD');
+        }
+    }, []);
     const [minAmount, setMinAmount] = useState<string>('');
     const [maxAmount, setMaxAmount] = useState<string>('');
     const [page, setPage] = useState(1);
@@ -515,7 +523,9 @@ export const UserManagement: React.FC = () => {
                     { id: '', label: '全部', count: userStats.total, icon: <Users size={18} /> },
                     { id: 'ACTIVE', label: '正常', count: userStats.active, icon: <UserCheck size={18} />, color: 'text-emerald-500', bgColor: 'bg-emerald-100' },
                     { id: 'DISABLED', label: '禁用', count: userStats.disabled, icon: <UserMinus size={18} />, color: 'text-rose-500', bgColor: 'bg-rose-100' },
+
                     { id: 'PENDING', label: '待核', count: userStats.pending, icon: <ClockIcon size={18} />, color: 'text-amber-500', bgColor: 'bg-amber-100' },
+                    { id: 'LEAD', label: '线索', count: 0, icon: <Mail size={18} />, color: 'text-blue-500', bgColor: 'bg-blue-100' },
                 ]}
                 activeTab={statusFilter}
                 onChange={(id) => {

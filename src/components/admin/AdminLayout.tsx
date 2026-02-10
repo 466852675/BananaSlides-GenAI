@@ -1,7 +1,7 @@
 // src/components/admin/AdminLayout.tsx
 // 管理后台主布局
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AdminSidebar, AdminPage } from './AdminSidebar';
 import { AdminHeader } from './AdminHeader';
 import { AdminDashboard } from './AdminDashboard';
@@ -22,6 +22,7 @@ import { useAuth } from '../../contexts/AuthContext';
 
 interface AdminLayoutProps {
     onBack: () => void;
+    initialPage?: AdminPage;
 }
 
 // 页面标题映射
@@ -38,9 +39,16 @@ const pageTitles: Record<AdminPage, { title: string; subtitle?: string }> = {
     'settings': { title: '系统设置', subtitle: '系统配置项' },
 };
 
-export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack }) => {
-    const [currentPage, setCurrentPage] = useState<AdminPage>('dashboard');
+export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack, initialPage }) => {
+    const [currentPage, setCurrentPage] = useState<AdminPage>(initialPage || 'dashboard');
     const { isAdmin, isLoading } = useAuth();
+
+    // Sync prop changes
+    useEffect(() => {
+        if (initialPage) {
+            setCurrentPage(initialPage);
+        }
+    }, [initialPage]);
 
     // 用户模态框状态
     const [showProfile, setShowProfile] = useState(false);

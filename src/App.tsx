@@ -112,6 +112,7 @@ import { InviteModal } from './components/InviteModal';
 import { PointsGuard } from './components/PointsGuard';
 import { PurchaseSuccessModal } from './components/PurchaseSuccessModal';
 import { AdminLayout } from "./components/admin";
+import { AdminPage } from "./components/admin/AdminSidebar";
 import { MessagesPage } from "./components/message";
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from './api/projects';
 import { useTemplates, useSaveTemplate } from './api/templates';
@@ -143,6 +144,11 @@ const PointsGuardWrapper: React.FC<PointsGuardWrapperProps> = ({ onPurchase }) =
 
   return <PointsGuard warnThreshold={warnThreshold} onPurchase={onPurchase} />;
 };
+
+// Define initial view types for complex modals
+type OrderModalView = 'list' | 'refunds';
+
+
 
 // --- Constants ---
 const DEFAULT_STYLE_CONFIG: StyleConfig = {
@@ -813,6 +819,8 @@ const App: React.FC = () => {
 
   // --- State ---
   const { user, isAuthenticated, isAdmin, isSuperAdmin, refreshUser } = useAuth();
+  const [adminInitialPage, setAdminInitialPage] = useState<AdminPage | undefined>(undefined);
+
   const [viewMode, setViewMode] = useState<
     "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "admin" | "login" | "messages"
   >(() => {
@@ -821,6 +829,9 @@ const App: React.FC = () => {
     if (window.location.pathname === '/admin') return 'admin';
     if (window.location.pathname === '/login') return 'login';
     if (window.location.pathname === '/messages') return 'messages';
+    if (window.location.pathname === '/messages') return 'messages';
+    // Admin Deep Linking
+    if (window.location.pathname.startsWith('/admin/')) return 'admin';
     return urlParams.get('project') ? 'workbench' : 'landing';
   });
 
@@ -836,6 +847,67 @@ const App: React.FC = () => {
       }
     }
   }, [isAuthenticated, isAdmin, isSuperAdmin, viewMode]);
+
+  // Deep Linking Effect
+  useEffect(() => {
+    const path = window.location.pathname;
+
+    // Admin Routes: /admin/:page
+    if (path.startsWith('/admin/')) {
+      // Only allow admin access if actually admin
+      if (isAdmin || isSuperAdmin) {
+        const page = path.replace('/admin/', '') as AdminPage;
+        if (page) {
+          setAdminInitialPage(page);
+          setViewMode('admin');
+        }
+      }
+    }
+
+    // User Routes: /user/:module
+    if (path.startsWith('/user/')) {
+      const module = path.replace('/user/', '');
+      // Ensure we are in dashboard mode
+      setViewMode('dashboard');
+
+      // Reset modals
+      setShowMyOrders(false);
+      setShowProfile(false);
+      setShowTopUp(false);
+      setShowInvite(false);
+
+      // Open specific modals based on module
+      const params = new URLSearchParams(window.location.search);
+      if (module === 'orders') {
+        setShowMyOrders(true);
+        const orderId = params.get('id');
+        if (orderId) setTargetOrderId(orderId);
+      }
+      if (module === 'refunds') {
+        // Open Orders modal but switch to Refunds view
+        setShowMyOrders(true);
+        const refundId = params.get('id');
+        if (refundId) setTargetRefundId(refundId);
+      }
+      if (module === 'profile') setShowProfile(true);
+      if (module === 'vip') setShowTopUp(true);
+      if (module === 'invite') setShowInvite(true);
+    }
+  }, [isAuthenticated, isAdmin, isSuperAdmin, viewMode]);
+
+  const [orderModalInitialView, setOrderModalInitialView] = useState<OrderModalView>('list');
+  const [targetOrderId, setTargetOrderId] = useState<string | null>(null);
+  const [targetRefundId, setTargetRefundId] = useState<string | null>(null);
+
+  // Listen for path changes to update order modal view
+  useEffect(() => {
+    if (window.location.pathname === '/user/refunds') {
+      setOrderModalInitialView('refunds');
+    } else {
+      setOrderModalInitialView('list');
+    }
+  }, [window.location.pathname]);
+
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const handleCloseToast = useCallback(() => setToast(null), []);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -4239,7 +4311,14 @@ const App: React.FC = () => {
             </>
           )}
           {viewMode === "admin" ? (
-            <AdminLayout onBack={() => setViewMode('dashboard')} />
+            <AdminLayout
+              initialPage={adminInitialPage}
+              onBack={() => {
+                setViewMode('dashboard');
+                setAdminInitialPage(undefined);
+                window.history.pushState({}, '', '/dashboard');
+              }}
+            />
           ) : viewMode === "messages" ? (
             <MessagesPage />
           ) : viewMode === "landing" ? (
@@ -5153,8 +5232,15 @@ const App: React.FC = () => {
         <ProfileCenter isOpen={showProfile} onClose={() => setShowProfile(false)} />
         <MyOrdersModal
           isOpen={showMyOrders}
-          onClose={() => setShowMyOrders(false)}
+          onClose={() => {
+            setShowMyOrders(false);
+            setTargetOrderId(null);
+            setTargetRefundId(null);
+          }}
           onTopUp={() => setShowTopUp(true)}
+          initialView={orderModalInitialView}
+          highlightOrderId={targetOrderId}
+          highlightRefundId={targetRefundId}
         />
         <PointsHistory isOpen={showPointsHistory} onClose={() => setShowPointsHistory(false)} />
         <CheckInModal

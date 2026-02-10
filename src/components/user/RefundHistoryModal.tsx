@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, RefreshCcw, CheckCircle, XCircle, Clock, AlertCircle, ChevronLeft, Filter } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import * as RefundApi from '../../api/refund';
 interface RefundHistoryModalProps {
     isOpen: boolean;
     onClose: () => void;
+    highlightRefundId?: string | null;
 }
 
 const statusConfig: Record<string, { label: string; color: string; bgColor: string; icon: React.ReactNode }> = {
@@ -48,7 +49,7 @@ const statusConfig: Record<string, { label: string; color: string; bgColor: stri
     },
 };
 
-export const RefundHistoryModal: React.FC<RefundHistoryModalProps> = ({ isOpen, onClose }) => {
+export const RefundHistoryModal: React.FC<RefundHistoryModalProps> = ({ isOpen, onClose, highlightRefundId }) => {
     const [page, setPage] = useState(1);
     const [selectedRefund, setSelectedRefund] = useState<RefundApi.RefundRequest | null>(null);
 
@@ -57,6 +58,15 @@ export const RefundHistoryModal: React.FC<RefundHistoryModalProps> = ({ isOpen, 
         queryFn: () => RefundApi.getMyRefunds(page, 10),
         enabled: isOpen,
     });
+
+    // Deep link: auto-select the target refund when data loads
+    useEffect(() => {
+        if (!highlightRefundId || isLoading || !refundsData?.items) return;
+        const target = refundsData.items.find((r: RefundApi.RefundRequest) => r.id === highlightRefundId);
+        if (target) {
+            setSelectedRefund(target);
+        }
+    }, [highlightRefundId, isLoading, refundsData]);
 
     if (!isOpen) return null;
 

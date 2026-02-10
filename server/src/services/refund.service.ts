@@ -2,6 +2,13 @@ import { OrderStatus, RefundStatus, Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { RefundProcessorService } from './refund-processor.service';
 import { notifyAdminNewRefund } from './admin-notification.service';
+import {
+    sendRefundSubmittedMessage,
+    sendRefundApprovedMessage,
+    sendRefundRejectedMessage,
+    sendRefundCompletedMessage,
+    sendRefundFailedMessage,
+} from './refund-notification.service';
 
 export interface RefundApplyDTO {
     orderId: string;
@@ -331,6 +338,17 @@ export async function applyRefund(
             reason: refund.reason,
             orderId: refund.orderId
         }).catch(err => console.error('[RefundNotify] 管理员通知发送失败:', err));
+
+        // 通知用户退款申请已提交
+        sendRefundSubmittedMessage({
+            userId,
+            refundId: refund.id,
+            refundNo: refund.refundNo,
+            orderNo: eligibility.order!.orderNo,
+            amount: refund.amount,
+            productName: eligibility.order!.productName,
+            reason: refund.reason,
+        }).catch(err => console.error('[RefundNotify] 用户提交通知发送失败:', err));
 
         return {
             success: true,
@@ -1039,6 +1057,20 @@ export async function auditRefund(
             if (processResult.success) {
                 // 退款处理成功，完成退款流程
                 await completeRefund(refundId, processResult.transactionId);
+
+                // 通知用户退款审核通过 + 退款已完成
+                const notifyCtx = {
+                    userId: refund.userId,
+                    refundId: refund.id,
+                    refundNo: refund.refundNo,
+                    orderNo: refund.order?.orderNo || '',
+                    amount: refund.amount,
+                    productName: '',
+                    transactionId: processResult.transactionId,
+                };
+                sendRefundApprovedMessage(notifyCtx).catch(err => console.error('[RefundNotify] 审核通过通知失败:', err));
+                sendRefundCompletedMessage(notifyCtx).catch(err => console.error('[RefundNotify] 退款完成通知失败:', err));
+
                 return {
                     success: true,
                     code: 'SUCCESS',
@@ -1063,6 +1095,17 @@ export async function auditRefund(
                         note: `支付接口返回失败: ${processResult.message}`,
                     }
                 });
+
+                // 通知用户退款处理失败
+                sendRefundFailedMessage({
+                    userId: refund.userId,
+                    refundId: refund.id,
+                    refundNo: refund.refundNo,
+                    orderNo: refund.order?.orderNo || '',
+                    amount: refund.amount,
+                    productName: '',
+                    remark: processResult.message,
+                }).catch(err => console.error('[RefundNotify] 退款失败通知失败:', err));
 
                 return {
                     success: false,
@@ -1093,6 +1136,17 @@ export async function auditRefund(
                     },
                 });
             });
+
+            // 通知用户退款被拒绝
+            sendRefundRejectedMessage({
+                userId: refund.userId,
+                refundId: refund.id,
+                refundNo: refund.refundNo,
+                orderNo: refund.order?.orderNo || '',
+                amount: refund.amount,
+                productName: '',
+                remark,
+            }).catch(err => console.error('[RefundNotify] 退款拒绝通知失败:', err));
 
             return {
                 success: true,

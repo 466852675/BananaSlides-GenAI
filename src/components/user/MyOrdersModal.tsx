@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingBag, Loader2, CheckCircle, XCircle, Clock, Plus, Coins, RefreshCcw, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -12,6 +12,9 @@ interface MyOrdersModalProps {
     isOpen: boolean;
     onClose: () => void;
     onTopUp?: () => void;
+    initialView?: 'list' | 'refunds';
+    highlightOrderId?: string | null;
+    highlightRefundId?: string | null;
 }
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -21,11 +24,25 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.R
     REFUNDED: { label: '已退款', color: 'text-red-500 bg-red-50', icon: <RefreshCcw size={14} /> },
 };
 
-export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, onTopUp }) => {
+export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, onTopUp, initialView = 'list', highlightOrderId, highlightRefundId }) => {
     const [showPurchase, setShowPurchase] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [showRefundModal, setShowRefundModal] = useState(false);
     const [showRefundHistory, setShowRefundHistory] = useState(false);
+
+    // Auto-switch to refund history if initialView is 'refunds'
+    useEffect(() => {
+        if (isOpen && initialView === 'refunds') {
+            setShowRefundHistory(true);
+        }
+    }, [isOpen, initialView]);
+
+    // Auto-switch to refunds if highlightRefundId is provided
+    useEffect(() => {
+        if (isOpen && highlightRefundId) {
+            setShowRefundHistory(true);
+        }
+    }, [isOpen, highlightRefundId]);
     const [selectedOrder, setSelectedOrder] = useState<OrdersApi.Order | null>(null);
 
     const { data: ordersData, isLoading, refetch } = useQuery({
@@ -65,6 +82,21 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
     if (!isOpen) return null;
 
     const orders = ordersData?.items || [];
+
+    // Deep link: scroll to and highlight the target order
+    useEffect(() => {
+        if (!highlightOrderId || isLoading || orders.length === 0) return;
+        // Wait for DOM to render
+        const timer = setTimeout(() => {
+            const el = document.getElementById(`order-${highlightOrderId}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('order-highlight-pulse');
+                setTimeout(() => el.classList.remove('order-highlight-pulse'), 3000);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [highlightOrderId, isLoading, orders]);
 
     return (
         <>
@@ -126,7 +158,9 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
                                         return (
                                             <div
                                                 key={order.id}
-                                                className="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 hover:border-slate-200 transition-colors"
+                                                id={`order-${order.id}`}
+                                                className={`bg-slate-50/80 rounded-2xl p-4 border border-slate-100 hover:border-slate-200 transition-all duration-300 ${highlightOrderId === order.id ? 'ring-2 ring-indigo-400 border-indigo-300' : ''
+                                                    }`}
                                             >
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div>
@@ -203,6 +237,7 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
             <RefundHistoryModal
                 isOpen={showRefundHistory}
                 onClose={() => setShowRefundHistory(false)}
+                highlightRefundId={highlightRefundId}
             />
         </>
     );

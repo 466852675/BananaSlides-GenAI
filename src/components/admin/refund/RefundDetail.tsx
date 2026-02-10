@@ -46,7 +46,7 @@ export const RefundDetailPage: React.FC<RefundDetailPageProps> = ({ refundId, on
     // 审核退款 mutation
     const auditMutation = useMutation({
         mutationFn: ({ action, adminNote }: { action: 'approve' | 'reject'; adminNote: string }) =>
-            RefundApi.auditRefund(refundId, action, adminNote),
+            RefundApi.auditRefund(refundId, action === 'approve', adminNote),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin-refund-detail', refundId] });
             queryClient.invalidateQueries({ queryKey: ['admin-refunds'] });

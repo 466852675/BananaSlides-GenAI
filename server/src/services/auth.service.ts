@@ -12,6 +12,8 @@ import { signToken, getTokenExpiresIn } from '../utils/jwt.util';
 import { SettingService } from './setting.service';
 import { prisma } from '../db';
 import crypto from 'crypto';
+import { notifyLoginSuccess, notifyPasswordChanged } from './security-notification.service';
+import { notifyWelcome } from './activity-notification.service';
 
 // 生成唯一邀请码
 function generateInviteCode(): string {
@@ -183,6 +185,9 @@ export async function register(data: RegisterDto): Promise<AuthResult> {
         console.log(`[Auth] 邀请奖励已发放: 邀请人 ${inviter.id} 和新用户 ${user.id} 各获得 ${referralRewardPoints} 积分`);
     }
 
+    // 10. 发送欢迎通知
+    notifyWelcome({ userId: user.id, nickname: user.nickname || '' }).catch(() => { });
+
     return {
         user: {
             id: user.id,
@@ -266,6 +271,9 @@ export async function login(identity: string, password: string, clientIp?: strin
 
     // 6. 签发 Token
     const token = signToken({ userId: user.id, role: user.role });
+
+    // 7. 发送登录安全通知
+    notifyLoginSuccess({ userId: user.id, ip: clientIp, method: 'password' }).catch(() => { });
 
     return {
         user: {
@@ -439,6 +447,9 @@ export async function changePassword(userId: string, oldPassword: string, newPas
         where: { id: userId },
         data: { passwordHash }
     });
+
+    // 发送密码修改安全通知
+    notifyPasswordChanged({ userId }).catch(() => { });
 }
 
 /**
@@ -627,6 +638,9 @@ export async function loginWithPhone(phone: string, code: string): Promise<AuthR
     });
 
     const token = signToken({ userId: user.id, role: user.role });
+
+    // 发送手机登录安全通知
+    notifyLoginSuccess({ userId: user.id, method: 'phone' }).catch(() => { });
 
     return {
         user: {

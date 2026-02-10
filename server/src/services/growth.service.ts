@@ -1,6 +1,9 @@
 import { prisma } from '../db';
 import { addPoints, getActionCost } from './points.service';
 import { SettingService } from './setting.service';
+import { notifyCheckInReward } from './points-notification.service';
+import { notifyStreakMilestone } from './activity-notification.service';
+import { notifyReferralReward } from './points-notification.service';
 
 export const growthService = {
     /**
@@ -107,7 +110,7 @@ export const growthService = {
         }
 
         // 4. Transaction execution
-        return await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
             // Create Log
             await tx.checkInLog.create({
                 data: {
@@ -143,6 +146,17 @@ export const growthService = {
 
             return { success: true, points: reward, streak: newStreak };
         });
+
+        // 签到积分通知（事务外）
+        notifyCheckInReward({ userId, points: reward, streak: newStreak }).catch(() => { });
+
+        // 连签里程碑通知
+        if (newStreak % 7 === 3 || newStreak % 7 === 0) {
+            const bonusPoints = newStreak % 7 === 0 ? (bonus7Cost || 200) : (bonus3Cost || 50);
+            notifyStreakMilestone({ userId, streak: newStreak, bonusPoints }).catch(() => { });
+        }
+
+        return result;
     },
 
     /**

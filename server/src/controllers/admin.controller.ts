@@ -60,11 +60,17 @@ export async function listUsers(req: Request, res: Response): Promise<void> {
             sortOrder,
         } = req.query;
 
+        // 校验 status 是否为合法的 UserStatus 枚举值，避免 Prisma 查询报错
+        const validUserStatuses = Object.values(UserStatus);
+        const safeStatus = (status && validUserStatuses.includes(status as UserStatus))
+            ? status as UserStatus
+            : undefined;
+
         const result = await AdminService.listUsers(
             {
                 search: search as string,
                 role: role as UserRole,
-                status: status as UserStatus,
+                status: safeStatus,
                 vipLevel: vip ? parseInt(vip as string, 10) : undefined,
                 sortBy: sortBy as 'createdAt' | 'points' | 'lastLoginAt',
                 sortOrder: sortOrder as 'asc' | 'desc',
@@ -272,10 +278,16 @@ export async function listOrders(req: Request, res: Response): Promise<void> {
     try {
         const { page = '1', limit = '20', userId, status, type, productName, cycle, search, sortBy, sortOrder } = req.query;
 
+        // 校验 status 是否为合法的 OrderStatus 枚举值，避免 Prisma 查询报错
+        const validOrderStatuses = Object.values(OrderStatus);
+        const safeOrderStatus = (status && validOrderStatuses.includes(status as OrderStatus))
+            ? status as OrderStatus
+            : undefined;
+
         const result = await OrderService.listOrders(
             {
                 userId: userId as string,
-                status: status as OrderStatus,
+                status: safeOrderStatus,
                 type: type as string,
                 productName: productName as string,
                 cycle: cycle as string,
