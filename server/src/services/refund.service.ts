@@ -10,6 +10,8 @@ import {
     sendRefundFailedMessage,
 } from './refund-notification.service';
 
+const POINTS_TO_YUAN_RATE = Number(process.env.POINTS_TO_YUAN_RATE) || 0.1;
+
 export interface RefundApplyDTO {
     orderId: string;
     reason: string;
@@ -267,20 +269,51 @@ export async function applyRefund(
 ): Promise<{ success: boolean; code: string; message: string; refundId?: string; autoApproved?: boolean }> {
     const { orderId, reason, description } = dto;
 
-    const eligibility = await checkRefundEligibility(userId, orderId);
-    if (!eligibility.eligible) {
-        return {
-            success: false,
-            code: eligibility.code,
-            message: eligibility.reason || '不符合退款条件',
-        };
-    }
-
-    const refundNo = generateRefundNo();
-    const orderAmount = eligibility.order!.finalPrice;
-
     try {
         const refund = await prisma.$transaction(async (tx) => {
+            const order = await tx.order.findUnique({
+                where: { id: orderId },
+                include: { refundRequests: true }
+            });
+
+            if (!order) {
+                throw new Error('ORDER_NOT_FOUND');
+            }
+
+            if (order.userId !== userId) {
+                throw new Error('ORDER_NOT_BELONG_TO_USER');
+            }
+
+            if (order.status !== OrderStatus.PAID) {
+                throw new Error('ORDER_NOT_PAID');
+            }
+
+            const now = new Date();
+            const paidAt = order.paidAt || order.createdAt;
+            const daysSincePaid = (now.getTime() - paidAt.getTime()) / (1000 * 60 * 60 * 24);
+
+            if (daysSincePaid > 7) {
+                throw new Error('REFUND_PERIOD_EXPIRED');
+            }
+
+            const hasActiveRefund = order.refundRequests.some(r => 
+                r.status !== RefundStatus.REJECTED && r.status !== RefundStatus.FAILED
+            );
+            if (hasActiveRefund) {
+                throw new Error('REFUND_ALREADY_REQUESTED');
+            }
+
+            const projectCount = await tx.project.count({
+                where: {
+                    userId,
+                    createdAt: { gte: order.createdAt }
+                }
+            });
+
+            if (projectCount > 0) {
+                throw new Error('SERVICE_ALREADY_USED');
+            }
+
             await tx.userRefundStats.upsert({
                 where: { userId },
                 create: {
@@ -294,32 +327,32 @@ export async function applyRefund(
                 },
             });
 
+            const refundNo = generateRefundNo();
             const createdRefund = await tx.refundRequest.create({
                 data: {
                     refundNo,
                     userId,
                     orderId,
-                    amount: orderAmount,
+                    amount: order.finalPrice,
                     status: RefundStatus.PENDING,
                     reason,
                     description,
                 },
             });
 
-            // 记录用户提交申请日志
             await addRefundHistory(tx, createdRefund.id, 'SUBMIT', 'user', reason);
 
-            return createdRefund;
+            return { refund: createdRefund, order };
         });
 
         let message = '退款申请已提交，请等待审核';
         let autoApproved = false;
 
-        const autoApprovalCheck = await checkAutoApprovalEligibility(userId, orderAmount);
+        const autoApprovalCheck = await checkAutoApprovalEligibility(userId, refund.order.finalPrice);
 
         if (autoApprovalCheck.canAutoApprove) {
-            console.log('[RefundService] 用户符合自动审批条件，自动处理退款:', refund.refundNo);
-            const autoAuditResult = await auditRefund(refund.id, 'SYSTEM_AUTO', { approved: true, remark: '系统自动审批（低风险用户）' });
+            console.log('[RefundService] 用户符合自动审批条件，自动处理退款:', refund.refund.refundNo);
+            const autoAuditResult = await auditRefund(refund.refund.id, 'SYSTEM_AUTO', { approved: true, remark: '系统自动审批（低风险用户）' });
 
             if (autoAuditResult.success) {
                 message = '退款申请已提交并自动通过，退款将在1-3个工作日内到账';
@@ -330,34 +363,50 @@ export async function applyRefund(
             }
         }
 
-        // 通知管理员有新退款申请
         notifyAdminNewRefund({
-            id: refund.id,
-            refundNo: refund.refundNo,
-            amount: refund.amount,
-            reason: refund.reason,
-            orderId: refund.orderId
+            id: refund.refund.id,
+            refundNo: refund.refund.refundNo,
+            amount: refund.refund.amount,
+            reason: refund.refund.reason,
+            orderId: refund.refund.orderId
         }).catch(err => console.error('[RefundNotify] 管理员通知发送失败:', err));
 
-        // 通知用户退款申请已提交
         sendRefundSubmittedMessage({
             userId,
-            refundId: refund.id,
-            refundNo: refund.refundNo,
-            orderNo: eligibility.order!.orderNo,
-            amount: refund.amount,
-            productName: eligibility.order!.productName,
-            reason: refund.reason,
+            refundId: refund.refund.id,
+            refundNo: refund.refund.refundNo,
+            orderNo: refund.order.orderNo,
+            amount: refund.refund.amount,
+            productName: refund.order.productName,
+            reason: refund.refund.reason,
         }).catch(err => console.error('[RefundNotify] 用户提交通知发送失败:', err));
 
         return {
             success: true,
             code: 'SUCCESS',
             message,
-            refundId: refund.id,
+            refundId: refund.refund.id,
             autoApproved,
         };
-    } catch (error) {
+    } catch (error: any) {
+        const errorMap: Record<string, { code: string; message: string }> = {
+            'ORDER_NOT_FOUND': { code: 'ORDER_NOT_FOUND', message: '订单不存在' },
+            'ORDER_NOT_BELONG_TO_USER': { code: 'ORDER_NOT_BELONG_TO_USER', message: '订单不属于当前用户' },
+            'ORDER_NOT_PAID': { code: 'ORDER_NOT_PAID', message: '订单未支付或已处理' },
+            'REFUND_PERIOD_EXPIRED': { code: 'REFUND_PERIOD_EXPIRED', message: '已超过7天退款期限' },
+            'REFUND_ALREADY_REQUESTED': { code: 'REFUND_ALREADY_REQUESTED', message: '该订单已申请过退款' },
+            'SERVICE_ALREADY_USED': { code: 'SERVICE_ALREADY_USED', message: '您已创建项目，不符合退款条件' },
+        };
+
+        const knownError = errorMap[error.message];
+        if (knownError) {
+            return {
+                success: false,
+                code: knownError.code,
+                message: knownError.message,
+            };
+        }
+
         console.error('[RefundService] 创建退款申请失败:', error);
         return {
             success: false,
@@ -519,9 +568,7 @@ export async function getAdminRefundDetailAggregated(refundId: string) {
         0
     );
 
-    // 假设积分兑换率：10 积分 = ¥1 (可根据实际业务调整)
-    const pointsToYuanRate = 0.1;
-    const consumedValue = totalConsumedPoints * pointsToYuanRate;
+    const consumedValue = totalConsumedPoints * POINTS_TO_YUAN_RATE;
     const suggestedRefundAmount = Math.max(0, refund.amount - consumedValue);
 
     // 4. 计算用户账户年龄
@@ -1007,11 +1054,11 @@ export async function auditRefund(
         };
     }
 
-    if (refund.status !== RefundStatus.PENDING) {
+    if (refund.status !== RefundStatus.PENDING && refund.status !== RefundStatus.PENDING_SECOND) {
         return {
             success: false,
             code: 'INVALID_STATUS',
-            message: '退款申请状态不正确',
+            message: `退款申请状态不正确，当前状态: ${refund.status}`,
         };
     }
 
