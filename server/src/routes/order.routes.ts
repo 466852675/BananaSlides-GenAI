@@ -12,18 +12,18 @@ router.use(authenticate);
 
 /**
  * POST /orders - 创建订单
- * @body { productId: string }
+ * @body { productId: string, paymentMethod?: 'wechat' | 'alipay' }
  */
 router.post('/', async (req, res) => {
     try {
-        const { productId } = req.body;
+        const { productId, paymentMethod } = req.body;
         const userId = req.user!.id;
 
         if (!productId) {
             return res.status(400).json({ error: '缺少商品 ID' });
         }
 
-        const result = await OrderService.createOrder(userId, productId);
+        const result = await OrderService.createOrder(userId, productId, paymentMethod);
         res.json(result);
     } catch (error: any) {
         console.error('[Order] 创建订单失败:', error);
@@ -33,18 +33,39 @@ router.post('/', async (req, res) => {
 
 /**
  * POST /orders/:id/pay - 模拟支付
- * @body { simulate?: 'success' | 'fail' }
+ * @body { simulate?: 'success' | 'fail', paymentMethod?: 'wechat' | 'alipay' | 'mock' }
  */
 router.post('/:id/pay', async (req, res) => {
     try {
         const { id } = req.params;
-        const { simulate = 'success' } = req.body;
+        const { simulate = 'success', paymentMethod } = req.body;
 
-        const result = await OrderService.simulatePay(id, simulate);
+        const result = await OrderService.simulatePay(id, simulate, paymentMethod);
         res.json(result);
     } catch (error: any) {
         console.error('[Order] 支付失败:', error);
         res.status(400).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /orders/:id/cancel - 取消订单
+ */
+router.post('/:id/cancel', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user!.id;
+
+        const result = await OrderService.cancelOrder(id, userId);
+        
+        if (result.success) {
+            res.json(result);
+        } else {
+            res.status(400).json(result);
+        }
+    } catch (error: any) {
+        console.error('[Order] 取消订单失败:', error);
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 

@@ -153,16 +153,63 @@ export async function updateOrderStatus(id: string, status: OrderStatus) {
  * 订单履约
  */
 export async function fulfillOrder(orderId: string) {
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    const order = await prisma.order.findUnique({ 
+        where: { id: orderId },
+        include: { user: { select: { id: true, points: true, vipLevel: true, vipExpiresAt: true, role: true } } }
+    });
     if (!order || order.fulfillmentAt) return order;
 
     const product = order.productId ? await prisma.product.findUnique({ where: { id: order.productId } }) : null;
+    const user = order.user;
+    if (!user) return order;
+
     const pointsToAdd = product?.points ?? order.quantity;
+    
+    const isVipProduct = product?.type?.toUpperCase().includes('VIP') || 
+                         product?.period === 'monthly' || 
+                         product?.period === 'yearly';
+    
+    const beforeVipLevel = user.vipLevel;
+    let afterVipLevel = user.vipLevel;
+    let vipExpiresAt = user.vipExpiresAt;
+    let roleToGrant = product?.roleToGrant;
+
+    if (isVipProduct && product) {
+        afterVipLevel = Math.max(user.vipLevel, 1);
+        
+        const now = new Date();
+        if (product.period === 'monthly') {
+            const currentExpiry = user.vipExpiresAt && user.vipExpiresAt > now ? user.vipExpiresAt : now;
+            vipExpiresAt = new Date(currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000);
+        } else if (product.period === 'yearly') {
+            const currentExpiry = user.vipExpiresAt && user.vipExpiresAt > now ? user.vipExpiresAt : now;
+            vipExpiresAt = new Date(currentExpiry.getTime() + 365 * 24 * 60 * 60 * 1000);
+        }
+        
+        if (product.type?.toUpperCase().includes('PROFESSIONAL')) {
+            afterVipLevel = 2;
+        } else if (product.type?.toUpperCase().includes('PREMIUM')) {
+            afterVipLevel = 3;
+        }
+    }
 
     const updatedOrder = await prisma.$transaction(async (tx: TransactionClient) => {
+        const userUpdateData: any = {
+            points: { increment: pointsToAdd },
+        };
+
+        if (isVipProduct) {
+            userUpdateData.vipLevel = afterVipLevel;
+            userUpdateData.vipExpiresAt = vipExpiresAt;
+        }
+
+        if (roleToGrant) {
+            userUpdateData.role = roleToGrant;
+        }
+
         await tx.user.update({
             where: { id: order.userId },
-            data: { points: { increment: pointsToAdd } },
+            data: userUpdateData,
         });
 
         await tx.transaction.create({
@@ -176,13 +223,29 @@ export async function fulfillOrder(orderId: string) {
             },
         });
 
+        if (isVipProduct) {
+            await tx.transaction.create({
+                data: {
+                    userId: order.userId,
+                    type: 'vip_upgrade',
+                    amount: afterVipLevel - beforeVipLevel,
+                    balance: user.points + pointsToAdd,
+                    orderId: orderId,
+                    description: `VIP升级: ${order.productName} (等级 ${beforeVipLevel} → ${afterVipLevel})`,
+                },
+            });
+        }
+
         return await tx.order.update({
             where: { id: orderId },
-            data: { fulfillmentAt: new Date() },
+            data: { 
+                fulfillmentAt: new Date(),
+                beforeVipLevel,
+                afterVipLevel,
+            },
         });
     });
 
-    // 发送支付成功通知（异步，不阻塞主流程）
     notifyOrderPaid({
         orderId: order.id,
         userId: order.userId,
@@ -192,7 +255,6 @@ export async function fulfillOrder(orderId: string) {
         amount: order.finalPrice,
     }).catch(err => console.error('[OrderNotify] 支付成功通知发送失败:', err));
 
-    // 通知管理员 (V9.6 新增)
     notifyAdminNewOrder({
         id: order.id,
         orderNo: order.orderNo,
@@ -200,7 +262,7 @@ export async function fulfillOrder(orderId: string) {
         productName: order.productName,
         userId: order.userId,
         user: {
-            nickname: (updatedOrder as any).user?.nickname, // Note: Transaction doesn't return included user, might need separate fetch if strictly needed, but let's rely on what we have or fetch light
+            nickname: (updatedOrder as any).user?.nickname,
             email: ''
         }
     }).catch(err => console.error('[OrderNotify] 管理员通知发送失败:', err));
@@ -232,7 +294,7 @@ export async function getMyOrders(userId: string, page: number, limit: number) {
 /**
  * 创建订单 (用户端)
  */
-export async function createOrder(userId: string, productId: string) {
+export async function createOrder(userId: string, productId: string, paymentMethod?: string) {
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new Error('商品不存在');
 
@@ -243,10 +305,11 @@ export async function createOrder(userId: string, productId: string) {
             productId,
             productType: product.type,
             productName: product.name,
-            originalPrice: product.price,
+            originalPrice: product.originalPrice || product.price,
             finalPrice: product.price,
             status: OrderStatus.PENDING,
-            quantity: 1,
+            quantity: product.points,
+            paymentMethod: paymentMethod || null,
         }
     });
 }
@@ -254,15 +317,117 @@ export async function createOrder(userId: string, productId: string) {
 /**
  * 模拟支付 (用户端)
  */
-export async function simulatePay(id: string, simulate: string = 'success') {
+export async function simulatePay(id: string, simulate: string = 'success', paymentMethod?: string) {
     if (simulate === 'fail') {
         return await prisma.order.update({
             where: { id },
-            data: { status: OrderStatus.FAILED }
+            data: { 
+                status: OrderStatus.FAILED,
+                paymentMethod: paymentMethod || 'mock'
+            }
         });
     }
 
-    return await updateOrderStatus(id, OrderStatus.PAID);
+    // 更新订单状态并设置支付方式
+    const order = await prisma.order.update({
+        where: { id },
+        data: { 
+            status: OrderStatus.PAID,
+            paymentMethod: paymentMethod || 'mock',
+            paymentNo: `MOCK_PAY_${Date.now()}`,
+            paidAt: new Date()
+        }
+    });
+
+    // 执行履约
+    await fulfillOrder(id);
+    
+    return order;
+}
+
+/**
+ * 取消订单 (用户端)
+ * 
+ * 规则：
+ * - 仅 PENDING 状态的订单可取消
+ * - 已支付/已退款/已取消的订单不可取消
+ */
+export async function cancelOrder(orderId: string, userId: string): Promise<{ success: boolean; message: string; order?: any }> {
+    const order = await prisma.order.findUnique({
+        where: { id: orderId }
+    });
+
+    if (!order) {
+        return { success: false, message: '订单不存在' };
+    }
+
+    if (order.userId !== userId) {
+        return { success: false, message: '无权操作此订单' };
+    }
+
+    if (order.status !== OrderStatus.PENDING) {
+        return { 
+            success: false, 
+            message: `订单状态为 ${order.status}，无法取消。仅待支付订单可取消。` 
+        };
+    }
+
+    const updatedOrder = await prisma.order.update({
+        where: { id: orderId },
+        data: { 
+            status: OrderStatus.CANCELLED,
+            updatedAt: new Date()
+        }
+    });
+
+    return { 
+        success: true, 
+        message: '订单已取消',
+        order: updatedOrder 
+    };
+}
+
+/**
+ * 批量取消超时订单 (系统定时任务)
+ * 
+ * 规则：
+ * - PENDING 状态超过 30 分钟未支付的订单自动取消
+ * 
+ * @returns 取消的订单数量
+ */
+export async function cancelExpiredOrders(expireMinutes: number = 30): Promise<{ count: number; orderIds: string[] }> {
+    const expireThreshold = new Date(Date.now() - expireMinutes * 60 * 1000);
+
+    const expiredOrders = await prisma.order.findMany({
+        where: {
+            status: OrderStatus.PENDING,
+            createdAt: { lt: expireThreshold }
+        },
+        select: { id: true }
+    });
+
+    if (expiredOrders.length === 0) {
+        return { count: 0, orderIds: [] };
+    }
+
+    const orderIds = expiredOrders.map(o => o.id);
+
+    const result = await prisma.order.updateMany({
+        where: {
+            id: { in: orderIds }
+        },
+        data: {
+            status: OrderStatus.CANCELLED,
+            updatedAt: new Date()
+        }
+    });
+
+    console.log(`[OrderService] 自动取消 ${result.count} 个超时订单`);
+
+    return { 
+        count: result.count, 
+        orderIds 
+    };
 }
 
 /**
