@@ -363,17 +363,24 @@ export class RefundProcessorService {
         result: ProcessRefundResult
     ): Promise<void> {
         try {
+            const existingLog = await prisma.refundRetryLog.findFirst({
+                where: { refundId },
+                orderBy: { retryCount: 'desc' }
+            });
+
+            const newRetryCount = (existingLog?.retryCount || 0) + 1;
+
             await prisma.refundRetryLog.create({
                 data: {
                     refundId,
-                    retryCount: 1,
+                    retryCount: newRetryCount,
                     error: result.success ? null : `${result.code}: ${result.message}`,
                     scheduledAt: new Date(),
                     executedAt: new Date(),
                 },
             });
 
-            console.log(`[RefundProcessor] Logged refund attempt for ${refundId}: ${result.success ? 'success' : 'failed'}`);
+            console.log(`[RefundProcessor] Logged refund attempt #${newRetryCount} for ${refundId}: ${result.success ? 'success' : 'failed'}`);
         } catch (error) {
             console.error('[RefundProcessor] 记录退款日志失败:', error);
         }
