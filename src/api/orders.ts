@@ -43,9 +43,11 @@ export interface OrderListResponse {
 
 /**
  * 创建订单
+ * @param productId 产品 ID
+ * @param paymentMethod 支付方式 (可选)
  */
-export async function createOrder(productId: string): Promise<CreateOrderResponse> {
-    const res = await client.post('/orders', { productId }) as any;
+export async function createOrder(productId: string, paymentMethod?: string): Promise<CreateOrderResponse> {
+    const res = await client.post('/orders', { productId, paymentMethod }) as any;
     return res.data;
 }
 
@@ -53,9 +55,19 @@ export async function createOrder(productId: string): Promise<CreateOrderRespons
  * 模拟支付
  * @param orderId 订单 ID
  * @param simulate 模拟结果: 'success' | 'fail' (默认 'success')
+ * @param paymentMethod 支付方式 (可选)
  */
-export async function payOrder(orderId: string, simulate: 'success' | 'fail' = 'success'): Promise<PayOrderResponse> {
-    const res = await client.post(`/orders/${orderId}/pay`, { simulate }) as any;
+export async function payOrder(orderId: string, simulate: 'success' | 'fail' = 'success', paymentMethod?: string): Promise<PayOrderResponse> {
+    const res = await client.post(`/orders/${orderId}/pay`, { simulate, paymentMethod }) as any;
+    return res.data;
+}
+
+/**
+ * 取消订单
+ * @param orderId 订单 ID
+ */
+export async function cancelOrder(orderId: string): Promise<{ success: boolean; message: string }> {
+    const res = await client.post(`/orders/${orderId}/cancel`) as any;
     return res.data;
 }
 
