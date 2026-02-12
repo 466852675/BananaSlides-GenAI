@@ -60,6 +60,7 @@ server/NUL
 .sisyphus/
 .trae/
 contexts/
+.opencode/
 
 # Spec workflow - 保留模板，忽略个人工作文件
 .spec-workflow/drafts/
