@@ -11,57 +11,26 @@
 
 ## 技术背景
 
-<!-- BananaSlides-GenAI 技术栈 - 根据章程 III. 混合架构一致性 -->
+<!--
+  需要操作: 将此部分内容替换为项目的技术细节.
+  此处的结构以咨询性质呈现, 用于指导迭代过程.
+-->
 
-**语言/版本**: TypeScript 5.9 (前端 React 19.2, 后端 Node.js 22 LTS)
-**主要依赖**: 
-  - 前端: React 19.2 + Vite 6.2 + Tailwind CSS v4.1 + Tanstack Query v5.9
-  - 后端: Express v5.2 + Prisma v6.19
-  - AI: 自定义 Router-Adapter (Gemini/GLM/DeepSeek/本地模型)
-**存储**: SQLite (开发) / PostgreSQL (生产) - 通过 Prisma ORM 管理
-**测试**: Vitest (单元) + Playwright (E2E)
-**目标平台**: Web 浏览器 (Chrome 90+, Edge, Firefox, Safari)
-**项目类型**: Web 应用 (前后端分离)
-**性能目标**: 
-  - 首屏加载 < 2s
-  - AI 生成响应 < 30s (首图)
-  - API 响应 p95 < 200ms
-**约束条件**: 
-  - 遵循章程 V: TypeScript 编译零错误
-  - AI 模型必须通过 Router-Adapter (禁止直接调用)
-  - 所有 API 响应遵循统一格式
-**规模/范围**: [根据功能调整, 例如: 支持 X 并发生成任务]
+**语言/版本**: [例如: Python 3.11、Swift 5.9、Rust 1.75 或 NEEDS CLARIFICATION]
+**主要依赖**: [例如: FastAPI、UIKit、LLVM 或 NEEDS CLARIFICATION]
+**存储**: [如适用, 例如: PostgreSQL、CoreData、文件 或 N/A]
+**测试**: [例如: pytest、XCTest、cargo test 或 NEEDS CLARIFICATION]
+**目标平台**: [例如: Linux 服务器、iOS 15+、WASM 或 NEEDS CLARIFICATION]
+**项目类型**: [单一/网页/移动 - 决定源代码结构]
+**性能目标**: [领域特定, 例如: 1000 请求/秒、10k 行/秒、60 fps 或 NEEDS CLARIFICATION]
+**约束条件**: [领域特定, 例如: <200ms p95、<100MB 内存、离线可用 或 NEEDS CLARIFICATION]
+**规模/范围**: [领域特定, 例如: 10k 用户、1M 行代码、50 个屏幕 或 NEEDS CLARIFICATION]
 
 ## 章程检查
 
 *门控: 必须在阶段 0 研究前通过. 阶段 1 设计后重新检查. *
 
-根据 `.specify/memory/constitution.md` 验证以下原则:
-
-### I. AI 模型路由抽象
-- [ ] 功能涉及 AI 调用时，设计通过 Router-Adapter 而非直接 SDK 调用
-- [ ] 适配器接口定义符合现有 `server/src/services/ai/` 模式
-- [ ] 支持通过环境变量切换模型提供商
-
-### II. 意图驱动设计  
-- [ ] 每个用户故事都有明确的价值主张
-- [ ] 复杂操作有一键式入口设计
-- [ ] 错误消息使用用户语言（非技术术语）
-
-### III. 混合架构一致性
-- [ ] API 端点遵循现有错误码规范
-- [ ] 新增数据库实体同步更新 Prisma schema
-- [ ] 前端类型定义与后端接口同步
-
-### IV. 全链路可观测性
-- [ ] 关键操作包含日志记录设计
-- [ ] AI 生成任务包含追踪 ID
-- [ ] 性能指标采集点已识别
-
-### V. 工业级交付标准
-- [ ] 关键业务逻辑识别测试需求
-- [ ] 无 `as any` 或 `@ts-ignore` 绕过计划
-- [ ] 文档更新清单已列出
+[基于章程文件确定的门控条件]
 
 ## 项目结构
 
@@ -78,49 +47,46 @@ specs/[###-feature]/
 ```
 
 ### 源代码(仓库根目录)
-<!-- BananaSlides-GenAI 标准结构 - 遵循章程 III. 混合架构一致性 -->
+<!--
+  需要操作: 将下面的占位符树结构替换为此功能的具体布局.
+  删除未使用的选项, 并使用真实路径(例如: apps/admin、packages/something)扩展所选结构.
+  交付的计划不得包含选项标签.
+-->
 
 ```
-# Web 应用结构 (前后端分离)
-frontend/                          # React 19 + Vite 前端
-├── src/
-│   ├── api/                      # API 客户端 (与后端契约同步)
-│   ├── components/               # 可复用 UI 组件
-│   │   ├── ui/                  # 基础组件 (Button, Input, Modal)
-│   │   └── [feature]/           # 功能特定组件
-│   ├── pages/                    # 路由页面组件
-│   ├── hooks/                    # 自定义 React Hooks
-│   ├── stores/                   # 客户端状态管理
-│   ├── types/                    # TypeScript 类型定义
-│   └── utils/                    # 工具函数
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-└── package.json
+# [如未使用请删除] 选项 1: 单一项目(默认)
+src/
+├── models/
+├── services/
+├── cli/
+└── lib/
 
-server/                           # Express 5 + Prisma 后端
-├── src/
-│   ├── routes/                   # API 路由定义
-│   ├── services/                 # 业务逻辑层
-│   │   ├── ai/                  # AI Router-Adapter (章程 I)
-│   │   ├── [domain]/            # 领域服务 (order, project, user...)
-│   │   └── [feature]/           # 功能特定服务
-│   ├── middleware/               # Express 中间件
-│   ├── prisma/
-│   │   └── schema.prisma        # 数据库模型定义
-│   └── types/                    # 共享类型定义
-├── tests/
-│   ├── unit/
-│   └── integration/
-└── package.json
+tests/
+├── contract/
+├── integration/
+└── unit/
 
-docs/                             # 项目文档
-├── 01_Project_Overview/         # 项目概览
-├── 02_System_Design/            # 系统设计
-├── 03_Feature_Specs/            # 功能规范
-├── 04_Manuals/                  # 操作手册
-└── 05_Testing/                  # 测试文档
+# [如未使用请删除] 选项 2: Web 应用程序(检测到"前端" + "后端"时)
+backend/
+├── src/
+│   ├── models/
+│   ├── services/
+│   └── api/
+└── tests/
+
+frontend/
+├── src/
+│   ├── components/
+│   ├── pages/
+│   └── services/
+└── tests/
+
+# [如未使用请删除] 选项 3: 移动端 + API(检测到 "iOS/Android" 时)
+api/
+└── [同上后端结构]
+
+ios/ 或 android/
+└── [平台特定结构: 功能模块、UI 流程、平台测试]
 ```
 
 **结构决策**: [记录所选结构并引用上面捕获的真实目录]

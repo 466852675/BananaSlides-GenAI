@@ -1,80 +1,53 @@
-# BACKEND - BananaSlides-GenAI
+# BACKEND
 
-**Scope:** `/server/src` — Express 5 + TypeScript + Prisma ORM
+**Scope:** `/server/src` — Express 5 + TypeScript + Prisma + Winston + Zod
 
 ---
 
 ## OVERVIEW
 
-REST API backend with layered architecture: Controllers → Services → Prisma. Hot-reload enabled for `.env` changes.
-
-## STRUCTURE
-
-```
-server/src/
-├── app.ts              # Entry point (136 lines) - route registration
-├── services/           # Business logic (16 files) - Service classes
-├── routes/             # Express routes (16 files) - HTTP handlers
-├── controllers/        # Request handlers (13 files)
-├── middleware/         # Auth, validation, error handling
-├── validators/         # Zod/request validation schemas
-├── prisma/             # Database schema (SQLite)
-└── types.ts            # Backend type definitions
-```
+Layered REST API: Routes → Controllers → Services → Prisma ORM.
 
 ## WHERE TO LOOK
 
-| Task | Location | Notes |
-|------|----------|-------|
-| AI routing | `services/ai.service.ts` | Hybrid router (Gemini/GLM/DeepSeek) |
-| Auth | `services/auth.service.ts` | JWT generation/validation |
-| Billing | `services/points.service.ts` | Credit system |
-| Projects | `services/project.service.ts` | CRUD + lifecycle |
-| Snapshots | `services/snapshot.service.ts` | Version control/time machine |
-| Orders | `services/order.service.ts` | Transaction management |
-| Admin | `services/admin.service.ts` | RBAC, stats, user mgmt |
-| Document parsing | `routes/mineru.routes.ts` | MinerU PDF/Word integration |
+| Need | File |
+|------|------|
+| AI routing | `services/ai.service.ts` |
+| Auth | `services/auth.service.ts` |
+| Billing | `services/points.service.ts` |
+| Rate limits | `middleware/rateLimitMiddleware.ts` |
+| Validation | `validators/index.ts` |
+| Logger | `utils/logger.ts` |
 
 ## CONVENTIONS
 
-### Service Layer Pattern
-```typescript
-export class FeatureService {
-  static async methodName(params): Promise<Type> {
-    // Business logic
-    // Prisma calls
-  }
-}
-```
+**Router Pattern** — `const router = Router(); router.get('/path', handler);`
 
-### Route Registration (ORDER MATTERS)
-```typescript
-// app.ts - auth routes MUST come first
-app.use('/api/auth', authRoutes);
-app.use('/api/projects', projectRoutes); // Protected
-```
+**Winston Logging** — `log.info('msg', { meta }); log.error('msg', { error });`
 
-### Error Handling
-- Services throw with `{ code, message }` objects
-- Controllers catch and return `res.status().json()`
-- Auth middleware: `{ code: 'FORBIDDEN', message: '权限不足' }`
+**Zod Validation** — `export const Schema = z.object({ name: z.string() });`
 
-### Database
-- Prisma ORM with SQLite file storage
-- Schema: `server/prisma/schema.prisma`
-- Commands: `npx prisma db push` (dev), `npx prisma migrate dev` (prod)
+**Rate Limiting** — `rateLimit({ windowMs: 60000, max: 30, message: { code: 'RATE_LIMIT_EXCEEDED' }});`
+
+**CORS** — `app.use(cors({ origin: allowedOrigins, credentials: true, allowedHeaders: ['Content-Type', 'Authorization'] }));`
+
+**Prisma Transactions** — `await prisma.$transaction(async (tx) => { await tx.model.create({ data }); });`
 
 ## ANTI-PATTERNS
 
-- **Never bypass service layer** — Always route through `*Service` classes
-- **Never call Prisma directly** from controllers — use services
-- **Never use any** — Strict TypeScript, avoid `as any` or `@ts-ignore`
-- **Never hardcode AI providers** — Use `SettingService` for dynamic switching
-- **Never modify .env in production** — Use admin settings API (hot-reload enabled)
+- **Never empty catch blocks** — Always log via Winston
+- **Never use `any` type** — Strict TypeScript
+- **Always await async** — No fire-and-forget
+- **Never Prisma directly in controllers** — Use services
+- **Never bypass rate limiters**
 
-## NOTES
+## KEY SERVICES
 
-1. **Hot reload:** `.env` changes trigger `SettingService.reloadEnv()` with 500ms debounce
-2. **Port conflict:** If `EADDRINUSE`, run `taskkill /F /IM node.exe`
-3. **Route shadowing:** Snapshots route registered before projects to avoid conflicts
-4. **Bootstrap:** Admin seeding runs on server start via `bootstrap/admin.bootstrap.ts`
+| Service | Purpose |
+|---------|---------|
+| `ai.service.ts` | Model routing, prompts, image generation |
+| `points.service.ts` | Credit/quota system |
+| `order.service.ts` | Payment & refunds |
+| `project.service.ts` | Project & slide CRUD |
+| `setting.service.ts` | Dynamic config, `.env` hot-reload |
+| `admin.service.ts` | RBAC, user management |

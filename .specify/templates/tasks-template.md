@@ -16,28 +16,11 @@ description: "功能实现任务列表模板"
 - **[Story]**: 此任务属于哪个用户故事(例如: US1、US2、US3)
 - 在描述中包含确切的文件路径
 
-## 路径约定 (BananaSlides-GenAI)
-
-<!-- 根据章程 III. 混合架构一致性 和项目实际结构 -->
-
-- **前端**: `frontend/src/` - React 19 + TypeScript
-  - `api/` - API 客户端
-  - `components/` - UI 组件
-  - `pages/` - 页面路由
-  - `hooks/` - 自定义 Hooks
-  - `types/` - 类型定义
-  
-- **后端**: `server/src/` - Express 5 + Prisma
-  - `routes/` - API 路由
-  - `services/` - 业务逻辑 (含 `ai/` Router-Adapter)
-  - `middleware/` - Express 中间件
-  - `prisma/schema.prisma` - 数据模型
-  
-- **测试**:
-  - `frontend/tests/` - 前端测试
-  - `server/tests/` - 后端测试
-  
-- **文档**: `docs/` - 按类别组织的 Markdown 文档
+## 路径约定
+- **单一项目**: 仓库根目录下的 `src/`、`tests/`
+- **Web 应用**: `backend/src/`、`frontend/src/`
+- **移动应用**: `api/src/`、`ios/src/` 或 `android/src/`
+- 以下显示的路径假设为单一项目 - 根据 plan.md 结构进行调整
 
 <!--
   ============================================================================
@@ -74,15 +57,14 @@ description: "功能实现任务列表模板"
 
 **⚠️ 关键**: 在此阶段完成之前, 无法开始任何用户故事工作
 
-BananaSlides 基础任务示例:
+基础任务示例(根据你的项目调整): 
 
-- [ ] T004 [P] 更新 `server/prisma/schema.prisma` 添加新实体
-- [ ] T005 运行 `npx prisma db push` 同步数据库
-- [ ] T006 [P] 在 `server/src/services/` 创建领域服务框架
-- [ ] T007 [P] 在 `server/src/routes/` 设置 API 路由
-- [ ] T008 [P] 在 `frontend/src/api/` 创建 API 客户端
-- [ ] T009 配置结构化日志记录 (符合章程 IV)
-- [ ] T010 [P] 添加类型定义到 `frontend/src/types/` 和 `server/src/types/`
+- [ ] T004 设置数据库架构和迁移框架
+- [ ] T005 [P] 实施身份验证/授权框架
+- [ ] T006 [P] 设置 API 路由和中间件结构
+- [ ] T007 创建所有故事依赖的基础模型/实体
+- [ ] T008 配置错误处理和日志记录基础设施
+- [ ] T009 设置环境配置管理
 
 **检查点**: 基础就绪 - 现在可以开始并行实施用户故事
 
@@ -154,24 +136,6 @@ BananaSlides 基础任务示例:
 - [ ] T028 [US3] 在 src/[location]/[file].py 中实施 [endpoint/feature]
 
 **检查点**: 所有用户故事现在应该独立功能化
-
----
-
-## 阶段 AI: AI 功能特定任务 *(如涉及 AI 生成)*
-
-<!-- 根据章程 I. AI 模型路由抽象 -->
-
-**目标**: 实现符合章程的 AI 集成功能
-
-- [ ] TA001 在 `server/src/services/ai/` 创建/更新适配器
-- [ ] TA002 定义模型无关的输入/输出接口
-- [ ] TA003 实现提示词模板引擎
-- [ ] TA004 添加生成任务追踪 ID 注入
-- [ ] TA005 配置模型切换环境变量支持
-- [ ] TA006 集成 Token 消耗和性能指标上报
-- [ ] TA007 [P] 添加 AI 生成的单元测试（模拟适配器）
-
-**检查点**: AI 功能通过 Router-Adapter 工作，可在不同模型间切换
 
 ---
 

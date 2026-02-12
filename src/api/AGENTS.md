@@ -1,76 +1,71 @@
-# API CLIENTS - BananaSlides-GenAI
+# src/api/
 
-**Scope:** `/src/api` — HTTP client layer for backend communication
+HTTP client layer for backend communication.
 
 ---
 
 ## OVERVIEW
 
-12 domain-specific API clients using axios. All follow consistent pattern: base setup, typed requests, unified error handling.
-
-## STRUCTURE
-
-```
-api/
-├── client.ts        # Axios instance with interceptors
-├── auth.ts          # Login/logout/register
-├── admin.ts         # Admin operations (users, orders, stats)
-├── projects.ts      # Project CRUD + snapshots
-├── templates.ts     # Style templates
-├── history.ts       # Archived projects
-├── favorites.ts     # User favorites
-├── settings.ts      # App configuration
-├── orders.ts        # Billing orders
-├── points.ts        # Credit system
-├── product.ts       # Products/pricing
-└── growth.ts        # Growth/referral
-```
+15 domain-specific API modules using axios with unified interceptors for auth and error handling.
 
 ## WHERE TO LOOK
 
-| Operation | File | Key Functions |
-|-----------|------|---------------|
-| Auth | `auth.ts` | `login()`, `register()`, `logout()` |
-| Projects | `projects.ts` | `getProjects()`, `createProject()`, `updateProject()` |
-| AI Generation | `projects.ts` | `generateSlide()`, `generateOutline()` |
-| Snapshots | `projects.ts` | `createSnapshot()`, `restoreSnapshot()` |
-| Templates | `templates.ts` | `getTemplates()`, `saveTemplate()` |
-| Admin Users | `admin.ts` | `getUsers()`, `updateUser()` |
-| Admin Orders | `admin.ts` | `getOrders()`, `updateOrderStatus()` |
-| Points | `points.ts` | `getBalance()`, `consumePoints()` |
+| File | Purpose |
+|------|---------|
+| `client.ts` | Axios instance with JWT interceptors |
+| `auth.ts` | Login/logout/register/reset password |
+| `projects.ts` | Project CRUD + TanStack Query hooks |
+| `admin.ts` | Admin operations (users, orders, stats) |
+| `templates.ts` | Style template CRUD |
+| `points.ts` | Credit system operations |
+| `orders.ts` | Billing and payment |
 
-## CONVENTIONS
+## API PATTERNS
 
-### Client Pattern
+### Axios Client Setup
 ```typescript
-import { apiClient } from './client';
+export const client = axios.create({
+    baseURL: '/api',  // Vite proxy to localhost:1111
+    timeout: 600000,
+});
+```
 
-export const featureApi = {
-  async methodName(params: Type): Promise<ReturnType> {
-    const response = await apiClient.post('/endpoint', params);
-    return response.data;
-  }
+### JWT Token Interceptor
+```typescript
+client.interceptors.request.use((config) => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+```
+
+### TanStack Query Hooks
+```typescript
+export const useProjects = () => useQuery({
+    queryKey: ['projects'],
+    queryFn: () => client.get('/projects'),
+});
+
+export const useCreateProject = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (data) => client.post('/projects', data),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+    });
 };
 ```
 
 ### Error Handling
-- Automatic retry with exponential backoff (configured in client.ts)
-- TanStack Query integration: `useMutation` + `useQuery` for server state
-- Always refetch after error or success
-
-### Types
-- Request/response types defined in `src/types.ts` and `server/src/types.ts`
-- Keep in sync manually between frontend and backend
+- 401: Auto-clear token + dispatch `auth:logout` event
+- 403: Return "权限不足" message
+- 502/504: Return gateway/proxy error with helpful context
 
 ## ANTI-PATTERNS
 
-- **Never use `variants[0]` directly** — use dedicated preview fields
-- **Never use settings.ts for UI display** — use `useAppSettingsMasked()` instead
-- **Always refetch after mutations** — maintains cache consistency
-- **Never bypass apiClient** — use configured instance for all requests
-
-## NOTES
-
-1. **Proxy:** Vite dev server proxies `/api` to `localhost:1111`
-2. **Auth:** JWT stored in memory (via AuthContext), added to headers by interceptor
-3. **Uploads:** Large files use multipart/form-data via upload routes
+- **Never hardcode URLs** — Always use `/api` baseURL via Vite proxy
+- **Never store tokens outside localStorage** — Use `TOKEN_KEY` constant only
+- **Never ignore API errors** — All errors must be caught and handled (toast/console)
+- **Never call client directly in components** — Always use TanStack Query hooks
+- **Never forget to invalidate queries** — Call `invalidateQueries` after mutations
