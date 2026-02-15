@@ -313,7 +313,7 @@ export const LoginPage: React.FC = () => {
                 {/* 底部版权 */}
                 <div className="mt-8 text-center">
                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] opacity-40">
-                        BananaSlides GenAI Engine v3.0
+                        YH-AI PPT Engine v3.0
                     </p>
                 </div>
             </motion.div>

@@ -1,5 +1,5 @@
 """
-BananaSlides-GenAI 配置功能修复测试 (纯API测试版)
+YH-AI PPT 配置功能修复测试 (纯API测试版)
 使用标准库进行API测试，无需额外依赖
 """
 
@@ -182,7 +182,7 @@ def test_referral_reward(user_token, user_id):
 def main():
     """主测试函数"""
     print("\n" + "="*60)
-    print("BananaSlides-GenAI 配置功能修复测试")
+    print("YH-AI PPT 配置功能修复测试")
     print("="*60)
     print(f"后端地址: {API_URL}")
     print("="*60)

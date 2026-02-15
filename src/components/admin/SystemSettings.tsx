@@ -98,7 +98,7 @@ export const SystemSettings: React.FC = () => {
                                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">站点名称</label>
                                     <input
                                         type="text"
-                                        defaultValue="BananaSlides GenAI"
+                                        defaultValue="YH-AI PPT"
                                         className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-bold text-slate-700 text-sm"
                                     />
                                 </div>

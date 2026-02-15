@@ -1794,7 +1794,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
         // 2. 构建 Prompt
         const prompt = `
             Role: 资深视觉设计总监 & PPT 专家。
-            Task: ${isVisionMode ? '分析这张设计图/PPT截图的【视觉风格】' : '分析用户的【设计需求描述】'}，并将其转化为结构化的 BananaSlides 设计规范。
+            Task: ${isVisionMode ? '分析这张设计图/PPT截图的【视觉风格】' : '分析用户的【设计需求描述】'}，并将其转化为结构化的 YH-AI PPT 设计规范。
             
             Input Context: ${isVisionMode ? '见附图' : `"${contextText.substring(0, 2000)}..."`}
 

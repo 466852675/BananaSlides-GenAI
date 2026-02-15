@@ -34,8 +34,8 @@
 .nav-capsule.scrolled {
   top: 1.25rem;
   /* 20px */
-  max-width: 64rem;
-  /* max-w-5xl */
+  max-width: 72rem;
+  /* max-w-6xl: 增加宽度以容纳所有导航项 */
   left: 50%;
   transform: translateX(-50%);
   background: rgba(255, 255, 255, 0.75);
@@ -49,6 +49,13 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.8);
   padding-block: 0.5rem;
   /* Compact padding */
+}
+
+/* 灵动岛状态下减少导航菜单项的内边距，防止文字换行 */
+.nav-capsule.scrolled nav button {
+  padding-left: 0.75rem;
+  /* 从 px-4 (1rem) 减少到 0.75rem */
+  padding-right: 0.75rem;
 }
 
 /* 覆盖 glass-header，不再需要单独的它，功能合并入 nav-capsule.scrolled */

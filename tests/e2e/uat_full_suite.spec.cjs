@@ -8,7 +8,7 @@ const TEST_TIMEOUT = 60000; // 60s per step
 const PROJECT_NAME = `UAT_Auto_${Date.now()}`;
 
 (async () => {
-  console.log('Starting BananaSlides Ultimate UAT Suite...');
+  console.log('Starting YH-AI PPT Ultimate UAT Suite...');
   
   const browser = await chromium.launch({ 
       headless: true, // Set to false to see the browser actions
@@ -94,7 +94,7 @@ const PROJECT_NAME = `UAT_Auto_${Date.now()}`;
           await page.goto(BASE_URL);
           await page.waitForLoadState('networkidle');
           const title = await page.title();
-          if (!title.includes('BananaSlides')) throw new Error('Wrong title');
+          if (!title.includes('YH-AI PPT')) throw new Error('Wrong title');
           const enterBtn = page.locator('button', { hasText: /免费开始/i }).first();
           if (await enterBtn.isVisible()) {
               await enterBtn.click();
@@ -223,7 +223,7 @@ const PROJECT_NAME = `UAT_Auto_${Date.now()}`;
       // --- 7. Dashboard Check ---
       await step('DASH-001: Return to Dashboard', async () => {
           await dismissBlockingOverlays();
-          const backBtn = page.locator('h1', { hasText: /BananaSlides/i }).first();
+          const backBtn = page.locator('h1', { hasText: /YH-AI PPT/i }).first();
           await backBtn.click();
           await page.waitForURL(BASE_URL + '/');
       });

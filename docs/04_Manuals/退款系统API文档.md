@@ -1,29 +1,29 @@
-# Refund System API Documentation
+# 退款系统 API 文档
 
-## Overview
+## 概述
 
-The refund system provides end-to-end functionality for processing payment refunds in the BananaSlides platform. It includes user-facing APIs for refund applications, admin APIs for audit/management, and webhook endpoints for payment provider notifications.
+退款系统为 YH-AI PPT 平台提供端到端的退款处理功能。包括用户端退款申请接口、管理员审核/管理接口，以及支付服务商的 Webhook 回调接口。
 
-## Base URL
+## 基础 URL
 
 ```
-Development: http://localhost:1111
-Production:  https://your-domain.com
+开发环境: http://localhost:1111
+生产环境: https://your-domain.com
 ```
 
 ---
 
-## User APIs
+## 用户接口
 
-### 1. Check Refund Eligibility
+### 1. 检查退款资格
 
-Check if an order is eligible for refund before applying.
+在申请退款前检查订单是否符合退款条件。
 
-**Endpoint:** `GET /api/refunds/orders/{orderId}/eligibility`
+**接口:** `GET /api/refunds/orders/{orderId}/eligibility`
 
-**Authentication:** Bearer Token required
+**认证:** 需要 Bearer Token
 
-**Response:**
+**响应:**
 ```json
 {
   "eligible": true,
@@ -38,7 +38,7 @@ Check if an order is eligible for refund before applying.
 }
 ```
 
-**Error Response (Not Eligible):**
+**错误响应 (不符合条件):**
 ```json
 {
   "eligible": false,
@@ -53,30 +53,30 @@ Check if an order is eligible for refund before applying.
 }
 ```
 
-**Eligibility Criteria:**
-- Order must be in `PAID` status
-- Order must be paid within the last 7 days
-- User must NOT have created any projects
-- User must NOT have generated any PPTs
+**资格条件:**
+- 订单必须处于 `PAID` 状态
+- 订单必须在最近7天内支付
+- 用户不能创建过任何项目
+- 用户不能生成过任何PPT
 
 ---
 
-### 2. Apply for Refund
+### 2. 申请退款
 
-Submit a refund application for an order.
+提交订单退款申请。
 
-**Endpoint:** `POST /api/refunds/orders/{orderId}/apply`
+**接口:** `POST /api/refunds/orders/{orderId}/apply`
 
-**Authentication:** Bearer Token required
+**认证:** 需要 Bearer Token
 
-**Request Body:**
+**请求体:**
 ```json
 {
-  "reason": "Not satisfied with the service"
+  "reason": "对服务不满意"
 }
 ```
 
-**Response (Success):**
+**响应 (成功):**
 ```json
 {
   "success": true,
@@ -86,14 +86,14 @@ Submit a refund application for an order.
     "refundNo": "REF-20240205-001",
     "orderId": "order-123",
     "amount": 100.00,
-    "reason": "Not satisfied with the service",
+    "reason": "对服务不满意",
     "status": "PENDING",
     "createdAt": "2024-02-05T10:30:00Z"
   }
 }
 ```
 
-**Response (Error):**
+**响应 (错误):**
 ```json
 {
   "success": false,
@@ -103,22 +103,22 @@ Submit a refund application for an order.
 
 ---
 
-### 3. Get My Refund History
+### 3. 获取我的退款历史
 
-Retrieve all refund applications for the current user.
+查询当前用户的所有退款申请记录。
 
-**Endpoint:** `GET /api/refunds/my`
+**接口:** `GET /api/refunds/my`
 
-**Authentication:** Bearer Token required
+**认证:** 需要 Bearer Token
 
-**Query Parameters:**
-| Parameter | Type   | Required | Description              |
-|-----------|--------|----------|--------------------------|
-| status    | string | No       | Filter by status         |
-| page      | number | No       | Page number (default: 1) |
-| limit     | number | No       | Items per page (default: 10) |
+**查询参数:**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| status | string | 否 | 按状态筛选 |
+| page | number | 否 | 页码 (默认: 1) |
+| limit | number | 否 | 每页数量 (默认: 10) |
 
-**Response:**
+**响应:**
 ```json
 {
   "success": true,
@@ -128,7 +128,7 @@ Retrieve all refund applications for the current user.
       "refundNo": "REF-20240205-001",
       "orderId": "order-123",
       "amount": 100.00,
-      "reason": "Not satisfied with the service",
+      "reason": "对服务不满意",
       "status": "PENDING",
       "createdAt": "2024-02-05T10:30:00Z",
       "order": {
@@ -147,7 +147,7 @@ Retrieve all refund applications for the current user.
 }
 ```
 
-**Status Values:**
+**状态值:**
 - `PENDING` - 待审核
 - `PROCESSING` - 处理中
 - `COMPLETED` - 已完成
@@ -157,15 +157,15 @@ Retrieve all refund applications for the current user.
 
 ---
 
-### 4. Get Refund Detail
+### 4. 获取退款详情
 
-Get detailed information about a specific refund request.
+获取指定退款申请的详细信息。
 
-**Endpoint:** `GET /api/refunds/{refundId}`
+**接口:** `GET /api/refunds/{refundId}`
 
-**Authentication:** Bearer Token required
+**认证:** 需要 Bearer Token
 
-**Response:**
+**响应:**
 ```json
 {
   "success": true,
@@ -174,7 +174,7 @@ Get detailed information about a specific refund request.
     "refundNo": "REF-20240205-001",
     "orderId": "order-123",
     "amount": 100.00,
-    "reason": "Not satisfied with the service",
+    "reason": "对服务不满意",
     "status": "COMPLETED",
     "auditNote": "Approved - within policy",
     "createdAt": "2024-02-05T10:30:00Z",
@@ -199,27 +199,27 @@ Get detailed information about a specific refund request.
 
 ---
 
-## Admin APIs
+## 管理员接口
 
-### 5. List All Refund Requests
+### 5. 获取所有退款申请列表
 
-Retrieve all refund requests (admin only).
+查询所有退款申请记录（仅管理员）。
 
-**Endpoint:** `GET /api/admin/refunds`
+**接口:** `GET /api/admin/refunds`
 
-**Authentication:** Bearer Token + Admin Role required
+**认证:** 需要 Bearer Token + 管理员角色
 
-**Query Parameters:**
-| Parameter | Type   | Required | Description              |
-|-----------|--------|----------|--------------------------|
-| status    | string | No       | Filter by status         |
-| userId    | string | No       | Filter by user ID        |
-| startDate | string | No       | Start date (YYYY-MM-DD)  |
-| endDate   | string | No       | End date (YYYY-MM-DD)    |
-| page      | number | No       | Page number (default: 1) |
-| limit     | number | No       | Items per page (default: 20) |
+**查询参数:**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| status | string | 否 | 按状态筛选 |
+| userId | string | 否 | 按用户ID筛选 |
+| startDate | string | 否 | 开始日期 (YYYY-MM-DD) |
+| endDate | string | 否 | 结束日期 (YYYY-MM-DD) |
+| page | number | 否 | 页码 (默认: 1) |
+| limit | number | 否 | 每页数量 (默认: 20) |
 
-**Response:**
+**响应:**
 ```json
 {
   "success": true,
@@ -234,7 +234,7 @@ Retrieve all refund requests (admin only).
       },
       "orderId": "order-123",
       "amount": 100.00,
-      "reason": "Not satisfied with the service",
+      "reason": "对服务不满意",
       "status": "PENDING",
       "createdAt": "2024-02-05T10:30:00Z"
     }
@@ -250,15 +250,15 @@ Retrieve all refund requests (admin only).
 
 ---
 
-### 6. Get Refund Statistics
+### 6. 获取退款统计数据
 
-Get refund statistics for dashboard (admin only).
+获取管理后台的退款统计数据（仅管理员）。
 
-**Endpoint:** `GET /api/admin/refunds/stats`
+**接口:** `GET /api/admin/refunds/stats`
 
-**Authentication:** Bearer Token + Admin Role required
+**认证:** 需要 Bearer Token + 管理员角色
 
-**Response:**
+**响应:**
 ```json
 {
   "success": true,
@@ -288,27 +288,27 @@ Get refund statistics for dashboard (admin only).
 
 ---
 
-### 7. Get Refund Detail (Admin)
+### 7. 获取退款详情（管理员）
 
-Get detailed refund information including user and order details (admin only).
+获取包含用户和订单详细信息的退款信息（仅管理员）。
 
-**Endpoint:** `GET /api/admin/refunds/{id}`
+**接口:** `GET /api/admin/refunds/{id}`
 
-**Authentication:** Bearer Token + Admin Role required
+**认证:** 需要 Bearer Token + 管理员角色
 
-**Response:** Same as user refund detail with additional admin fields.
+**响应:** 与用户退款详情相同，包含额外的管理员字段。
 
 ---
 
-### 8. Audit Refund Request
+### 8. 审核退款申请
 
-Approve or reject a refund request (admin only).
+批准或拒绝退款申请（仅管理员）。
 
-**Endpoint:** `POST /api/admin/refunds/{id}/audit`
+**接口:** `POST /api/admin/refunds/{id}/audit`
 
-**Authentication:** Bearer Token + Admin Role required
+**认证:** 需要 Bearer Token + 管理员角色
 
-**Request Body:**
+**请求体:**
 ```json
 {
   "action": "APPROVED",
@@ -316,11 +316,11 @@ Approve or reject a refund request (admin only).
 }
 ```
 
-**Action Values:**
-- `APPROVED` - Approve the refund
-- `REJECTED` - Reject the refund
+**操作值:**
+- `APPROVED` - 批准退款
+- `REJECTED` - 拒绝退款
 
-**Response (Success - Approved):**
+**响应 (成功 - 批准):**
 ```json
 {
   "success": true,
@@ -335,7 +335,7 @@ Approve or reject a refund request (admin only).
 }
 ```
 
-**Response (Success - Rejected):**
+**响应 (成功 - 拒绝):**
 ```json
 {
   "success": true,
@@ -349,24 +349,24 @@ Approve or reject a refund request (admin only).
 }
 ```
 
-**Note:** When a refund is approved, the system automatically:
-1. Processes the payment refund via WeChat Pay or Alipay
-2. Revokes the granted credits from the user's account
-3. Updates the order status
+**注意:** 当退款被批准时，系统会自动：
+1. 通过微信支付或支付宝处理支付退款
+2. 从用户账户中撤销已发放的积分
+3. 更新订单状态
 
 ---
 
-## Webhook APIs
+## Webhook 接口
 
-### 9. WeChat Pay Refund Notification
+### 9. 微信支付退款通知
 
-Endpoint for WeChat Pay to send refund status notifications.
+微信支付发送退款状态通知的接口。
 
-**Endpoint:** `POST /webhooks/wechat/refund`
+**接口:** `POST /webhooks/wechat/refund`
 
 **Content-Type:** `application/xml`
 
-**Request Body (XML):**
+**请求体 (XML):**
 ```xml
 <xml>
   <return_code><![CDATA[SUCCESS]]></return_code>
@@ -377,7 +377,7 @@ Endpoint for WeChat Pay to send refund status notifications.
 </xml>
 ```
 
-**Response (Success):**
+**响应 (成功):**
 ```xml
 <xml>
   <return_code><![CDATA[SUCCESS]]></return_code>
@@ -387,15 +387,15 @@ Endpoint for WeChat Pay to send refund status notifications.
 
 ---
 
-### 10. Alipay Refund Notification
+### 10. 支付宝退款通知
 
-Endpoint for Alipay to send refund status notifications.
+支付宝发送退款状态通知的接口。
 
-**Endpoint:** `POST /webhooks/alipay/refund`
+**接口:** `POST /webhooks/alipay/refund`
 
 **Content-Type:** `application/x-www-form-urlencoded`
 
-**Request Body (Form Data):**
+**请求体 (表单数据):**
 ```
 out_trade_no=ORD-20240205-001
 out_request_no=REF-20240205-001
@@ -405,57 +405,57 @@ gmt_refund_pay=2024-02-05 11:05:00
 sign=signature_string
 ```
 
-**Response (Success):**
+**响应 (成功):**
 ```
 success
 ```
 
 ---
 
-## Error Codes
+## 错误码
 
-| Code | Description | HTTP Status |
-|------|-------------|-------------|
-| ORDER_NOT_FOUND | Order does not exist | 404 |
-| ORDER_NOT_PAID | Order is not paid | 400 |
-| REFUND_WINDOW_EXPIRED | Refund period has expired (>7 days) | 400 |
-| USER_HAS_PROJECTS | User has created projects | 400 |
-| USER_HAS_GENERATED_PPT | User has generated PPTs | 400 |
-| REFUND_ALREADY_EXISTS | Refund request already exists | 400 |
-| REFUND_NOT_FOUND | Refund request not found | 404 |
-| INSUFFICIENT_PERMISSIONS | User lacks required permissions | 403 |
-| PROCESSING_ERROR | Internal processing error | 500 |
-| PAYMENT_FAILED | Payment refund failed | 500 |
-
----
-
-## Refund Status Lifecycle
-
-```
-[PENDING] → Admin approves → [PROCESSING] → Payment success → [COMPLETED]
-                ↓
-         Admin rejects → [REJECTED]
-                ↓
-         Payment fails → [FAILED] → Retry → [PROCESSING]
-                ↓
-         Max retries exceeded → [MANUAL_REQUIRED]
-```
+| 错误码 | 说明 | HTTP 状态码 |
+|--------|------|-------------|
+| ORDER_NOT_FOUND | 订单不存在 | 404 |
+| ORDER_NOT_PAID | 订单未支付 | 400 |
+| REFUND_WINDOW_EXPIRED | 退款期限已过期 (>7天) | 400 |
+| USER_HAS_PROJECTS | 用户已创建项目 | 400 |
+| USER_HAS_GENERATED_PPT | 用户已生成PPT | 400 |
+| REFUND_ALREADY_EXISTS | 退款申请已存在 | 400 |
+| REFUND_NOT_FOUND | 退款申请不存在 | 404 |
+| INSUFFICIENT_PERMISSIONS | 用户权限不足 | 403 |
+| PROCESSING_ERROR | 内部处理错误 | 500 |
+| PAYMENT_FAILED | 支付退款失败 | 500 |
 
 ---
 
-## Testing
+## 退款状态生命周期
 
-### Mock Payment Mode
+```
+[PENDING] → 管理员批准 → [PROCESSING] → 支付成功 → [COMPLETED]
+                ↓
+         管理员拒绝 → [REJECTED]
+                ↓
+         支付失败 → [FAILED] → 重试 → [PROCESSING]
+                ↓
+         超过最大重试次数 → [MANUAL_REQUIRED]
+```
 
-In development environment, payment services run in mock mode with simulated responses:
-- WeChat Pay: 95% success rate
-- Alipay: 97% success rate
+---
 
-### Test Scenarios
+## 测试
 
-1. **Successful Refund Flow:**
+### 模拟支付模式
+
+在开发环境中，支付服务以模拟模式运行，使用模拟响应：
+- 微信支付: 95% 成功率
+- 支付宝: 97% 成功率
+
+### 测试场景
+
+1. **成功退款流程:**
    ```bash
-   # Create order → Pay → Apply refund → Admin approve
+   # 创建订单 → 支付 → 申请退款 → 管理员批准
    curl -X POST http://localhost:1111/api/orders \
      -H "Authorization: Bearer TOKEN" \
      -d '{"productId": "prod-1", "amount": 100}'
@@ -466,65 +466,17 @@ In development environment, payment services run in mock mode with simulated res
    
    curl -X POST http://localhost:1111/api/admin/refunds/REFUND_ID/audit \
      -H "Authorization: Bearer ADMIN_TOKEN" \
-     -d '{"action": "APPROVED", "note": "Test"}'
+     -d '{"action": "APPROVED", "note": "Test approval"}'
    ```
 
-2. **Ineligible Refund (Has Projects):**
+2. **拒绝退款场景:**
    ```bash
-   # Create project → Try refund (will fail)
-   curl -X POST http://localhost:1111/api/projects \
-     -H "Authorization: Bearer TOKEN" \
-     -d '{"name": "Test Project"}'
-   
-   curl http://localhost:1111/api/refunds/orders/ORDER_ID/eligibility \
-     -H "Authorization: Bearer TOKEN"
-   # Response: eligible: false, reason: "用户已创建项目"
+   # 用户创建项目后申请退款
+   # 预期结果: 退款申请被拒绝
    ```
 
----
-
-## Production Checklist
-
-Before deploying to production:
-
-1. **Payment Provider Configuration:**
-   - [ ] Configure WeChat Pay credentials (mchId, appId, apiKey, certPath)
-   - [ ] Configure Alipay credentials (appId, privateKey, publicKey)
-   - [ ] Set `isMockMode = false` in payment services
-   - [ ] Install production SDKs:
-     ```bash
-     npm install wechatpay-node-v3 alipay-sdk
-     ```
-
-2. **Webhook Configuration:**
-   - [ ] Register webhook URLs in WeChat Pay merchant platform
-   - [ ] Register webhook URLs in Alipay open platform
-   - [ ] Configure webhook signature verification
-
-3. **Environment Variables:**
-   ```env
-   WECHAT_MCH_ID=your_mch_id
-   WECHAT_APP_ID=your_app_id
-   WECHAT_API_KEY=your_api_key
-   WECHAT_CERT_PATH=/path/to/cert.p12
-   
-   ALIPAY_APP_ID=your_app_id
-   ALIPAY_PRIVATE_KEY=your_private_key
-   ALIPAY_PUBLIC_KEY=alipay_public_key
-   ALIPAY_GATEWAY=https://openapi.alipay.com/gateway.do
+3. **过期退款场景:**
+   ```bash
+   # 8天后申请退款
+   # 预期结果: 退款申请被拒绝
    ```
-
-4. **Monitoring & Alerts:**
-   - [ ] Set up alerts for failed refunds
-   - [ ] Monitor refund success rate
-   - [ ] Configure logs retention policy
-
----
-
-## Support
-
-For issues or questions regarding the refund system:
-
-1. Check application logs: `server/logs/refund-*.log`
-2. Review refund retry logs in database
-3. Contact: support@your-domain.com

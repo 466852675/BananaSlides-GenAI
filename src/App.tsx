@@ -241,7 +241,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
               </button>
             </div>
           </div>
-          <p className="mt-8 text-xs text-slate-400">BananaSlides Gen-AI Error Protection</p>
+          <p className="mt-8 text-xs text-slate-400">YH-AI PPT Error Protection</p>
         </div>
       );
     }

@@ -23,7 +23,7 @@ async function checkRateLimitSim(userId, actionCode) {
 }
 
 async function run() {
-    console.log('--- 🍌 BananaSlides V8.5 商业化全链路逻辑闭环验收 ---');
+    console.log('--- 🚀 YH-AI PPT V8.5 商业化全链路逻辑闭环验收 ---');
 
     const passwordHash = await bcrypt.hash('123456', 10);
 

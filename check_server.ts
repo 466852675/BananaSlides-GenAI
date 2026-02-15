@@ -11,16 +11,16 @@ import { chromium } from 'playwright';
         console.log(`Page title: ${title}`);
 
         const content = await page.content();
-        if (content.includes('BananaSlides')) {
-            console.log('Page content contains "BananaSlides"');
+        if (content.includes('YH-AI PPT')) {
+            console.log('Page content contains "YH-AI PPT"');
         } else {
-            console.log('Page content DOES NOT contain "BananaSlides"');
+            console.log('Page content DOES NOT contain "YH-AI PPT"');
         }
 
         const loginBtn = await page.getByRole('button', { name: '登录' }).count();
         console.log(`Found ${loginBtn} login buttons`);
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error connecting to localhost:1000:', error.message);
     } finally {
         await browser.close();

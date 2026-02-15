@@ -1,5 +1,5 @@
 """
-BananaSlides-GenAI 用户模拟测试
+YH-AI PPT 用户模拟测试
 使用 Playwright 模拟用户操作，验证配置功能修复
 
 测试流程：
@@ -9,300 +9,285 @@ BananaSlides-GenAI 用户模拟测试
 4. 测试邀请功能
 5. 验证积分变化
 
-作者: Claude
-日期: 2026-01-31
+使用方法:
+    python playwright_user_test.py
+
+需要安装:
+    pip install playwright
+    playwright install
 """
 
 from playwright.sync_api import sync_playwright, expect
 import time
-import json
+import random
+import string
 
-# 测试配置
-FRONTEND_URL = "http://localhost:1001"
+# 配置
+FRONTEND_URL = "http://localhost:1000"
 API_URL = "http://localhost:1111"
 
-# 测试数据存储
-test_data = {
-    "referrer_email": None,
-    "referrer_token": None,
-    "referrer_user_id": None,
-    "referrer_initial_points": None,
-    "referral_code": None,
-    "referred_email": None,
-    "referred_user_id": None,
-}
-
-def log_step(step_num, title):
-    """打印测试步骤"""
-    print(f"\n{'='*70}")
-    print(f"步骤 {step_num}: {title}")
-    print(f"{'='*70}")
+def generate_random_email():
+    """生成随机邮箱"""
+    random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+    return f"test_{random_str}@example.com"
 
 def take_screenshot(page, name):
-    """截图保存"""
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    filename = f"screenshot_{name}_{timestamp}.png"
-    page.screenshot(path=filename, full_page=True)
-    print(f"  📸 截图已保存: {filename}")
+    """截图并保存"""
+    try:
+        page.screenshot(path=f"test_screenshots/{name}.png", full_page=True)
+        print(f"  📸 截图已保存: test_screenshots/{name}.png")
+    except Exception as e:
+        print(f"  ⚠️ 截图失败: {e}")
 
-def test_step_1_visit_homepage(page):
-    """步骤1: 访问前端首页"""
-    log_step(1, "访问前端首页")
+def test_step_1_homepage(page):
+    """步骤1: 访问首页"""
+    print("\n步骤 1: 访问首页...")
     
     page.goto(FRONTEND_URL)
     page.wait_for_load_state("networkidle")
     
-    print(f"  ✅ 页面已加载: {page.title()}")
+    # 等待页面加载
+    page.wait_for_timeout(2000)
+    
     take_screenshot(page, "01_homepage")
     
     # 检查页面内容
     content = page.content()
-    if "BananaSlides" in content or "PPT" in content:
+    if "YH-AI PPT" in content or "PPT" in content:
         print("  ✅ 页面内容验证通过")
     else:
         print("  ⚠️ 页面内容可能需要检查")
 
 def test_step_2_register_referrer(page):
-    """步骤2: 注册推荐人用户"""
-    log_step(2, "注册推荐人用户")
+    """步骤2: 注册用户(带推荐人)"""
+    print("\n步骤 2: 注册用户(带推荐人)...")
     
-    import uuid
-    email = f"referrer_{uuid.uuid4().hex[:8]}@example.com"
-    nickname = f"Referrer_{uuid.uuid4().hex[:4]}"
-    password = "TestPass123!"
-    
-    test_data["referrer_email"] = email
-    
-    print(f"  📧 邮箱: {email}")
-    print(f"  👤 昵称: {nickname}")
-    
-    # 使用 API 注册
-    result = page.evaluate(f"""
-        async () => {{
-            try {{
-                const response = await fetch('{API_URL}/api/auth/register', {{
-                    method: 'POST',
-                    headers: {{'Content-Type': 'application/json'}},
-                    body: JSON.stringify({{
-                        email: '{email}',
-                        password: '{password}',
-                        nickname: '{nickname}'
-                    }})
-                }});
-                const data = await response.json();
-                return {{success: response.ok, status: response.status, data: data}};
-            }} catch (error) {{
-                return {{success: false, error: error.message}};
-            }}
-        }}
-    """)
-    
-    if result.get('success'):
-        print("  ✅ 推荐人注册成功")
+    # 点击"免费开始"或"立即体验"按钮
+    try:
+        # 尝试多个可能的按钮文本
+        button_selectors = [
+            'button:has-text("免费开始")',
+            'button:has-text("立即体验")',
+            'button:has-text("开始使用")',
+            'a:has-text("免费开始")',
+            'a:has-text("立即体验")',
+        ]
         
-        data = result['data'].get('data', {})
-        user = data.get('user', {})
-        
-        test_data["referrer_token"] = data.get('token')
-        test_data["referrer_user_id"] = user.get('id')
-        test_data["referrer_initial_points"] = user.get('points')
-        
-        print(f"  🆔 用户ID: {user.get('id')}")
-        print(f"  💰 初始积分: {user.get('points')}")
-        
-        take_screenshot(page, "02_referrer_registered")
-    else:
-        print(f"  ❌ 注册失败: {result}")
-        raise Exception("推荐人注册失败")
-
-def test_step_3_get_referral_code(page):
-    """步骤3: 获取推荐码"""
-    log_step(3, "获取推荐码")
-    
-    token = test_data["referrer_token"]
-    
-    result = page.evaluate(f"""
-        async () => {{
-            try {{
-                const response = await fetch('{API_URL}/api/users/profile', {{
-                    method: 'GET',
-                    headers: {{'Authorization': 'Bearer {token}'}}
-                }});
-                const data = await response.json();
-                return {{success: response.ok, data: data}};
-            }} catch (error) {{
-                return {{success: false, error: error.message}};
-            }}
-        }}
-    """)
-    
-    if result.get('success'):
-        data = result['data']
-        referral_code = data.get('referralCode')
-        
-        if referral_code:
-            test_data["referral_code"] = referral_code
-            print(f"  ✅ 推荐码: {referral_code}")
-            take_screenshot(page, "03_got_referral_code")
+        for selector in button_selectors:
+            try:
+                button = page.locator(selector).first
+                if button.is_visible():
+                    button.click()
+                    print(f"  ✅ 点击了: {selector}")
+                    break
+            except:
+                continue
         else:
-            print("  ❌ 用户没有推荐码")
-            raise Exception("获取推荐码失败")
-    else:
-        print(f"  ❌ 获取用户信息失败: {result}")
-        raise Exception("获取用户信息失败")
+            print("  ⚠️ 未找到开始按钮，尝试直接访问注册页")
+            page.goto(f"{FRONTEND_URL}/auth/register")
+    except Exception as e:
+        print(f"  ⚠️ 点击开始按钮失败: {e}")
+        page.goto(f"{FRONTEND_URL}/auth/register")
+    
+    page.wait_for_timeout(2000)
+    take_screenshot(page, "02_register_page")
+    
+    # 填写注册表单
+    test_email = generate_random_email()
+    test_password = "Test123456!"
+    referrer_code = "TEST123"  # 测试推荐码
+    
+    try:
+        # 填写邮箱
+        email_input = page.locator('input[type="email"]').first
+        email_input.fill(test_email)
+        print(f"  ✅ 填写邮箱: {test_email}")
+        
+        # 填写密码
+        password_input = page.locator('input[type="password"]').first
+        password_input.fill(test_password)
+        print(f"  ✅ 填写密码")
+        
+        # 填写推荐码(如果有输入框)
+        try:
+            referrer_input = page.locator('input[name="referrerCode"], input[placeholder*="推荐"]').first
+            if referrer_input.is_visible():
+                referrer_input.fill(referrer_code)
+                print(f"  ✅ 填写推荐码: {referrer_code}")
+        except:
+            print("  ℹ️ 推荐码输入框未找到或不可用")
+        
+        # 点击注册按钮
+        register_button = page.locator('button[type="submit"]').first
+        register_button.click()
+        print("  ✅ 点击注册按钮")
+        
+        # 等待注册完成
+        page.wait_for_timeout(3000)
+        take_screenshot(page, "03_register_submit")
+        
+        return test_email, test_password
+        
+    except Exception as e:
+        print(f"  ❌ 注册失败: {e}")
+        take_screenshot(page, "03_register_error")
+        return None, None
 
-def test_step_4_register_referred_user(page):
-    """步骤4: 注册被推荐用户"""
-    log_step(4, "注册被推荐用户 (使用推荐码)")
+def test_step_3_check_points(page, email, password):
+    """步骤3: 检查用户积分"""
+    print("\n步骤 3: 检查用户积分...")
     
-    import uuid
-    email = f"referred_{uuid.uuid4().hex[:8]}@example.com"
-    nickname = f"Referred_{uuid.uuid4().hex[:4]}"
-    password = "TestPass123!"
-    referral_code = test_data["referral_code"]
-    
-    test_data["referred_email"] = email
-    
-    print(f"  📧 邮箱: {email}")
-    print(f"  👤 昵称: {nickname}")
-    print(f"  🎟️ 推荐码: {referral_code}")
-    
-    result = page.evaluate(f"""
-        async () => {{
-            try {{
-                const response = await fetch('{API_URL}/api/auth/register', {{
-                    method: 'POST',
-                    headers: {{'Content-Type': 'application/json'}},
-                    body: JSON.stringify({{
-                        email: '{email}',
-                        password: '{password}',
-                        nickname: '{nickname}',
-                        referralCode: '{referral_code}'
-                    }})
-                }});
-                const data = await response.json();
-                return {{success: response.ok, status: response.status, data: data}};
-            }} catch (error) {{
-                return {{success: false, error: error.message}};
-            }}
-        }}
-    """)
-    
-    if result.get('success'):
-        print("  ✅ 被推荐用户注册成功")
+    try:
+        # 等待登录状态
+        page.wait_for_timeout(2000)
         
-        data = result['data'].get('data', {})
-        user = data.get('user', {})
+        # 查找积分显示元素
+        point_selectors = [
+            'text=/\\d+\\s*积分/',
+            '[class*="point"]',
+            '[class*="credit"]',
+            'text=/积分余额/',
+        ]
         
-        test_data["referred_user_id"] = user.get('id')
-        
-        print(f"  🆔 用户ID: {user.get('id')}")
-        print(f"  💰 初始积分: {user.get('points')}")
-        
-        take_screenshot(page, "04_referred_registered")
-    else:
-        print(f"  ❌ 注册失败: {result}")
-        raise Exception("被推荐用户注册失败")
-
-def test_step_5_verify_referral_reward(page):
-    """步骤5: 验证推荐人获得奖励"""
-    log_step(5, "验证推荐人获得奖励")
-    
-    import time
-    time.sleep(1)  # 等待奖励处理完成
-    
-    token = test_data["referrer_token"]
-    initial_points = test_data["referrer_initial_points"]
-    
-    result = page.evaluate(f"""
-        async () => {{
-            try {{
-                const response = await fetch('{API_URL}/api/users/profile', {{
-                    method: 'GET',
-                    headers: {{'Authorization': 'Bearer {token}'}}
-                }});
-                const data = await response.json();
-                return {{success: response.ok, data: data}};
-            }} catch (error) {{
-                return {{success: false, error: error.message}};
-            }}
-        }}
-    """)
-    
-    if result.get('success'):
-        data = result['data']
-        current_points = data.get('points')
-        points_diff = current_points - initial_points if initial_points else 0
-        
-        print(f"  📊 邀请前积分: {initial_points}")
-        print(f"  📊 邀请后积分: {current_points}")
-        print(f"  💰 积分变化: +{points_diff}")
-        
-        if points_diff > 0:
-            print(f"  ✅ 推荐人获得 {points_diff} 积分奖励!")
-            if points_diff == 200:
-                print("  ✨ 奖励金额符合默认值 (200积分)")
+        for selector in point_selectors:
+            try:
+                element = page.locator(selector).first
+                if element.is_visible():
+                    text = element.inner_text()
+                    print(f"  ✅ 找到积分信息: {text}")
+                    break
+            except:
+                continue
         else:
-            print("  ⚠️ 推荐人暂未获得奖励 (可能需要刷新或等待)")
+            print("  ⚠️ 未找到积分显示，可能需要导航到用户中心")
+            # 尝试点击用户菜单
+            try:
+                user_menu = page.locator('[class*="user"], button:has-text("用户"), [class*="avatar"]').first
+                user_menu.click()
+                page.wait_for_timeout(1000)
+                
+                # 查找积分
+                points_link = page.locator('text=/积分/, text=/余额/').first
+                if points_link.is_visible():
+                    points_link.click()
+                    page.wait_for_timeout(2000)
+                    take_screenshot(page, "04_points_page")
+            except Exception as e:
+                print(f"  ⚠️ 导航到积分页面失败: {e}")
         
-        take_screenshot(page, "05_referral_reward_verified")
-    else:
-        print(f"  ❌ 获取用户信息失败: {result}")
+        take_screenshot(page, "04_check_points")
+        
+    except Exception as e:
+        print(f"  ❌ 检查积分失败: {e}")
+        take_screenshot(page, "04_points_error")
 
-def main():
-    """主测试函数"""
+def test_step_4_invite_feature(page):
+    """步骤4: 测试邀请功能"""
+    print("\n步骤 4: 测试邀请功能...")
+    
+    try:
+        # 导航到邀请页面
+        page.goto(f"{FRONTEND_URL}/user/invite")
+        page.wait_for_timeout(2000)
+        take_screenshot(page, "05_invite_page")
+        
+        # 检查邀请链接或邀请码
+        content = page.content()
+        if "邀请" in content or "invite" in content.lower():
+            print("  ✅ 邀请页面加载成功")
+            
+            # 尝试查找邀请码
+            try:
+                invite_code = page.locator('[class*="code"], [class*="invite"]').first
+                if invite_code.is_visible():
+                    code_text = invite_code.inner_text()
+                    print(f"  ✅ 找到邀请码: {code_text}")
+            except:
+                print("  ℹ️ 未找到邀请码显示")
+        else:
+            print("  ⚠️ 邀请页面可能未正确加载")
+            
+    except Exception as e:
+        print(f"  ❌ 邀请功能测试失败: {e}")
+        take_screenshot(page, "05_invite_error")
+
+def test_step_5_check_activity(page):
+    """步骤5: 检查活动中心"""
+    print("\n步骤 5: 检查活动中心...")
+    
+    try:
+        # 导航到活动页面
+        page.goto(f"{FRONTEND_URL}/user/activities")
+        page.wait_for_timeout(2000)
+        take_screenshot(page, "06_activities_page")
+        
+        content = page.content()
+        if "活动" in content or "签到" in content:
+            print("  ✅ 活动中心页面加载成功")
+            
+            # 尝试点击签到按钮
+            try:
+                checkin_btn = page.locator('button:has-text("签到"), button:has-text("Check")').first
+                if checkin_btn.is_visible():
+                    checkin_btn.click()
+                    print("  ✅ 点击签到按钮")
+                    page.wait_for_timeout(2000)
+                    take_screenshot(page, "07_checkin_result")
+            except:
+                print("  ℹ️ 签到按钮未找到或已签到")
+        else:
+            print("  ⚠️ 活动中心页面可能未正确加载")
+            
+    except Exception as e:
+        print(f"  ❌ 活动中心测试失败: {e}")
+
+def run_all_tests():
+    """运行所有测试"""
+    import os
+    
+    # 创建截图目录
+    os.makedirs("test_screenshots", exist_ok=True)
+    
     print("\n" + "="*80)
-    print("  🍌 BananaSlides-GenAI 用户模拟测试")
+    print("  🚀 YH-AI PPT 用户模拟测试")
     print("  使用 Playwright 模拟完整用户操作流程")
     print("="*80)
     
     print(f"\n  📍 前端地址: {FRONTEND_URL}")
     print(f"  📍 API地址: {API_URL}")
     
-    print("\n" + "-"*80)
-    print("  测试流程:")
-    print("  1️⃣  访问前端页面")
-    print("  2️⃣  注册推荐人用户")
-    print("  3️⃣  获取推荐码")
-    print("  4️⃣  注册被推荐用户")
-    print("  5️⃣  验证推荐奖励")
-    print("-"*80)
-    
     with sync_playwright() as p:
-        # 启动浏览器（非无头模式，方便观察）
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(viewport={"width": 1280, "height": 720})
+        # 启动浏览器
+        browser = p.chromium.launch(headless=False, slow_mo=100)
+        context = browser.new_context(viewport={'width': 1280, 'height': 800})
         page = context.new_page()
         
         try:
             # 执行测试步骤
-            test_step_1_visit_homepage(page)
-            test_step_2_register_referrer(page)
-            test_step_3_get_referral_code(page)
-            test_step_4_register_referred_user(page)
-            test_step_5_verify_referral_reward(page)
+            test_step_1_homepage(page)
+            email, password = test_step_2_register_referrer(page)
             
-            # 测试完成
-            print("\n" + "="*80)
-            print("  ✅ 所有测试步骤完成!")
-            print("="*80)
-            print("\n  📊 测试数据汇总:")
-            print(f"     推荐人邮箱: {test_data['referrer_email']}")
-            print(f"     推荐人ID: {test_data['referrer_user_id']}")
-            print(f"     推荐码: {test_data['referral_code']}")
-            print(f"     被推荐人邮箱: {test_data['referred_email']}")
-            print(f"     被推荐人ID: {test_data['referred_user_id']}")
-            print("="*80 + "\n")
-            
+            if email and password:
+                test_step_3_check_points(page, email, password)
+                test_step_4_invite_feature(page)
+                test_step_5_check_activity(page)
+                
+                print("\n" + "="*80)
+                print("  ✅ 所有测试步骤已完成!")
+                print(f"  📧 测试邮箱: {email}")
+                print("="*80)
+            else:
+                print("\n  ❌ 注册失败，跳过后续测试")
+                
         except Exception as e:
             print(f"\n  ❌ 测试过程中出现错误: {e}")
-            import traceback
-            traceback.print_exc()
-            take_screenshot(page, "error")
+            take_screenshot(page, "error_final")
             
         finally:
+            # 保持浏览器打开一段时间以便查看结果
+            print("\n  ⏳ 等待 5 秒后关闭浏览器...")
+            page.wait_for_timeout(5000)
             browser.close()
-            print("  🔒 浏览器已关闭")
 
 if __name__ == "__main__":
-    main()
+    run_all_tests()

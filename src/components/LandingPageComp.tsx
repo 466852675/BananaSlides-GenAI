@@ -38,10 +38,10 @@ import { PurchaseModal } from './PurchaseModal';
 import { LeadFormModal } from './LeadFormModal';
 
 const TESTIMONIALS = [
-    { name: "Alex Chen", role: "科技博主", comment: "BananaSlides 是我见过的最懂'结构'的 PPT 工具。它不是在堆砌素材，而是在帮你梳理逻辑。Router-Adapter 架构让我在不同模型间切换自如。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" },
+    { name: "Alex Chen", role: "科技博主", comment: "YH-AI PPT 是我见过的最懂'结构'的 PPT 工具。它不是在堆砌素材，而是在帮你梳理逻辑。Router-Adapter 架构让我在不同模型间切换自如。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" },
     { name: "Sarah Wu", role: "投资经理", comment: "以前做 Pitch Deck 需要一周，现在只要半天。'灵感演化论'的工作流非常符合人类直觉，从大纲到成品的每一步都由我掌控。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah" },
     { name: "David Li", role: "大学教授", comment: "它的'智算底座'不仅仅是营销词汇。处理长篇学术论文时，它对结构的拆解能力远超通用 LLM，生成的图表也非常专业。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=David" },
-    { name: "Emily Zhao", role: "创意总监", comment: "通常我不相信 AI 的审美，但 BananaSlides 的深色模式和排版算法让我意外。它生成的页面有种高级的秩序感，这是很多设计师都难做到的。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Emily" },
+    { name: "Emily Zhao", role: "创意总监", comment: "通常我不相信 AI 的审美，但 YH-AI PPT 的深色模式和排版算法让我意外。它生成的页面有种高级的秩序感，这是很多设计师都难做到的。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Emily" },
     { name: "Michael Wang", role: "SaaS 创始人", comment: "批量生成功能救了我的命。我们要给 50 个客户做定制方案，用它的一键并发渲染，原本一个月的工作量压缩到了 3 小时。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Michael" },
     { name: "Lisa Zhang", role: "活动策划", comment: "Delivery 交付板块的设计非常贴心。原生 PPTX 导出完美复刻了设计稿的每一处细节，让我在现场可以直接演示，这才是真正的生产力工具。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Lisa" }
 ];
@@ -450,7 +450,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                     </motion.h1>
 
                     <motion.p variants={itemVariants} className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto leading-relaxed">
-                        BananaSlides 把繁琐的排版留给 AI，让您专注于故事本身。通过 1:1 精准复刻的高级质感，重定义您的演示体验。
+                        YH-AI PPT 把繁琐的排版留给 AI，让您专注于故事本身。通过 1:1 精准复刻的高级质感，重定义您的演示体验。
                     </motion.p>
 
                     <motion.div variants={itemVariants} className="pt-6">
@@ -871,7 +871,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                     <h2 className="text-4xl font-black text-center mb-16 tracking-tight text-slate-900">常见问题</h2>
                     <div className="space-y-4">
                         {[
-                            { q: "AI 生成的 PPT 会造成版权问题吗？", a: "绝对不会。BananaSlides 的所有内容均为实时原创，且导出的素材均拥有商用授权。" },
+                            { q: "AI 生成的 PPT 会造成版权问题吗？", a: "绝对不会。YH-AI PPT 的所有内容均为实时原创，且导出的素材均拥有商用授权。" },
                             { q: "我可以导出为 PowerPoint 格式吗？", a: "是的，我们支持高保真导出为 .pptx、PDF 以及图片格式，方便您在不同设备上进行演示。" },
                             { q: "数据安全性如何保证？", a: "我们采用企业级加密，您的所有输入信息和生成的文档仅您可见，绝不用于公有模型训练。" },
                             { q: "支持自定义企业模版吗？", a: "支持。在团队版中，您可以上传企业的 VI 规范（Logo、配色、字体），系统会自动生成符合您品牌调性的专属模版。" },

@@ -1,4 +1,4 @@
-# UI COMPONENTS - BananaSlides-GenAI
+# UI COMPONENTS - YH-AI PPT
 
 **Scope:** `/src/components` — React functional components with Tailwind CSS
 

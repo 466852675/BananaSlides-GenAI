@@ -39,8 +39,8 @@ export async function notifyWelcome(ctx: WelcomeContext) {
     await createMessage({
         userId: ctx.userId,
         type: MessageType.ACTIVITY,
-        title: '🎉 欢迎加入 BananaSlides！',
-        content: `Hi ${ctx.nickname || '新用户'}，欢迎来到 BananaSlides AI 智能创作平台！每日签到可获取免费积分，快来体验 AI 一键生成 PPT 吧！`,
+        title: '🎉 欢迎加入 YH-AI PPT！',
+        content: `Hi ${ctx.nickname || '新用户'}，欢迎来到 YH-AI PPT 智能创作平台！每日签到可获取免费积分，快来体验 AI 一键生成 PPT 吧！`,
         summary: '新用户欢迎',
         bizType: 'activity_welcome',
         actionUrl: '/user/profile',

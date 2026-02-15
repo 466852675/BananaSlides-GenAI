@@ -92,7 +92,7 @@ export const DeliveryShowcase: React.FC = () => {
                                 <span className="text-blue-500">从来不是</span> 创作的终点
                             </h2>
                             <p className="text-slate-400 text-lg">
-                                BananaSlides 确保您的每一份努力都能以最高标准分发。从原生 PPTX 到高保真 PDF，满足各行各业的交付需求。
+                                YH-AI PPT 确保您的每一份努力都能以最高标准分发。从图片嵌入 PPTX 到高保真 PDF，满足各行各业的交付需求。
                             </p>
                         </div>
 

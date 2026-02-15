@@ -75,7 +75,7 @@ async function testAIServiceIntegration() {
 
 // Run all tests
 async function runTests() {
-  console.log('=== BananaSlides Security Verification Tests ===\n');
+  console.log('=== YH-AI PPT Security Verification Tests ===\n');
   
   try {
     await testContentFilter();

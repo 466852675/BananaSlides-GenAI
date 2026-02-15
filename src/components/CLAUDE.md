@@ -6,7 +6,7 @@
 
 ## 概述
 
-BananaSlides-GenAI 的 UI 组件库，包含 100+ 个 React 组件，覆盖完整的 PPT 创作工作流和后台管理系统。
+YH-AI PPT 的 UI 组件库，包含 100+ 个 React 组件，覆盖完整的 PPT 创作工作流和后台管理系统。
 
 ### 组件分类
 
