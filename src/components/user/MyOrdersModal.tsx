@@ -29,6 +29,7 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [showRefundModal, setShowRefundModal] = useState(false);
     const [showRefundHistory, setShowRefundHistory] = useState(false);
+    const [selectedOrder, setSelectedOrder] = useState<OrdersApi.Order | null>(null);
 
     // Auto-switch to refund history if initialView is 'refunds'
     useEffect(() => {
@@ -43,7 +44,6 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
             setShowRefundHistory(true);
         }
     }, [isOpen, highlightRefundId]);
-    const [selectedOrder, setSelectedOrder] = useState<OrdersApi.Order | null>(null);
 
     const { data: ordersData, isLoading, refetch } = useQuery({
         queryKey: ['myOrders'],
@@ -79,13 +79,11 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
         refetch();
     };
 
-    if (!isOpen) return null;
-
     const orders = ordersData?.items || [];
 
     // Deep link: scroll to and highlight the target order
     useEffect(() => {
-        if (!highlightOrderId || isLoading || orders.length === 0) return;
+        if (!isOpen || !highlightOrderId || isLoading || orders.length === 0) return;
         // Wait for DOM to render
         const timer = setTimeout(() => {
             const el = document.getElementById(`order-${highlightOrderId}`);
@@ -96,7 +94,9 @@ export const MyOrdersModal: React.FC<MyOrdersModalProps> = ({ isOpen, onClose, o
             }
         }, 300);
         return () => clearTimeout(timer);
-    }, [highlightOrderId, isLoading, orders]);
+    }, [isOpen, highlightOrderId, isLoading, orders]);
+
+    if (!isOpen) return null;
 
     return (
         <>

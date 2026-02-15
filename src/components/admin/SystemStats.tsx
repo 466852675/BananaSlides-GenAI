@@ -182,9 +182,9 @@ export const SystemStats: React.FC = () => {
                             </div>
                         </div>
 
-                        <div style={{ width: '100%', height: 260 }}>
+                        <div style={{ width: '100%', height: 260, minWidth: 200, minHeight: 200 }}>
                             {mounted && (
-                                <ResponsiveContainer width="100%" height="100%" debounce={50}>
+                                <ResponsiveContainer width="100%" height="100%" debounce={100}>
                                     <AreaChart data={trendData}>
                                         <defs>
                                             <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
@@ -258,9 +258,9 @@ export const SystemStats: React.FC = () => {
                             <p className="text-sm text-slate-500 mb-6 font-medium">活跃 vs 禁用账户占比</p>
                         </div>
 
-                        <div className="relative flex-1 min-h-[180px] flex items-center justify-center">
+                        <div className="relative flex-1 min-h-[180px] flex items-center justify-center" style={{ minWidth: 200 }}>
                             {mounted && (
-                                <ResponsiveContainer width="100%" height={200} debounce={50}>
+                                <ResponsiveContainer width="100%" height={200} debounce={100}>
                                     <PieChart>
                                         <Pie
                                             data={userStatusData}
@@ -324,24 +324,26 @@ export const SystemStats: React.FC = () => {
                             <Calendar size={18} />
                         </div>
                     </div>
-                    <div className="h-48 w-full mt-2">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={growthStats?.trend || []}>
-                                <defs>
-                                    <linearGradient id="colorCheck" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#d946ef" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="#d946ef" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="date" hide />
-                                <YAxis hide />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '11px', fontWeight: 'bold' }}
-                                />
-                                <Area type="monotone" dataKey="count" name="签到数" stroke="#d946ef" strokeWidth={3} fillOpacity={1} fill="url(#colorCheck)" />
-                            </AreaChart>
-                        </ResponsiveContainer>
+                    <div className="h-48 w-full mt-2" style={{ minWidth: 200, minHeight: 192 }}>
+                        {mounted && (
+                            <ResponsiveContainer width="100%" height="100%" debounce={100}>
+                                <AreaChart data={growthStats?.trend || []}>
+                                    <defs>
+                                        <linearGradient id="colorCheck" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#d946ef" stopOpacity={0.3} />
+                                            <stop offset="95%" stopColor="#d946ef" stopOpacity={0} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis dataKey="date" hide />
+                                    <YAxis hide />
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '11px', fontWeight: 'bold' }}
+                                    />
+                                    <Area type="monotone" dataKey="count" name="签到数" stroke="#d946ef" strokeWidth={3} fillOpacity={1} fill="url(#colorCheck)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        )}
                     </div>
                 </div>
 
@@ -355,18 +357,20 @@ export const SystemStats: React.FC = () => {
                             <UserPlus size={18} />
                         </div>
                     </div>
-                    <div className="h-48 w-full mt-2">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={growthStats?.trend || []}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="date" hide />
-                                <YAxis hide />
-                                <Tooltip
-                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '11px', fontWeight: 'bold' }}
-                                />
-                                <Line type="monotone" dataKey="count" name="邀请数" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} />
-                            </LineChart>
-                        </ResponsiveContainer>
+                    <div className="h-48 w-full mt-2" style={{ minWidth: 200, minHeight: 192 }}>
+                        {mounted && (
+                            <ResponsiveContainer width="100%" height="100%" debounce={100}>
+                                <LineChart data={growthStats?.trend || []}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis dataKey="date" hide />
+                                    <YAxis hide />
+                                    <Tooltip
+                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', fontSize: '11px', fontWeight: 'bold' }}
+                                    />
+                                    <Line type="monotone" dataKey="count" name="邀请数" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        )}
                     </div>
                 </div>
             </div>
