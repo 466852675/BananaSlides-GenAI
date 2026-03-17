@@ -4,6 +4,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import * as AuthAPI from '../api/auth';
 import { TOKEN_KEY } from '../api/client';
+import { getOutputMode } from '../services/geminiService';
 
 // ============================================================
 // 类型定义
@@ -112,6 +113,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 bio: userData.bio || null,
                 inviteCode: userData.inviteCode, // 添加邀请码
             });
+
+            // 预热 outputMode 缓存，减少后续 AI 调用的延迟
+            getOutputMode().catch(() => { /* 忽略错误 */ });
         } catch (error) {
             console.error('[Auth] 刷新用户信息失败:', error);
             // Token 无效，清除

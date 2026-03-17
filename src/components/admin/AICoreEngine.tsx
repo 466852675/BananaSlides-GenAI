@@ -25,6 +25,7 @@ import { useAppSettingsMasked, useUpdateAppSettings } from '../../api/settings';
 import toast from 'react-hot-toast';
 import { AdminDrawer } from './shared';
 import { ConfirmDialog } from '../ConfirmDialog';
+import { refreshOutputModeCache } from '../../services/geminiService';
 
 // ============================================================
 // 类型定义
@@ -686,6 +687,36 @@ const GlobalConfigDrawer: React.FC<GlobalConfigDrawerProps> = ({
                         ))}
                     </div>
                 </AdminDrawer.Section>
+
+                <AdminDrawer.Section title="AI 输出方式" icon={Zap}>
+                    <div className="grid grid-cols-2 gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, outputMode: 'stream' })}
+                            className={`px-4 py-3 rounded-2xl text-sm font-black tracking-tight transition-all border-2 ${
+                                formData.outputMode === 'stream'
+                                    ? 'bg-violet-50 border-violet-500 text-violet-700 shadow-lg shadow-violet-100/50'
+                                    : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:border-slate-200'
+                            }`}
+                        >
+                            流式输出
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, outputMode: 'complete' })}
+                            className={`px-4 py-3 rounded-2xl text-sm font-black tracking-tight transition-all border-2 ${
+                                formData.outputMode === 'complete'
+                                    ? 'bg-violet-50 border-violet-500 text-violet-700 shadow-lg shadow-violet-100/50'
+                                    : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:border-slate-200'
+                            }`}
+                        >
+                            完整输出
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-3 font-bold">
+                        流式输出：AI 内容逐字/逐项显示，响应更快。完整输出：等待全部生成后一次性显示。
+                    </p>
+                </AdminDrawer.Section>
             </div>
         </AdminDrawer>
     );
@@ -732,6 +763,7 @@ export const AICoreEngine: React.FC = () => {
         textConcurrency: appSettings?.performance?.textConcurrency ?? 1,
         imageConcurrency: appSettings?.performance?.imageConcurrency ?? 2,
         outputLanguage: appSettings?.language || 'zh',
+        outputMode: appSettings?.outputMode || 'stream',
     }), [appSettings]);
 
     // Mutations
@@ -797,8 +829,9 @@ export const AICoreEngine: React.FC = () => {
                 imageConcurrency: config.imageConcurrency
             },
             language: config.outputLanguage,
+            outputMode: config.outputMode,
 
-            // Also keep it in ai.global for backward compatibility if needed, 
+            // Also keep it in ai.global for backward compatibility if needed,
             // but the Service reads from root.
             ai: {
                 ...appSettings.ai,
@@ -809,6 +842,8 @@ export const AICoreEngine: React.FC = () => {
             onSuccess: () => {
                 toast.success('基础配置保存成功！');
                 setIsGlobalEditorOpen(false);
+                // 刷新 outputMode 缓存，确保后续 AI 调用使用最新配置
+                refreshOutputModeCache().catch(() => { /* 忽略错误 */ });
             },
             onError: (err: any) => toast.error(err.message || '保存失败')
         });
@@ -1009,7 +1044,7 @@ export const AICoreEngine: React.FC = () => {
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                         <div className="bg-slate-50 rounded-xl p-4">
                             <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
                                 <FileText size={14} />
@@ -1039,6 +1074,13 @@ export const AICoreEngine: React.FC = () => {
                                 输出语言
                             </div>
                             <div className="font-bold text-slate-800">{LANGUAGE_PRESETS.find(l => l.value === globalConfig.outputLanguage)?.label || globalConfig.outputLanguage}</div>
+                        </div>
+                        <div className="bg-slate-50 rounded-xl p-4">
+                            <div className="flex items-center gap-2 text-xs text-slate-500 mb-2">
+                                <Zap size={14} />
+                                AI 输出方式
+                            </div>
+                            <div className="font-bold text-slate-800">{globalConfig.outputMode === 'stream' ? '流式输出' : '完整输出'}</div>
                         </div>
                     </div>
                 </div>

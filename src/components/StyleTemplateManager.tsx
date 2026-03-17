@@ -31,7 +31,7 @@ import { ImageUploader } from './ImageUploader';
 import { SharedStyleCard, SharedStyleItem } from './SharedStyleCard';
 import { QuickTemplateModal } from './QuickTemplateModal';
 import { Home, LayoutList, BookOpen, Flag, Type, Wand2, Edit3, Loader2 } from 'lucide-react';
-import { smartRefine } from '../services/geminiService';
+import { smartRefine, smartRefineAuto } from '../services/geminiService';
 import { StyleTemplateEditor } from './StyleTemplateEditor';
 import { useSaveTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/templates';
 import { useAddFavorite, useRemoveFavorite } from '../api/favorites';
@@ -1557,9 +1557,24 @@ const StyleEditor: React.FC<{
     }
 
     try {
-      // Pass appSettings to enable correct API configuration for AI
-      const refined = await smartRefine(localTemplate.config.requirements, 'requirement', triggerTime);
-      updateConfig('requirements', refined);
+      // 流式输出：实时更新模板描述词
+      let accumulatedText = '';
+      const refined = await smartRefineAuto(
+        localTemplate.config.requirements,
+        'requirement',
+        (chunk) => {
+          // 流式模式：实时更新
+          accumulatedText += chunk;
+          updateConfig('requirements', accumulatedText);
+        },
+        triggerTime
+      );
+
+      // 非流式模式：直接使用返回值
+      if (refined && !accumulatedText) {
+        updateConfig('requirements', refined);
+      }
+
       onShowToast('AI 润色已完成，内容已更新', 'success');
       setTimeout(refreshUser, 500);
     } catch (error: any) {

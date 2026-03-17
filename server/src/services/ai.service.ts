@@ -1005,7 +1005,7 @@ async function callOpenAIImageGeneration(
 
 export const AIService = {
 
-    async smartRefine(text: string, type: 'requirement' | 'content' | 'requirement_polish', settings?: AppSettings, userId?: string): Promise<string> {
+    async smartRefine(text: string, type: 'requirement' | 'content' | 'requirement_polish' | 'template_description', settings?: AppSettings, userId?: string): Promise<string> {
         if (process.env.MOCK_AI === '1') {
             const t = text === undefined || text === null ? '' : String(text);
             if (!t.trim()) return '';
@@ -1046,19 +1046,44 @@ export const AIService = {
         let prompt = '';
         if (type === 'requirement_polish') {
             prompt = `
-Task: Rewrite the user's input into ONE single fluent paragraph of plain text.
+Task: Generate a concise PPT presentation title based on user's input.
 Input: "${cleanText}"
 
 [STRICT RULES]
-1. NO Markdown (no **, #, etc).
-2. NO Bullet points or lists (*, -).
-3. NO Newlines. Return exactly one line of text.
-4. Keep the original intent but make it sound professional and descriptive.
-5. Language: Simplified Chinese (简体中文).
-6. If the input is keywords, expand them into full sentences.
+1. Output ONLY a short title (maximum 20 Chinese characters).
+2. NO punctuation marks at the end (no 。！？).
+3. NO Markdown formatting.
+4. Language: Simplified Chinese (简体中文).
+5. The title should be professional and suitable for a presentation.
 
-Example Output:
-"该模版专为小学语文教学设计，采用生动有趣的视觉风格，以适应小学生的审美偏好，旨在打造沉浸式的语文课堂体验，帮助学生更好地理解教学内容。"`;
+Example:
+Input: "我想做一个关于人工智能发展趋势的路演PPT"
+Output: "人工智能发展趋势路演"
+
+Input: "帮我做一个产品发布会的演示文稿"
+Output: "产品发布会演示"
+
+Input: "关于公司年度工作总结的汇报材料"
+Output: "公司年度工作总结汇报"`;
+        } else if (type === 'template_description') {
+            prompt = `
+Task: 根据用户的描述，生成一份专业的模板风格需求设计方案。
+用户输入: "${cleanText}"
+
+[输出要求]
+1. 输出一段完整的模板风格描述（约100-150字）
+2. 包含以下要素：
+   - 设计风格定位（如：现代简约、商务专业、创意活泼等）
+   - 配色方案建议（主色调、辅助色）
+   - 视觉元素建议（图形、图标、排版风格）
+   - 适用场景
+3. 语言：简体中文
+4. 不使用 Markdown 格式，输出纯文本
+
+示例：
+输入: "我想做一个科技公司的产品发布会PPT"
+输出: "采用现代科技感设计风格，以深蓝色为主色调，搭配荧光蓝渐变作为强调色，营造专业前沿的视觉氛围。建议使用几何图形和流线型元素，配合无衬线字体呈现简洁大气的排版风格。整体设计注重信息的层次感，通过数据可视化图表增强说服力，适用于科技产品发布、商业路演等正式场合。"
+`;
         } else if (type === 'requirement') {
             prompt = `
 Role: Senior Visual Director & PPT Expert.
@@ -1962,5 +1987,422 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             undefined,
             pageType
         );
+    },
+
+    // ============================================================
+    // 流式输出方法 (Streaming Methods)
+    // ============================================================
+
+    /**
+     * 流式调用 OpenAI Compatible API
+     */
+    async callOpenAICompatibleStream(
+        config: ModelConnection,
+        messages: any[],
+        onChunk: (chunk: string) => void,
+        temperature: number = 0.7
+    ): Promise<void> {
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+        };
+        if (config.apiKey) {
+            const safeKey = config.apiKey.replace(/[^ -~]/g, "");
+            headers['Authorization'] = `Bearer ${safeKey}`;
+        }
+
+        let baseUrl = config.baseUrl.trim();
+        if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+        let url = baseUrl;
+        if (!url.toLowerCase().endsWith('/chat/completions')) {
+            url = `${baseUrl}/chat/completions`;
+        }
+
+        const body: any = {
+            model: config.model,
+            messages: messages,
+            temperature: temperature,
+            max_tokens: 4096,
+            stream: true
+        };
+
+        console.log(`[OpenAI Stream] Calling: ${url}, Model: ${config.model}`);
+
+        const response = await axios.post(url, body, {
+            headers,
+            timeout: 120000,
+            httpsAgent,
+            responseType: 'stream'
+        });
+
+        return new Promise((resolve, reject) => {
+            let buffer = '';
+            response.data.on('data', (chunk: Buffer) => {
+                buffer += chunk.toString();
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6).trim();
+                        if (data === '[DONE]') {
+                            resolve();
+                            return;
+                        }
+                        try {
+                            const parsed = JSON.parse(data);
+                            const content = parsed.choices?.[0]?.delta?.content;
+                            if (content) {
+                                onChunk(content);
+                            }
+                        } catch {
+                            // Ignore parse errors for incomplete chunks
+                        }
+                    }
+                }
+            });
+
+            response.data.on('end', () => {
+                resolve();
+            });
+
+            response.data.on('error', (err: Error) => {
+                console.error('[OpenAI Stream] Error:', err);
+                reject(err);
+            });
+        });
+    },
+
+    /**
+     * 流式文本润色
+     */
+    async smartRefineStream(
+        text: string,
+        type: 'requirement' | 'content' | 'requirement_polish' | 'template_description',
+        settings: AppSettings | undefined,
+        onChunk: (chunk: string) => void
+    ): Promise<void> {
+        if (process.env.MOCK_AI === '1') {
+            const t = text === undefined || text === null ? '' : String(text);
+            if (!t.trim()) return;
+            onChunk(t.trim());
+            return;
+        }
+
+        const sanitized = promptSanitizer.sanitize(text);
+        const cleanText = sanitized.cleanedText;
+
+        const config = await resolveActiveConfig(settings, 'text');
+        let prompt = '';
+
+        if (type === 'requirement_polish') {
+            prompt = `
+Task: Generate a concise PPT presentation title based on user's input.
+Input: "${cleanText}"
+
+[STRICT RULES]
+1. Output ONLY a short title (maximum 20 Chinese characters).
+2. NO punctuation marks at the end (no 。！？).
+3. NO Markdown formatting.
+4. Language: Simplified Chinese (简体中文).
+5. The title should be professional and suitable for a presentation.
+
+Example:
+Input: "我想做一个关于人工智能发展趋势的路演PPT"
+Output: "人工智能发展趋势路演"
+
+Input: "帮我做一个产品发布会的演示文稿"
+Output: "产品发布会演示"
+
+Input: "关于公司年度工作总结的汇报材料"
+Output: "公司年度工作总结汇报"`;
+        } else if (type === 'template_description') {
+            prompt = `
+Task: 根据用户的描述，生成一份专业的模板风格需求设计方案。
+用户输入: "${cleanText}"
+
+[输出要求]
+1. 输出一段完整的模板风格描述（约100-150字）
+2. 包含以下要素：
+   - 设计风格定位（如：现代简约、商务专业、创意活泼等）
+   - 配色方案建议（主色调、辅助色）
+   - 视觉元素建议（图形、图标、排版风格）
+   - 适用场景
+3. 语言：简体中文
+4. 不使用 Markdown 格式，输出纯文本
+
+示例：
+输入: "我想做一个科技公司的产品发布会PPT"
+输出: "采用现代科技感设计风格，以深蓝色为主色调，搭配荧光蓝渐变作为强调色，营造专业前沿的视觉氛围。建议使用几何图形和流线型元素，配合无衬线字体呈现简洁大气的排版风格。整体设计注重信息的层次感，通过数据可视化图表增强说服力，适用于科技产品发布、商业路演等正式场合。"
+`;
+        } else if (type === 'requirement') {
+            prompt = `
+Role: Senior Visual Director & PPT Expert.
+Task: Refine the user's input into a professional, structured "AI Visual Instruction" (Style Config) for a presentation generation system.
+Input Text: "${cleanText}"
+
+[CRITICAL REQUIREMENT]
+You MUST output the result in the following Standard Markdown Structure. Do NOT change the headings.
+
+# [Role Name] AI 视觉指令
+
+## 1. 核心定位
+*   **角色设定**: (e.g. 未来主义架构师)
+*   **应用场景**: (e.g. 技术发布会)
+*   **视觉关键词**: (3-5 keywords)
+
+## 2. 总体视觉规范
+*   **设计美学**: (Detailed description of style, mood, lighting, materials)
+*   **色彩方案 (Name)**:
+    *   **背景色**: (Hex & Description)
+    *   **核心骨架/主色**: (Hex)
+    *   **战略目标/亮色**: (Hex)
+    *   **文字色**: (Hex)
+*   **字体建议**:
+    *   **标题**:
+    *   **正文**:
+*   **核心元素**: (List of visual elements)
+
+## 3. 页面类型详细指令
+(Provide specific visual instructions for EACH page type below. Infer details if missing.)
+
+### [封面页] (Cover Page)
+*   **布局**:
+*   **元素**:
+*   **氛围**:
+
+### [目录页] (Agenda Page)
+*   **布局**:
+*   **元素**:
+*   **特点**:
+
+### [章节过渡页] (Section Header)
+*   **布局**:
+*   **元素**:
+*   **特点**:
+
+### [内容页] (Content Page)
+*   **布局**:
+*   **图表**:
+*   **特点**:
+
+### [结束页] (Thank You)
+*   **布局**:
+*   **元素**:
+*   **氛围**:
+
+---
+Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简体中文).`;
+        } else {
+            prompt = `Task: Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.\n\nInput Text: "${cleanText}"\n\nRequirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`;
+        }
+
+        const messages = [{ role: "user", content: prompt }];
+        await AIService.callOpenAICompatibleStream(config, messages, onChunk);
+    },
+
+    /**
+     * 流式大纲生成 - 逐项发送
+     */
+    async generateOutlineStream(
+        topic: string,
+        configStyle: StyleConfig,
+        settings: AppSettings,
+        onItem: (item: OutlineItem, index: number) => void
+    ): Promise<OutlineItem[]> {
+        if (process.env.MOCK_AI === '1') {
+            const safeTopic = topic === undefined || topic === null ? '' : String(topic);
+            const { targetPageCount, pageStructure } = configStyle;
+            const structure = { ...(pageStructure || { cover: 1, directory: 1, transition: 0, content: 7, end: 1 }) };
+            const fixedSum = (structure.cover || 0) + (structure.directory || 0) + (structure.transition || 0) + (structure.end || 0);
+            structure.content = Math.max(1, (targetPageCount || 10) - fixedSum);
+
+            const seq: Array<'cover' | 'directory' | 'transition' | 'content' | 'end'> = [];
+            for (let i = 0; i < (structure.cover || 0); i++) seq.push('cover');
+            for (let i = 0; i < (structure.directory || 0); i++) seq.push('directory');
+            for (let i = 0; i < (structure.transition || 0); i++) seq.push('transition');
+            for (let i = 0; i < (structure.content || 0); i++) seq.push('content');
+            for (let i = 0; i < (structure.end || 0); i++) seq.push('end');
+
+            const sliced = seq.slice(0, targetPageCount || seq.length);
+            const results: OutlineItem[] = [];
+            for (let i = 0; i < sliced.length; i++) {
+                const pageType = sliced[i];
+                const item: OutlineItem = {
+                    id: Math.random().toString(36).slice(2, 11),
+                    index: i + 1,
+                    title: pageType === 'cover' ? `封面：${safeTopic || '主题'}` :
+                        pageType === 'directory' ? '目录' :
+                            pageType === 'transition' ? '章节概览' :
+                                pageType === 'end' ? '谢谢' :
+                                    `要点 ${i + 1}`,
+                    brief: pageType === 'content' ? `这是「${safeTopic || '主题'}」的关键要点示例，用于 E2E 测试。` : '',
+                    pageType,
+                    status: 'idle'
+                };
+                results.push(item);
+                onItem(item, i);
+            }
+            return results;
+        }
+
+        const config = await resolveActiveConfig(settings, 'text');
+        const { targetPageCount, pageStructure } = configStyle;
+        const structure = { ...(pageStructure || { cover: 1, directory: 1, transition: 0, content: 7, end: 1 }) };
+
+        const fixedSum = (structure.cover || 0) + (structure.directory || 0) + (structure.transition || 0) + (structure.end || 0);
+        structure.content = Math.max(1, targetPageCount - fixedSum);
+
+        // 使用 JSON Lines 格式，每行一个 JSON 对象，便于流式解析
+        const prompt = `
+Task: 为主题 "${topic}" 生成一份结构化的 PPT 演示大纲。
+
+【严格限制】:
+1. 总页数必须正好为: ${targetPageCount} 页。
+2. 页面组成结构必须严格遵守以下配比:
+   - 封面页 (cover): ${structure.cover} 页
+   - 目录页 (directory): ${structure.directory} 页
+   - 章节过渡页 (transition): ${structure.transition} 页
+   - 内容正文页 (content): ${structure.content} 页
+   - 结束页 (end): ${structure.end} 页
+
+【输出格式 - JSON Lines】:
+每行输出一个 JSON 对象，共 ${targetPageCount} 行。
+不要输出数组括号 []，不要使用 Markdown 代码块。
+
+每行格式:
+{"title": "页面标题", "brief": "页面内容简介", "pageType": "cover|directory|transition|content|end"}
+
+示例输出:
+{"title": "人工智能发展趋势", "brief": "封面页展示主题和演讲者信息", "pageType": "cover"}
+{"title": "目录", "brief": "展示本次演示的主要章节", "pageType": "directory"}
+{"title": "核心要点一", "brief": "介绍第一个核心观点", "pageType": "content"}
+{"title": "谢谢", "brief": "感谢观看，联系方式", "pageType": "end"}
+
+【重要】: 每行必须是一个完整有效的 JSON 对象，按顺序逐行输出。
+`;
+
+        const results: OutlineItem[] = [];
+        let buffer = '';
+        let itemIndex = 0;
+        const messages = [{ role: "user", content: prompt }];
+
+        await AIService.callOpenAICompatibleStream(config, messages, (chunk) => {
+            buffer += chunk;
+
+            // 按行分割，逐行解析 JSON
+            const lines = buffer.split('\n');
+            // 保留最后一个可能不完整的行
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                // 跳过空行和非 JSON 行
+                if (!trimmed || !trimmed.startsWith('{')) continue;
+
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    const item: OutlineItem = {
+                        id: Math.random().toString(36).slice(2, 11),
+                        index: itemIndex + 1,
+                        title: parsed.title || `第 ${itemIndex + 1} 页`,
+                        brief: parsed.brief || '',
+                        pageType: parsed.pageType || 'content',
+                        status: 'idle'
+                    };
+                    results.push(item);
+                    onItem(item, itemIndex);
+                    itemIndex++;
+                } catch (e) {
+                    // JSON 解析失败，可能是行不完整，继续等待更多数据
+                    console.log('[GenerateOutlineStream] Failed to parse line:', trimmed.substring(0, 50));
+                }
+            }
+        });
+
+        // 处理 buffer 中剩余的内容
+        if (buffer.trim() && buffer.trim().startsWith('{')) {
+            try {
+                const parsed = JSON.parse(buffer.trim());
+                const item: OutlineItem = {
+                    id: Math.random().toString(36).slice(2, 11),
+                    index: itemIndex + 1,
+                    title: parsed.title || `第 ${itemIndex + 1} 页`,
+                    brief: parsed.brief || '',
+                    pageType: parsed.pageType || 'content',
+                    status: 'idle'
+                };
+                results.push(item);
+                onItem(item, itemIndex);
+            } catch (e) {
+                // 忽略解析错误
+            }
+        }
+
+        console.log(`[GenerateOutlineStream] Parsed ${results.length} items`);
+        return results;
+    },
+
+    /**
+     * 流式幻灯片详情生成
+     */
+    async generateSlideDetailStream(
+        title: string,
+        brief: string,
+        topicContext: string,
+        index: number,
+        total: number,
+        pageType: string,
+        settings: AppSettings | undefined,
+        onChunk: (chunk: string) => void
+    ): Promise<void> {
+        if (process.env.MOCK_AI === '1') {
+            const t = title === undefined || title === null ? '' : String(title);
+            const b = brief === undefined || brief === null ? '' : String(brief);
+            const mockContent = `- ${t || '要点'}\n- ${b || '示例内容（用于 E2E 测试）'}\n\n---DESIGN_SUGGESTION_START---\n**设计建议：** 采用左右分栏布局：左侧标题与要点列表，右侧使用图标/流程箭头表达逻辑。`;
+            onChunk(mockContent);
+            return;
+        }
+
+        const config = await resolveActiveConfig(settings, 'text');
+        const prompt = `Topic Context: ${topicContext}
+            Slide Title: ${title}
+            Slide Intent: ${brief}
+
+            Structural Context:
+            - This is slide ${index} of ${total} in the entire presentation.
+            - Page Type: ${pageType}
+
+            Task: Write the full, detailed content for this slide.
+
+            Requirements:
+            1. Language: Strictly Simplified Chinese (简体中文).
+            2. Include bullet points, key arguments, or data placeholders.
+            3. Use a professional tone.
+            4. Content length: ${pageType === 'content' ? '150-250' : '50-100'} words.
+
+            [CRITICAL VISUAL INSTRUCTION]:
+            At the end of your response (after the content), you MUST append a specific design suggestion field:
+
+            Format:
+            **设计建议：** <Your suggestion here>
+
+            Instructions for this field:
+            - Act as a Senior Art Director.
+            - FOCUS ONLY on Layout, Structure, Charts, Shapes, and Icons.
+            - [STRICTLY FORBIDDEN]: Do NOT mention colors, palettes, art styles, or lighting.
+            - [Layout]: Suggest the best layout (e.g., 'Left-Right Split', 'Timeline', '3-Column Card').
+            - [Hierarchy]: Define visual weight (e.g., "Make the Central Concept 2x larger than supporting points", "Use size contrast to distinguish Main Title from Sub-points").
+            - [Logic]: Define connection logic (e.g., "Use arrows to show flow A -> B", "Use concentric circles to show inclusion", "Use connecting lines to show network").
+            - [Shapes]: Suggest visual metaphors (e.g., 'Funnel', 'Honeycomb', 'Pyramid').
+            - SEPARATOR REQUIRED: You MUST put the separator "---DESIGN_SUGGESTION_START---" on a new line before the design suggestion.
+            - Example:
+
+            (Content...)
+
+            ---DESIGN_SUGGESTION_START---
+            **设计建议：** 采用中心发散布局。核心概念'AI大脑'位于画面中央且尺寸最大（层级1）；四个子模块环绕周边（层级2），使用虚线箭头指向中心（逻辑：汇聚）。使用蜂窝状容器包裹每个模块。"`;
+
+        const messages = [{ role: "user", content: prompt }];
+        await AIService.callOpenAICompatibleStream(config, messages, onChunk);
     }
 };

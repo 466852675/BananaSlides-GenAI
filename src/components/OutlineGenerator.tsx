@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PointsBadge } from './PointsBadge';
 import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser, Eye, Edit3, Upload, Download } from 'lucide-react';
-import { refinePrompt, smartRefine, generateOutline, generateSlideDetail, generateSingleOutlineItem } from '../services/geminiService';
+import { refinePrompt, smartRefine, generateOutline, generateSlideDetail, generateSingleOutlineItem, smartRefineAuto, generateOutlineAuto, generateSlideDetailAuto } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
 import { extractTextFromUpload } from '../utils/fileParser';
 import { OutlineItem, GeneratedSlide, StyleConfig, PageType, AppSettings } from '../types';
@@ -359,20 +359,36 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         }
 
         try {
-            // Use 'content' type for topic/content refinement, NOT 'requirement' (which is for visual styles)
-            const refined = await smartRefine(contentToRefine, 'content', undefined, projectId);
-            if (refined && refined.trim()) {
+            // 流式输出：实时更新内容
+            let accumulatedText = '';
+            const refined = await smartRefineAuto(
+                contentToRefine,
+                activeTab === 'file' ? 'content' : 'requirement_polish',  // 主题输入使用更快的类型
+                (chunk) => {
+                    // 流式模式：实时更新
+                    accumulatedText += chunk;
+                    if (activeTab === 'file') {
+                        setFileParsedContent(accumulatedText);
+                    } else {
+                        setTopic(accumulatedText);
+                    }
+                },
+                undefined,
+                projectId
+            );
+
+            // 非流式模式：直接使用返回值（如果流式没有累积内容）
+            if (refined && !accumulatedText) {
                 if (activeTab === 'file') {
                     setFileParsedContent(refined);
                 } else {
                     setTopic(refined);
                 }
-                onShowToast(`调用 ${providerName} API 服务成功`, 'success');
-                // 成功后刷新用户信息（积分余额）
-                setTimeout(() => refreshUser(), 500);
-            } else {
-                onShowToast(`调用 ${providerName} API 服务返回内容为空`, 'error');
             }
+
+            onShowToast(`调用 ${providerName} API 服务成功`, 'success');
+            // 成功后刷新用户信息（积分余额）
+            setTimeout(() => refreshUser(), 500);
         } catch (error) {
             console.error(error);
             onShowToast(`调用 ${providerName} API 服务失败`, 'error');
@@ -410,6 +426,9 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         }
 
         setIsGeneratingOutline(true);
+        setOutlineItems([]);  // 清空旧大纲
+        setStep(2);  // 立即跳转到第二步，让用户看到大纲逐一生成
+
         const providerName = getProviderName('text');
 
         // Action name for unified wording
@@ -433,11 +452,27 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         onShowToast(costInfoMsg, 'loading');
 
         try {
-            const items = await generateOutline(sourceContent, config, undefined, projectId);
+            // 流式输出：逐项显示大纲
+            const items = await generateOutlineAuto(
+                sourceContent,
+                config,
+                (item, index) => {
+                    // 流式模式：逐项添加到列表
+                    setOutlineItems(prev => {
+                        // 避免重复添加相同索引的项目
+                        if (prev.some(i => i.index === item.index)) {
+                            return prev;
+                        }
+                        return [...prev, item];
+                    });
+                },
+                undefined,
+                projectId
+            );
+
+            // 检查是否有项目生成
             if (items && items.length > 0) {
-                setOutlineItems(items);
                 setDeletedItemsPool([]); // 重新生成大纲时，清空旧任务的回收站
-                setStep(2);
                 onShowToast(`大纲生成成功`, 'success');
                 // 成功后刷新用户信息（积分余额）
                 setTimeout(() => refreshUser(), 500);
@@ -661,17 +696,30 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                 await new Promise(resolve => setTimeout(resolve, 300));
                 handleUpdateOutlineItem(id, { fullContent: item.brief, status: 'success' });
             } else {
-                const detail = await generateSlideDetail(
+                // 流式输出：实时更新详情内容
+                let accumulatedDetail = '';
+                const detail = await generateSlideDetailAuto(
                     item.title,
                     item.brief,
                     topic,
                     index,
                     total,
                     item.pageType,
+                    (chunk) => {
+                        // 流式模式：实时更新
+                        accumulatedDetail += chunk;
+                        handleUpdateOutlineItem(id, { fullContent: accumulatedDetail });
+                    },
                     undefined,
                     projectId
                 );
-                handleUpdateOutlineItem(id, { fullContent: detail, status: 'success' });
+
+                // 非流式模式：直接使用返回值
+                if (detail && !accumulatedDetail) {
+                    handleUpdateOutlineItem(id, { fullContent: detail, status: 'success' });
+                } else {
+                    handleUpdateOutlineItem(id, { status: 'success' });
+                }
             }
             onShowToast("此页内容生成成功", 'success');
         } catch (e: any) {

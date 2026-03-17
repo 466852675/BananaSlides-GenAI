@@ -26,8 +26,17 @@ const maskKeysInObject = (obj: any): any => {
 };
 
 export class SettingService {
+    // [优化] 配置缓存
+    private static settingsCache: { data: any; timestamp: number } | null = null;
+    private static CACHE_TTL = 60 * 1000; // 1 分钟
+
     // Get full settings (for internal backend use only)
     static async getSettings() {
+        // [优化] 检查缓存
+        if (this.settingsCache && Date.now() - this.settingsCache.timestamp < this.CACHE_TTL) {
+            return this.settingsCache.data;
+        }
+
         let settings = await (prisma as any).appSettings.findFirst({
             where: { id: 'global' }
         });
@@ -37,10 +46,18 @@ export class SettingService {
         }
 
         try {
-            return JSON.parse(settings.config);
+            const parsedSettings = JSON.parse(settings.config);
+            // [优化] 更新缓存
+            this.settingsCache = { data: parsedSettings, timestamp: Date.now() };
+            return parsedSettings;
         } catch {
             return null;
         }
+    }
+
+    // [优化] 清除配置缓存
+    private static invalidateCache() {
+        this.settingsCache = null;
     }
 
     // Get masked settings (for frontend display)
@@ -281,7 +298,7 @@ export class SettingService {
         const finalConfig = restoreKeys(config, currentSettings);
         const configStr = JSON.stringify(finalConfig);
 
-        return await (prisma as any).appSettings.upsert({
+        const result = await (prisma as any).appSettings.upsert({
             where: { id: 'global' },
             create: {
                 id: 'global',
@@ -291,6 +308,11 @@ export class SettingService {
                 config: configStr
             }
         });
+
+        // [优化] 清除缓存，确保下次请求获取最新配置
+        this.invalidateCache();
+
+        return result;
     }
     // Hot Reload .env and Sync
     static async reloadEnv() {

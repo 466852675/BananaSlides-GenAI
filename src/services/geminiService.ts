@@ -1,6 +1,6 @@
 
 import { AppSettings, StyleConfig, OutlineItem, DocParserConfig, StoredResource } from "../types";
-import { uploadFile, client } from "../api/client";
+import { uploadFile, client, TOKEN_KEY } from "../api/client";
 
 // --- Helpers ---
 
@@ -12,9 +12,23 @@ const ensureUploaded = async (resource: StoredResource): Promise<string> => {
     throw new Error("Invalid resource type");
 };
 
+/**
+ * 获取认证请求头（用于 fetch API 的流式调用）
+ */
+const getAuthHeaders = (): HeadersInit => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+    };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+};
+
 // --- Exports ---
 
-export const smartRefine = async (text: string, type: 'requirement' | 'content' | 'requirement_polish', triggerTime?: string, projectId?: string): Promise<string> => {
+export const smartRefine = async (text: string, type: 'requirement' | 'content' | 'requirement_polish' | 'template_description', triggerTime?: string, projectId?: string): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', {
             text,
@@ -33,7 +47,7 @@ export const refinePrompt = async (rawText: string, triggerTime?: string, projec
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', {
             text: rawText,
-            type: 'requirement_polish',
+            type: 'template_description',  // 用于模板间的需求描述润色
             triggerTime,
             projectId
         });
@@ -215,5 +229,289 @@ export const generateStyleReference = async (configStyle: StyleConfig, pageType:
     } catch (error) {
         console.error("Generate Style Reference Error:", error);
         throw error;
+    }
+};
+
+// ============================================================
+// 流式输出方法 (Streaming Methods)
+// ============================================================
+
+// outputMode 缓存，避免每次调用都请求后端
+let cachedOutputMode: 'stream' | 'complete' | null = null;
+
+/**
+ * 获取全局输出模式配置（带缓存）
+ * @param forceRefresh 是否强制刷新缓存
+ */
+export const getOutputMode = async (forceRefresh = false): Promise<'stream' | 'complete'> => {
+    // 如果有缓存且不强制刷新，直接返回缓存值
+    if (cachedOutputMode && !forceRefresh) {
+        return cachedOutputMode;
+    }
+
+    try {
+        const response = await client.get<any>('/settings');
+        const settings = (response as any).data;
+        cachedOutputMode = settings?.outputMode || 'stream';
+        return cachedOutputMode;
+    } catch {
+        return 'stream'; // 默认流式
+    }
+};
+
+/**
+ * 刷新 outputMode 缓存（在后台设置变更后调用）
+ */
+export const refreshOutputModeCache = async (): Promise<'stream' | 'complete'> => {
+    cachedOutputMode = null;
+    return getOutputMode(true);
+};
+
+/**
+ * 流式文本润色
+ */
+export const smartRefineStream = async (
+    text: string,
+    type: 'requirement' | 'content' | 'requirement_polish' | 'template_description',
+    onChunk: (chunk: string) => void,
+    triggerTime?: string,
+    projectId?: string
+): Promise<string> => {
+    const response = await fetch('/api/ai/smart-refine/stream', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ text, type, triggerTime, projectId }),
+        credentials: 'include'
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+        throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let fullText = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(l => l.startsWith('data: '));
+
+        for (const line of lines) {
+            try {
+                const data = JSON.parse(line.slice(6));
+                if (data.chunk) {
+                    fullText += data.chunk;
+                    onChunk(data.chunk);
+                }
+                if (data.error) {
+                    throw new Error(data.error.message || data.error);
+                }
+                if (data.done) {
+                    return fullText;
+                }
+            } catch (e: any) {
+                if (e.message && !e.message.includes('JSON')) {
+                    throw e;
+                }
+            }
+        }
+    }
+
+    return fullText;
+};
+
+/**
+ * 流式大纲生成 - 逐项返回
+ */
+export const generateOutlineStream = async (
+    topic: string,
+    configStyle: StyleConfig,
+    onItem: (item: OutlineItem, index: number) => void,
+    triggerTime?: string,
+    projectId?: string
+): Promise<OutlineItem[]> => {
+    const response = await fetch('/api/ai/generate-outline/stream', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ topic, configStyle, triggerTime, projectId }),
+        credentials: 'include'
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+        throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    const items: OutlineItem[] = [];
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(l => l.startsWith('data: '));
+
+        for (const line of lines) {
+            try {
+                const data = JSON.parse(line.slice(6));
+                if (data.item && data.index !== undefined) {
+                    items.push(data.item);
+                    onItem(data.item, data.index);
+                }
+                if (data.error) {
+                    throw new Error(data.error.message || data.error);
+                }
+                if (data.done) {
+                    return items;
+                }
+            } catch (e: any) {
+                if (e.message && !e.message.includes('JSON')) {
+                    throw e;
+                }
+            }
+        }
+    }
+
+    return items;
+};
+
+/**
+ * 流式幻灯片详情生成
+ */
+export const generateSlideDetailStream = async (
+    title: string,
+    brief: string,
+    topicContext: string,
+    index: number,
+    total: number,
+    pageType: string,
+    onChunk: (chunk: string) => void,
+    triggerTime?: string,
+    projectId?: string
+): Promise<string> => {
+    const response = await fetch('/api/ai/generate-slide-detail/stream', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ title, brief, topicContext, index, total, pageType, triggerTime, projectId }),
+        credentials: 'include'
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+        throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let fullText = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(l => l.startsWith('data: '));
+
+        for (const line of lines) {
+            try {
+                const data = JSON.parse(line.slice(6));
+                if (data.chunk) {
+                    fullText += data.chunk;
+                    onChunk(data.chunk);
+                }
+                if (data.error) {
+                    throw new Error(data.error.message || data.error);
+                }
+                if (data.done) {
+                    return fullText;
+                }
+            } catch (e: any) {
+                if (e.message && !e.message.includes('JSON')) {
+                    throw e;
+                }
+            }
+        }
+    }
+
+    return fullText;
+};
+
+// ============================================================
+// 自动选择模式的统一入口 (Auto Mode Entry Points)
+// ============================================================
+
+/**
+ * 自动选择模式的文本润色
+ */
+export const smartRefineAuto = async (
+    text: string,
+    type: 'requirement' | 'content' | 'requirement_polish' | 'template_description',
+    onChunk?: (chunk: string) => void,
+    triggerTime?: string,
+    projectId?: string
+): Promise<string> => {
+    const mode = await getOutputMode();
+
+    if (mode === 'stream' && onChunk) {
+        return smartRefineStream(text, type, onChunk, triggerTime, projectId);
+    } else {
+        return smartRefine(text, type, triggerTime, projectId);
+    }
+};
+
+/**
+ * 自动选择模式的大纲生成
+ */
+export const generateOutlineAuto = async (
+    topic: string,
+    configStyle: StyleConfig,
+    onItem?: (item: OutlineItem, index: number) => void,
+    triggerTime?: string,
+    projectId?: string
+): Promise<OutlineItem[]> => {
+    const mode = await getOutputMode();
+
+    if (mode === 'stream' && onItem) {
+        return generateOutlineStream(topic, configStyle, onItem, triggerTime, projectId);
+    } else {
+        return generateOutline(topic, configStyle, triggerTime, projectId);
+    }
+};
+
+/**
+ * 自动选择模式的幻灯片详情生成
+ */
+export const generateSlideDetailAuto = async (
+    title: string,
+    brief: string,
+    topicContext: string,
+    index: number,
+    total: number,
+    pageType: string,
+    onChunk?: (chunk: string) => void,
+    triggerTime?: string,
+    projectId?: string
+): Promise<string> => {
+    const mode = await getOutputMode();
+
+    if (mode === 'stream' && onChunk) {
+        return generateSlideDetailStream(title, brief, topicContext, index, total, pageType, onChunk, triggerTime, projectId);
+    } else {
+        return generateSlideDetail(title, brief, topicContext, index, total, pageType, triggerTime, projectId);
     }
 };

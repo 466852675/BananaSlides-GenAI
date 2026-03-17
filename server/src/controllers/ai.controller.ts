@@ -12,6 +12,224 @@ const getServerSettings = async () => {
 // Check if MOCK_AI mode is enabled - in this mode, no points should be deducted
 const isMockAiMode = () => process.env.MOCK_AI === '1';
 
+// ============================================================
+// 流式输出控制器 (Streaming Controllers)
+// ============================================================
+
+export const handleSmartRefineStream = async (req: Request, res: Response) => {
+    const { text, type, projectId, triggerTime } = req.body;
+
+    // SSE 响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // 禁用 Nginx 缓冲
+
+    let deductedPoints = 0;
+    let transactionId: string | undefined;
+
+    try {
+        // [优化] 并行执行积分扣费和配置获取
+        const [deductResult, settings] = await Promise.all([
+            req.user && !isMockAiMode()
+                ? PointsService.deductPoints(
+                    req.user.id,
+                    'smart_refine',
+                    projectId,
+                    `AI 文本润色(流式): ${type}`,
+                    1,
+                    {
+                        module: '模版间',
+                        category: '文本生成',
+                        subcategory: '智能润色',
+                        triggerTime: triggerTime ? new Date(triggerTime) : undefined,
+                        templateId: projectId
+                    }
+                )
+                : Promise.resolve({ success: true, deductedAmount: 0, remainingPoints: 0 } as PointsService.DeductResult),
+            getServerSettings()
+        ]);
+
+        // 检查积分扣费结果
+        if (req.user && !isMockAiMode() && !deductResult.success) {
+            res.write(`data: ${JSON.stringify({ error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message } })}\n\n`);
+            res.end();
+            return;
+        }
+        if (deductResult.success && deductResult.deductedAmount) {
+            deductedPoints = deductResult.deductedAmount;
+            transactionId = deductResult.transactionId;
+        }
+
+        await AIService.smartRefineStream(text, type, settings, (chunk) => {
+            res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+        });
+
+        // 标记交易完成
+        if (transactionId) {
+            await PointsService.completeTransaction(transactionId);
+        }
+
+        res.write(`data: ${JSON.stringify({ done: true, pointsDeducted: deductedPoints })}\n\n`);
+        res.end();
+    } catch (error: any) {
+        console.error('[handleSmartRefineStream] Error:', error);
+        if (req.user && deductedPoints > 0 && transactionId) {
+            await PointsService.refundPoints(req.user.id, deductedPoints, transactionId);
+        }
+        res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+        res.end();
+    }
+};
+
+export const handleGenerateOutlineStream = async (req: Request, res: Response) => {
+    const { topic, configStyle, projectId, triggerTime } = req.body;
+
+    // SSE 响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    let deductedPoints = 0;
+    let transactionId: string | undefined;
+
+    try {
+        // [优化] 并行执行积分扣费和配置获取
+        const [deductResult, settings] = await Promise.all([
+            req.user && !isMockAiMode()
+                ? PointsService.deductPoints(
+                    req.user.id,
+                    'outline_generation',
+                    projectId,
+                    '大纲生成(流式)',
+                    1,
+                    {
+                        module: '创作室',
+                        category: '文本生成',
+                        subcategory: '大纲生成',
+                        triggerTime: triggerTime ? new Date(triggerTime) : undefined
+                    }
+                )
+                : Promise.resolve({ success: true, deductedAmount: 0, remainingPoints: 0 } as PointsService.DeductResult),
+            getServerSettings()
+        ]);
+
+        // 检查积分扣费结果
+        if (req.user && !isMockAiMode() && !deductResult.success) {
+            res.write(`data: ${JSON.stringify({ error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message } })}\n\n`);
+            res.end();
+            return;
+        }
+        if (deductResult.success && deductResult.deductedAmount) {
+            deductedPoints = deductResult.deductedAmount;
+            transactionId = deductResult.transactionId;
+        }
+
+        const result = await AIService.generateOutlineStream(
+            topic,
+            configStyle,
+            settings,
+            (item, index) => {
+                res.write(`data: ${JSON.stringify({ item, index })}\n\n`);
+            }
+        );
+
+        // 标记交易完成
+        if (transactionId) {
+            await PointsService.completeTransaction(transactionId);
+        }
+
+        res.write(`data: ${JSON.stringify({ done: true, total: result.length, pointsDeducted: deductedPoints })}\n\n`);
+        res.end();
+    } catch (error: any) {
+        console.error('[handleGenerateOutlineStream] Error:', error);
+        if (req.user && deductedPoints > 0 && transactionId) {
+            await PointsService.refundPoints(req.user.id, deductedPoints, transactionId);
+        }
+        res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+        res.end();
+    }
+};
+
+export const handleGenerateSlideDetailStream = async (req: Request, res: Response) => {
+    const { title, brief, topicContext, index, total, pageType, projectId, triggerTime } = req.body;
+
+    // SSE 响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    let deductedPoints = 0;
+    let transactionId: string | undefined;
+
+    try {
+        // [优化] 并行执行积分扣费和配置获取
+        const [deductResult, settings] = await Promise.all([
+            req.user && !isMockAiMode()
+                ? PointsService.deductPoints(
+                    req.user.id,
+                    'slide_content',
+                    projectId,
+                    `幻灯片内容(流式): ${title}`,
+                    1,
+                    {
+                        module: '创作室',
+                        category: '文本生成',
+                        subcategory: '正文生成',
+                        triggerTime: triggerTime ? new Date(triggerTime) : undefined
+                    }
+                )
+                : Promise.resolve({ success: true, deductedAmount: 0, remainingPoints: 0 } as PointsService.DeductResult),
+            getServerSettings()
+        ]);
+
+        // 检查积分扣费结果
+        if (req.user && !isMockAiMode() && !deductResult.success) {
+            res.write(`data: ${JSON.stringify({ error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message } })}\n\n`);
+            res.end();
+            return;
+        }
+        if (deductResult.success && deductResult.deductedAmount) {
+            deductedPoints = deductResult.deductedAmount;
+            transactionId = deductResult.transactionId;
+        }
+
+        await AIService.generateSlideDetailStream(
+            title,
+            brief,
+            topicContext,
+            index,
+            total,
+            pageType,
+            settings,
+            (chunk) => {
+                res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+            }
+        );
+
+        // 标记交易完成
+        if (transactionId) {
+            await PointsService.completeTransaction(transactionId);
+        }
+
+        res.write(`data: ${JSON.stringify({ done: true, pointsDeducted: deductedPoints })}\n\n`);
+        res.end();
+    } catch (error: any) {
+        console.error('[handleGenerateSlideDetailStream] Error:', error);
+        if (req.user && deductedPoints > 0 && transactionId) {
+            await PointsService.refundPoints(req.user.id, deductedPoints, transactionId);
+        }
+        res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+        res.end();
+    }
+};
+
+// ============================================================
+// 非流式控制器 (Non-Streaming Controllers)
+// ============================================================
+
 export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) => {
     const { input, projectId, triggerTime } = req.body; // input can be string or { path, mimeType }
     try {
@@ -132,34 +350,40 @@ export const handleGenerateStyleReference = async (req: Request, res: Response) 
 export const handleSmartRefine = async (req: Request, res: Response) => {
     const { text, type, projectId, triggerTime } = req.body;
     try {
-        // 积分扣费（登录用户扣费，未登录免费）
-        if (req.user && !isMockAiMode()) {
-            const deductResult = await PointsService.deductPoints(
-                req.user.id,
-                'smart_refine',
-                projectId,
-                `AI 文本润色: ${type}`,
-                1,
-                {
-                    module: '模版间',
-                    category: '文本生成',
-                    subcategory: '智能润色',
-                    triggerTime: triggerTime ? new Date(triggerTime) : undefined,
-                    templateId: projectId
-                }
-            );
-            if (!deductResult.success) {
-                res.status(420).json({ // Using a clear error for points
-                    success: false,
-                    error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
-                });
-                return;
-            }
+        // [优化] 并行执行积分扣费和配置获取
+        const [deductResult, settings] = await Promise.all([
+            req.user && !isMockAiMode()
+                ? PointsService.deductPoints(
+                    req.user.id,
+                    'smart_refine',
+                    projectId,
+                    `AI 文本润色: ${type}`,
+                    1,
+                    {
+                        module: '模版间',
+                        category: '文本生成',
+                        subcategory: '智能润色',
+                        triggerTime: triggerTime ? new Date(triggerTime) : undefined,
+                        templateId: projectId
+                    }
+                )
+                : Promise.resolve({ success: true, deductedAmount: 0, remainingPoints: 0 } as PointsService.DeductResult),
+            getServerSettings()
+        ]);
+
+        // 检查积分扣费结果
+        if (req.user && !isMockAiMode() && !deductResult.success) {
+            res.status(420).json({
+                success: false,
+                error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
+            });
+            return;
+        }
+        if (deductResult.success && deductResult.deductedAmount) {
             (res as any).deductedPoints = deductResult.deductedAmount;
             (res as any).transactionId = deductResult.transactionId;
         }
 
-        const settings = await getServerSettings();
         const result = await AIService.smartRefine(text, type, settings);
 
         // Mark transaction as completed
@@ -250,33 +474,39 @@ export const handleExtractText = async (req: Request, res: Response) => {
 export const handleGenerateOutline = async (req: Request, res: Response) => {
     const { topic, configStyle, projectId, triggerTime } = req.body;
     try {
-        // 积分扣费（登录用户扣费，未登录免费）
-        if (req.user && !isMockAiMode()) {
-            const deductResult = await PointsService.deductPoints(
-                req.user.id,
-                'outline_generation',
-                projectId,
-                undefined,
-                1,
-                {
-                    module: '创作室',
-                    category: '文本生成',
-                    subcategory: '大纲生成',
-                    triggerTime: triggerTime ? new Date(triggerTime) : undefined
-                }
-            );
-            if (!deductResult.success) {
-                res.status(402).json({
-                    success: false,
-                    error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
-                });
-                return;
-            }
+        // [优化] 并行执行积分扣费和配置获取
+        const [deductResult, settings] = await Promise.all([
+            req.user && !isMockAiMode()
+                ? PointsService.deductPoints(
+                    req.user.id,
+                    'outline_generation',
+                    projectId,
+                    undefined,
+                    1,
+                    {
+                        module: '创作室',
+                        category: '文本生成',
+                        subcategory: '大纲生成',
+                        triggerTime: triggerTime ? new Date(triggerTime) : undefined
+                    }
+                )
+                : Promise.resolve({ success: true, deductedAmount: 0, remainingPoints: 0 } as PointsService.DeductResult),
+            getServerSettings()
+        ]);
+
+        // 检查积分扣费结果
+        if (req.user && !isMockAiMode() && !deductResult.success) {
+            res.status(402).json({
+                success: false,
+                error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
+            });
+            return;
+        }
+        if (deductResult.success && deductResult.deductedAmount) {
             (res as any).deductedPoints = deductResult.deductedAmount;
             (res as any).transactionId = deductResult.transactionId;
         }
 
-        const settings = await getServerSettings();
         const result = await AIService.generateOutline(topic, configStyle, settings);
 
         // Mark transaction as completed if successful
@@ -344,33 +574,39 @@ export const handleGenerateSingleOutlineItem = async (req: Request, res: Respons
 export const handleGenerateSlideDetail = async (req: Request, res: Response) => {
     const { title, brief, topicContext, index, total, pageType, projectId, triggerTime } = req.body;
     try {
-        // 积分扣费（登录用户扣费，未登录免费）
-        if (req.user && !isMockAiMode()) {
-            const deductResult = await PointsService.deductPoints(
-                req.user.id,
-                'slide_content',
-                projectId,
-                `幻灯片内容: ${title}`,
-                1,
-                {
-                    module: '创作室',
-                    category: '文本生成',
-                    subcategory: '正文生成',
-                    triggerTime: triggerTime ? new Date(triggerTime) : undefined
-                }
-            );
-            if (!deductResult.success) {
-                res.status(402).json({
-                    success: false,
-                    error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
-                });
-                return;
-            }
+        // [优化] 并行执行积分扣费和配置获取
+        const [deductResult, settings] = await Promise.all([
+            req.user && !isMockAiMode()
+                ? PointsService.deductPoints(
+                    req.user.id,
+                    'slide_content',
+                    projectId,
+                    `幻灯片内容: ${title}`,
+                    1,
+                    {
+                        module: '创作室',
+                        category: '文本生成',
+                        subcategory: '正文生成',
+                        triggerTime: triggerTime ? new Date(triggerTime) : undefined
+                    }
+                )
+                : Promise.resolve({ success: true, deductedAmount: 0, remainingPoints: 0 } as PointsService.DeductResult),
+            getServerSettings()
+        ]);
+
+        // 检查积分扣费结果
+        if (req.user && !isMockAiMode() && !deductResult.success) {
+            res.status(402).json({
+                success: false,
+                error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
+            });
+            return;
+        }
+        if (deductResult.success && deductResult.deductedAmount) {
             (res as any).deductedPoints = deductResult.deductedAmount;
             (res as any).transactionId = deductResult.transactionId;
         }
 
-        const settings = await getServerSettings();
         const result = await AIService.generateSlideDetail(title, brief, topicContext, index, total, pageType, settings);
 
         // Mark transaction as completed if successful

@@ -23,7 +23,7 @@ interface ResultCardProps {
     onDelete?: () => void;
     onDuplicate?: () => void;
     onViewImage?: (imageUrl: string) => void;
-    onRefineContent?: (text: string) => Promise<string>;
+    onRefineContent?: (text: string, onChunk?: (chunk: string) => void) => Promise<string>;
     readOnly?: boolean;
     onShowConfirm?: (title: string, message: string, onConfirm: () => void) => void;
 }
@@ -143,9 +143,18 @@ export const ResultCard: React.FC<ResultCardProps> = ({
         if (!onRefineContent || !item.textContent || isRefining || readOnly) return;
 
         setIsRefining(true);
+        let accumulatedText = item.textContent;  // 从原始内容开始累积
+
         try {
-            const refined = await onRefineContent(item.textContent);
-            if (onUpdate) {
+            const refined = await onRefineContent(item.textContent, (chunk) => {
+                // 流式更新：实时更新 textarea 内容
+                accumulatedText += chunk;
+                if (onUpdate) {
+                    onUpdate({ textContent: accumulatedText });
+                }
+            });
+            // 最终确认（确保内容完整）
+            if (onUpdate && refined) {
                 onUpdate({ textContent: refined });
             }
         } catch (error) {

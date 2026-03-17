@@ -83,6 +83,7 @@ import {
 import {
   generateSlideVariant,
   smartRefine,
+  smartRefineAuto,
 } from "./services/geminiService";
 
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -2234,13 +2235,24 @@ const App: React.FC = () => {
     }
 
     try {
-      const refined = await smartRefine(
+      // 流式输出：实时更新设计要求
+      let accumulatedText = '';
+      const refined = await smartRefineAuto(
         config.requirements,
         "requirement",
+        (chunk) => {
+          accumulatedText += chunk;
+          handleConfigChange("requirements", accumulatedText);
+        },
         undefined,
         editingTemplateId || currentProjectId || undefined
       );
-      handleConfigChange("requirements", refined);
+
+      // 非流式模式：直接使用返回值
+      if (refined && !accumulatedText) {
+        handleConfigChange("requirements", refined);
+      }
+
       showToast("设计要求修饰成功", "success");
       setTimeout(refreshUser, 500);
     } catch (error) {
@@ -2251,7 +2263,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRefineSlideContent = async (text: string): Promise<string> => {
+  const handleRefineSlideContent = async (text: string, onChunk?: (chunk: string) => void): Promise<string> => {
     if (!text.trim()) return text;
 
     // Fetch fresh balance and cost for warning
@@ -2266,10 +2278,24 @@ const App: React.FC = () => {
     }
 
     try {
-      const refined = await smartRefine(text, "content", undefined, editingTemplateId || currentProjectId || undefined);
+      // 流式输出：实时更新内容
+      let accumulatedText = '';
+      const refined = await smartRefineAuto(
+        text,
+        "content",
+        (chunk) => {
+          accumulatedText += chunk;
+          if (onChunk) {
+            onChunk(chunk);  // 调用回调，实时更新 UI
+          }
+        },
+        undefined,
+        editingTemplateId || currentProjectId || undefined
+      );
+
       showToast("内容修饰成功", "success");
       setTimeout(refreshUser, 500);
-      return refined;
+      return refined || accumulatedText;
     } catch (error) {
       console.error(error);
       showToast("AI 修饰服务调用失败", "error");

@@ -836,6 +836,7 @@ export interface GlobalAiConfig {
     textConcurrency: number;  // 1-10
     imageConcurrency: number;  // 1-5
     outputLanguage: 'zh' | 'en' | 'ja' | 'auto';
+    outputMode: 'stream' | 'complete';  // 流式输出或完整输出
 }
 
 // 厂商预设
