@@ -6,6 +6,7 @@ import mammoth from 'mammoth';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as https from 'https';
 import { AssetService } from './asset.service';
 import { saveBase64Image } from '../utils/imageSaver';
 import { injectionDetector, promptSanitizer, SecurePromptBuilder } from '../utils/prompt-security';
@@ -18,6 +19,14 @@ const configCache = new Map<string, {
     timestamp: number;
 }>();
 const CACHE_TTL = 60000; // 1分钟
+
+// --- HTTP Agent for better connection handling ---
+const httpsAgent = new https.Agent({
+    keepAlive: false,
+    timeout: 120000,  // 2 分钟连接超时
+    maxSockets: 10,
+    maxFreeSockets: 5
+});
 
 // 清除配置缓存（供管理后台调用）
 export function invalidateConfigCache(): void {
@@ -599,7 +608,7 @@ const calculateFinalResolution = (qualitySetting: string | undefined, aspectRati
 
 // AI 服务超时配置（宽裕时长）
 const AI_TIMEOUTS = {
-    text: 30000,      // 文本生成 0.5分钟
+    text: 60000,      // 文本生成 1分钟（增加超时时间）
     image: 180000,     // 图片生成 3分钟
     vision: 90000     // 视觉分析 1.5分钟
 };
@@ -646,7 +655,7 @@ async function callOpenAICompatible(
             // 根据任务类型设置宽裕的超时时间
             const timeout = AI_TIMEOUTS[taskType] || AI_TIMEOUTS.text;
             console.log(`[OpenAI Compatible] Timeout: ${timeout}ms (${taskType} task)`);
-            const response = await axios.post(url, body, { headers, timeout });
+            const response = await axios.post(url, body, { headers, timeout, httpsAgent });
             const content = response.data.choices[0]?.message?.content || "";
             console.log(`[OpenAI Compatible] Response received, length: ${content.length}`);
             console.log(`[OpenAI Compatible] Response preview:`, content.substring(0, 200));
@@ -656,10 +665,18 @@ async function callOpenAICompatible(
             const statusCode = error.response?.status;
             console.error(`[OpenAI Compatible] Attempt failed: ${errMsg} (Status: ${statusCode})`);
 
+            // 检查是否为超时错误
+            const isTimeout = error.code === 'ECONNABORTED' || errMsg.toLowerCase().includes('timeout');
+
             // ModelScope specific logic: Intermittent 401s are observed even with valid keys.
             // We retry 401 only if it's ModelScope.
             const isModelScope = url.includes('modelscope.cn');
-            const isQuotaExceeded = errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('exceeded') || errMsg.includes('额度');
+            // 修复：排除超时错误中的 "exceeded" 误匹配
+            const isQuotaExceeded = !isTimeout && (
+                errMsg.toLowerCase().includes('quota') ||
+                errMsg.toLowerCase().includes('rate limit') ||
+                errMsg.includes('额度')
+            );
 
             // ModelScope specific logic: Intermittent 401s are observed even with valid keys.
             const shouldRetry = !statusCode ||

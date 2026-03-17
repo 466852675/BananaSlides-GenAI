@@ -22,8 +22,17 @@ export class MinerUService {
         formData.append('file', fs.createReadStream(filePath));
 
         try {
+            // 兼容用户配置完整 URL 的情况
+            // 如果 baseUrl 已经包含 /api/v1/parse，直接使用
+            // 否则，追加 /api/v1/parse
+            const baseUrl = config.baseUrl.endsWith('/api/v1/parse') 
+                ? config.baseUrl 
+                : config.baseUrl.replace(/\/+$/, '') + '/api/v1/parse';
+            
+            console.log(`[MinerUService] Calling MinerU API: ${baseUrl}`);
+            
             const response = await axios.post(
-                `${config.baseUrl}/api/v1/parse`,
+                baseUrl,
                 formData,
                 {
                     headers: {
