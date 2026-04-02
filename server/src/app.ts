@@ -24,6 +24,11 @@ import messageRoutes from './routes/message.routes';
 import productRoutes from './routes/product.routes';
 import growthRoutes from './routes/growth.routes';
 import leadRoutes from './routes/lead.routes';
+import agentRoutes from './routes/agent.routes';
+import resourceRoutes from './routes/resource.routes';
+import trashRoutes from './routes/trash.routes';
+import { websocketService } from './services/websocket.service';
+import { startScheduledJobs } from './jobs/cron';
 
 // Import optimized limiters from middleware
 import {
@@ -133,6 +138,9 @@ app.use('/webhooks', webhookRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/growth', growthRoutes);
+app.use('/api/agent', agentRoutes);
+app.use('/api/resources', resourceRoutes);
+app.use('/api/trash', trashRoutes);
 
 import { SettingService } from './services/setting.service';
 
@@ -171,6 +179,14 @@ const server = app.listen(port, async () => {
         console.error('[App] Bootstrap failed:', err);
     }
 
+    // Initialize WebSocket service
+    websocketService.init(server);
+    console.log('[App] WebSocket service initialized at /ws');
+
+    // Start scheduled jobs (resource cleanup, etc.)
+    startScheduledJobs();
+    console.log('[App] Scheduled jobs started');
+
     console.log(`API Endpoints:
     - POST /api/upload
     - GET /api/projects
@@ -188,6 +204,10 @@ server.on('error', (err: NodeJS.ErrnoException) => {
 
 async function gracefulShutdown(exitCode: number) {
     console.log('[App] Graceful shutdown initiated...');
+
+    // Close WebSocket connections
+    websocketService.close();
+
     server.close(() => {
         console.log('[App] HTTP server closed');
     });

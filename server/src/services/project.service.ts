@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { saveBase64Image, isBase64Image } from '../utils/imageSaver';
+import { resourceService } from './resource.service';
 
 export class ProjectService {
 
@@ -18,10 +19,10 @@ export class ProjectService {
         return `PID-${timestamp}-${randomHex}`;
     }
 
-    // Get list (支持管理员全局视图)
+    // Get list (支持管理员全局视图，排除回收箱项目)
     async findAll(userId: string, isAdmin: boolean = false) {
         const projects = await prisma.project.findMany({
-            where: isAdmin ? {} : { userId },  // 管理员查询所有数据
+            where: isAdmin ? { isDeleted: false } : { userId, isDeleted: false },  // 排除回收箱项目
             orderBy: { updatedAt: 'desc' },
             include: {
                 items: {
@@ -332,22 +333,196 @@ export class ProjectService {
         if (!project) return null;
         if (!isAdmin && project.userId !== userId) return null;
 
-        // Hard delete since schema doesn't support soft delete (deletedAt)
-        // This solves "Project not deleted" issue reported by user.
-        await prisma.project.delete({ where: { id } });
+        // 如果已经在回收箱，不允许再次删除
+        if (project.isDeleted) return null;
+
+        // 使用事务执行软删除
+        await prisma.$transaction(async (tx) => {
+            // 1. 标记项目软删除
+            await tx.project.update({
+                where: { id },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    deletedBy: isAdmin ? 'admin' : 'user'
+                }
+            });
+
+            // 2. 标记 AgentSession 删除（如果存在）
+            await tx.agentSession.updateMany({
+                where: { projectId: id, isDeleted: false },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date()
+                }
+            });
+
+            // 3. 归档关联资源
+            await tx.assetRegistry.updateMany({
+                where: { projectId: id, status: 'ACTIVE' },
+                data: {
+                    status: 'TRASHED'
+                }
+            });
+
+            // 4. 记录操作日志
+            await tx.auditLog.create({
+                data: {
+                    userId,
+                    type: 'PROJECT_SOFT_DELETE',
+                    content: id,
+                    reason: `deletedBy: ${isAdmin ? 'admin' : 'user'}`,
+                    severity: 'INFO'
+                }
+            });
+        });
 
         return project;
     }
 
     async restore(id: string, userId: string, isAdmin: boolean = false) {
         const project = await prisma.project.findUnique({ where: { id } });
-        if (!isAdmin && (!project || project.userId !== userId)) return null;
-        return project;
+
+        // Ownership / Permission Check
+        if (!project) return null;
+        if (!isAdmin && project.userId !== userId) return null;
+
+        // 必须在回收箱中才能恢复
+        if (!project.isDeleted) return null;
+
+        // 检查是否过期（30天）
+        const TRASH_RETENTION_DAYS = 30;
+        if (project.deletedAt) {
+            const expiresAt = new Date(project.deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+            if (expiresAt < new Date()) {
+                return null; // 已过期，无法恢复
+            }
+        }
+
+        // 使用事务执行恢复
+        await prisma.$transaction(async (tx) => {
+            // 1. 恢复项目
+            await tx.project.update({
+                where: { id },
+                data: {
+                    isDeleted: false,
+                    deletedAt: null,
+                    deletedBy: null
+                }
+            });
+
+            // 2. 恢复 AgentSession（如果存在）
+            await tx.agentSession.updateMany({
+                where: { projectId: id, isDeleted: true },
+                data: {
+                    isDeleted: false,
+                    deletedAt: null
+                }
+            });
+
+            // 3. 恢复关联资源
+            await tx.assetRegistry.updateMany({
+                where: { projectId: id, status: 'TRASHED' },
+                data: {
+                    status: 'ACTIVE'
+                }
+            });
+
+            // 4. 记录操作日志
+            await tx.auditLog.create({
+                data: {
+                    userId,
+                    type: 'PROJECT_RESTORE',
+                    content: id,
+                    severity: 'INFO'
+                }
+            });
+        });
+
+        // 返回恢复后的项目
+        return prisma.project.findUnique({
+            where: { id },
+            include: { items: { orderBy: { index: 'asc' } } }
+        });
     }
 
     async listTrash(ownerId: string) {
-        // Trash not supported
-        return [];
+        const TRASH_RETENTION_DAYS = 30;
+        const projects = await prisma.project.findMany({
+            where: {
+                userId: ownerId,
+                isDeleted: true,
+                deletedAt: { not: null }
+            },
+            orderBy: { deletedAt: 'desc' },
+            include: {
+                items: {
+                    orderBy: { index: 'asc' }
+                }
+            }
+        });
+
+        // 计算剩余天数和过期时间
+        return projects.map(p => ({
+            ...p,
+            expiresAt: new Date(p.deletedAt!.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000),
+            remainingDays: Math.max(0, Math.ceil((p.deletedAt!.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)))
+        }));
+    }
+
+    // 彻底删除项目（管理员或系统调用）
+    async permanentDelete(id: string, userId: string, isAdmin: boolean = false) {
+        const project = await prisma.project.findUnique({ where: { id } });
+
+        if (!project) return null;
+        if (!isAdmin && project.userId !== userId) return null;
+
+        // 使用事务彻底删除
+        await prisma.$transaction(async (tx) => {
+            // 1. 将资源标记为孤立（准备清理）
+            await tx.assetRegistry.updateMany({
+                where: { projectId: id, status: 'TRASHED' },
+                data: {
+                    status: 'ARCHIVED',
+                    projectId: null,
+                    deletedAt: new Date(),
+                    deletedBy: 'cascade'
+                }
+            });
+
+            // 2. 删除 AgentSession
+            await tx.agentSession.deleteMany({
+                where: { projectId: id }
+            });
+
+            // 3. 删除幻灯片
+            await tx.slide.deleteMany({
+                where: { projectId: id }
+            });
+
+            // 4. 删除快照
+            await tx.projectSnapshot.deleteMany({
+                where: { projectId: id }
+            });
+
+            // 5. 删除项目
+            await tx.project.delete({
+                where: { id }
+            });
+
+            // 6. 记录操作日志
+            await tx.auditLog.create({
+                data: {
+                    userId,
+                    type: 'PROJECT_PERMANENT_DELETE',
+                    content: id,
+                    reason: `title: ${project.title}`,
+                    severity: 'WARNING'
+                }
+            });
+        });
+
+        return project;
     }
 }
 

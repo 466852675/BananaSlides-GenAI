@@ -848,7 +848,10 @@ async function callOpenAIImageGeneration(
 
     let baseUrl = config.baseUrl.trim();
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
-    let url = `${baseUrl}/images/generations`;
+    let url = baseUrl;
+    if (!url.toLowerCase().endsWith('/images/generations')) {
+        url = `${baseUrl}/images/generations`;
+    }
 
     let retries = 3;
     while (retries > 0) {

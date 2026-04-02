@@ -15,6 +15,7 @@ import { SystemStats } from './SystemStats';
 import { AICoreEngine } from './AICoreEngine';
 import { SystemSettings } from './SystemSettings';
 import { GrowthCenter } from './GrowthCenter';
+import { ResourceManagement } from './ResourceManagement';
 import { ProfileCenter } from '../user/ProfileCenter';
 import { PointsHistory } from '../user/PointsHistory';
 import { InviteModal } from '../InviteModal';
@@ -36,6 +37,7 @@ const pageTitles: Record<AdminPage, { title: string; subtitle?: string }> = {
     'growth': { title: '产品管理', subtitle: '管理会员、积分商品与邀请配置' },
     'roles': { title: '角色权限', subtitle: '管理角色和权限分配' },
     'ai-engine': { title: '模型引擎', subtitle: '全局模型路由与参数配置' },
+    'resources': { title: '资源管理', subtitle: '管理系统资源和孤立文件' },
     'settings': { title: '系统设置', subtitle: '系统配置项' },
 };
 
@@ -104,6 +106,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack, initialPage })
                 return <RoleManagement />;
             case 'ai-engine':
                 return <AICoreEngine />;
+            case 'resources':
+                return <ResourceManagement />;
             case 'settings':
                 return <SystemSettings />;
             default:

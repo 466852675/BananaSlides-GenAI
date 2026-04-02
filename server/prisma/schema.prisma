@@ -8,51 +8,51 @@ datasource db {
 }
 
 model User {
-  id                 String          @id @default(uuid())
-  email              String?         @unique
-  phone              String?         @unique
-  username           String?         @unique
+  id                 String               @id @default(uuid())
+  email              String?              @unique
+  phone              String?              @unique
+  username           String?              @unique
   passwordHash       String?
   nickname           String?
   avatar             String?
   bio                String?
-  role               UserRole        @default(USER)
-  status             UserStatus      @default(ACTIVE)
-  points             Int             @default(30)
-  pointsUsed         Int             @default(0)
-  vipLevel           Int             @default(0)
+  role               UserRole             @default("USER")
+  status             UserStatus           @default("ACTIVE")
+  points             Int                  @default(30)
+  pointsUsed         Int                  @default(0)
+  vipLevel           Int                  @default(0)
   vipExpiresAt       DateTime?
   lastLoginAt        DateTime?
   lastLoginIp        String?
-  loginFailCount     Int             @default(0)
+  loginFailCount     Int                  @default(0)
   lockedUntil        DateTime?
   resetCode          String?
   resetCodeExp       DateTime?
-  inviteCode         String?         @unique
+  inviteCode         String?              @unique
   invitedById        String?
   checkInDate        DateTime?
-  checkInStreak      Int             @default(0)
-  riskScore          Int             @default(0)
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  checkInStreak      Int                  @default(0)
+  riskScore          Int                  @default(0)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
   checkInLogs        CheckInLog[]
   favorites          Favorite[]
+  assignedLeads      Lead[]               @relation("LeadAssignee")
   leads              Lead[]
   orders             Order[]
-  createdPointsRules PointsRule[]    @relation("RuleCreator")
-  createdProducts    Product[]       @relation("ProductCreator")
+  createdPointsRules PointsRule[]         @relation("RuleCreator")
+  createdProducts    Product[]            @relation("ProductCreator")
   projects           Project[]
+  refundRequests     RefundRequest[]
   socialAccounts     SocialAccount[]
   styleTemplates     StyleTemplate[]
   transactions       Transaction[]
-  invitedBy          User?           @relation("Referrals", fields: [invitedById], references: [id])
-  referrals          User[]          @relation("Referrals")
-  refundRequests     RefundRequest[]
-  refundStats        UserRefundStats?
+  invitedBy          User?                @relation("Referrals", fields: [invitedById], references: [id])
+  referrals          User[]               @relation("Referrals")
+  handledMessages    UserMessage[]        @relation("MessageHandler")
   messages           UserMessage[]
   messageSettings    UserMessageSettings?
-  assignedLeads      Lead[]          @relation("LeadAssignee")
-  handledMessages    UserMessage[]   @relation("MessageHandler")
+  refundStats        UserRefundStats?
 
   @@index([role])
   @@index([status])
@@ -121,29 +121,29 @@ model Transaction {
 }
 
 model Order {
-  id            String      @id @default(uuid())
-  orderNo       String      @unique
-  userId        String
-  productType   String
-  productName   String
-  productDesc   String?
-  quantity      Int         @default(1)
-  originalPrice Float
-  discountPrice Float?
-  finalPrice    Float
-  status        OrderStatus @default(PENDING)
-  paymentMethod String?
-  paymentNo     String?
-  paidAt        DateTime?
-  refundReason  String?
-  refundedAt    DateTime?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  fulfillmentAt DateTime?
-  productId     String?
+  id             String          @id @default(uuid())
+  orderNo        String          @unique
+  userId         String
+  productType    String
+  productName    String
+  productDesc    String?
+  quantity       Int             @default(1)
+  originalPrice  Float
+  discountPrice  Float?
+  finalPrice     Float
+  status         OrderStatus     @default("PENDING")
+  paymentMethod  String?
+  paymentNo      String?
+  paidAt         DateTime?
+  refundReason   String?
+  refundedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  fulfillmentAt  DateTime?
+  productId      String?
   beforeVipLevel Int?
   afterVipLevel  Int?
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   refundRequests RefundRequest[]
 
   @@index([userId])
@@ -178,6 +178,9 @@ model Project {
   displayId    String?
   status       String            @default("idle")
   isPinned     Boolean           @default(false)
+  isDeleted    Boolean           @default(false)
+  deletedAt    DateTime?
+  deletedBy    String?
   scenarioType String            @default("BUSINESS")
   globalConfig String
   styleMap     String?
@@ -186,12 +189,16 @@ model Project {
   updatedAt    DateTime          @default(now())
   completedAt  DateTime?
   userId       String?
+  agentSession AgentSession?
+  assets       AssetRegistry[]
   user         User?             @relation(fields: [userId], references: [id])
   snapshots    ProjectSnapshot[]
   items        Slide[]
 
   @@index([userId])
   @@index([createdAt])
+  @@index([isDeleted])
+  @@index([deletedAt])
 }
 
 model ProjectSnapshot {
@@ -272,15 +279,11 @@ model GlobalConfig {
 
 model AiEngineRule {
   id          String   @id @default(uuid())
-  name        String   // 规则名称
-  provider    String   // 厂商: Gemini, Volcengine, OpenAI, CustomCombo
-  
-  // 核心配置 (JSON 字符串存储，包含 baseUrl, apiKey 等)
-  config      String   
-  
+  name        String
+  provider    String
+  config      String
   isActive    Boolean  @default(false)
   description String?
-  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -325,7 +328,7 @@ model CheckInLog {
 
 model Lead {
   id               String         @id @default(uuid())
-  userId           String?        // 关联前台用户
+  userId           String?
   name             String
   company          String?
   position         String?
@@ -335,38 +338,298 @@ model Lead {
   industry         String?
   needs            String?
   status           String         @default("PENDING")
-  priority         String?        @default("MEDIUM") // LOW, MEDIUM, HIGH
-  
-  // CRM 核心扩展
-  assigneeId       String?        // 负责人 ID (管理员)
-  nextFollowUpAt   DateTime?      // 下次跟进时间
-  convertedOrderId String?        // 转化后的订单 ID
-  
+  priority         String?        @default("MEDIUM")
+  assigneeId       String?
+  nextFollowUpAt   DateTime?
   source           String?
-  notes            String?        // 简易备注 (保留兼容)
-  
+  notes            String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
-  
-  // 关联
-  user             User?          @relation(fields: [userId], references: [id])
+  convertedOrderId String?
   assignee         User?          @relation("LeadAssignee", fields: [assigneeId], references: [id])
+  user             User?          @relation(fields: [userId], references: [id])
   activities       LeadActivity[]
 }
 
 model LeadActivity {
   id         String   @id @default(uuid())
   leadId     String
-  type       String   // CALL, EMAIL, MEETING, NOTE, SYSTEM
+  type       String
   content    String
-  metadata   String?  // JSON string for extra info (attachments, duration, etc.)
-  operatorId String   // 操作人 ID
+  metadata   String?
+  operatorId String
   createdAt  DateTime @default(now())
-  
   lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
   @@index([createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  type      String
+  content   String?
+  reason    String?
+  severity  String
+  metadata  String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([severity])
+  @@index([createdAt])
+}
+
+model RefundRequest {
+  id               String           @id @default(uuid())
+  refundNo         String           @unique
+  userId           String
+  orderId          String
+  amount           Float
+  status           RefundStatus     @default("PENDING")
+  reason           String
+  description      String?
+  remark           String?
+  processedAt      DateTime?
+  completedAt      DateTime?
+  processedBy      String?
+  secondApprovedBy String?
+  failReason       String?
+  exceptionType    String?
+  requireManualAt  DateTime?
+  transactionId    String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  history          RefundHistory[]
+  order            Order            @relation(fields: [orderId], references: [id])
+  user             User             @relation(fields: [userId], references: [id])
+  retryLogs        RefundRetryLog[]
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model RefundHistory {
+  id        String        @id @default(uuid())
+  refundId  String
+  action    String
+  operator  String
+  note      String?
+  createdAt DateTime      @default(now())
+  refund    RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
+
+  @@index([refundId])
+}
+
+model UserRefundStats {
+  userId        String    @id
+  totalRequests Int       @default(0)
+  approvedCount Int       @default(0)
+  rejectedCount Int       @default(0)
+  lastRequestAt DateTime?
+  riskScore     Int       @default(0)
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([riskScore])
+}
+
+model RefundRetryLog {
+  id            String        @id @default(uuid())
+  refundId      String
+  retryCount    Int
+  error         String?
+  scheduledAt   DateTime
+  executedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  refundRequest RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
+
+  @@index([refundId])
+  @@index([scheduledAt])
+}
+
+model BenefitRevokeLog {
+  id        String   @id @default(uuid())
+  userId    String
+  refundId  String
+  revokedAt DateTime @default(now())
+  reason    String
+
+  @@index([userId])
+  @@index([refundId])
+}
+
+model UserMessage {
+  id           String      @id @default(uuid())
+  userId       String
+  type         MessageType
+  title        String
+  content      String
+  summary      String?
+  bizType      String?
+  bizId        String?
+  actionUrl    String?
+  isRead       Boolean     @default(false)
+  readAt       DateTime?
+  isImportant  Boolean     @default(false)
+  isDeleted    Boolean     @default(false)
+  isArchived   Boolean     @default(false)
+  archivedAt   DateTime?
+  handledBy    String?
+  handledAt    DateTime?
+  handleAction String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  expiresAt    DateTime?
+  handler      User?       @relation("MessageHandler", fields: [handledBy], references: [id])
+  user         User        @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([isArchived])
+  @@index([bizType])
+  @@index([createdAt])
+  @@index([handledBy])
+  @@index([expiresAt])
+}
+
+model MessageTemplate {
+  id        String      @id @default(uuid())
+  code      String      @unique
+  name      String
+  type      MessageType
+  title     String
+  content   String
+  bizType   String
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model UserMessageSettings {
+  userId         String   @id
+  emailEnabled   Boolean  @default(true)
+  browserEnabled Boolean  @default(true)
+  preferences    String   @default("{}")
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AgentSession {
+  id              String             @id @default(cuid())
+  projectId       String             @unique
+  status          AgentSessionStatus @default("ACTIVE")
+  mode            AgentMode          @default("GUIDED")
+  isDeleted       Boolean            @default(false)
+  deletedAt       DateTime?
+  context         String?
+  totalTasks      Int                @default(0)
+  completedTasks  Int                @default(0)
+  failedTasks     Int                @default(0)
+  totalPointsUsed Int                @default(0)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  completedAt     DateTime?
+  messages        AgentMessage[]
+  project         Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks           AgentTask[]
+  assets          AssetRegistry[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([isDeleted])
+}
+
+model AgentMessage {
+  id        String       @id @default(cuid())
+  sessionId String
+  role      String
+  content   String
+  toolCalls String?
+  metadata  String?
+  isEdited  Boolean      @default(false)
+  editedAt  DateTime?
+  isDeleted Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  session   AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([createdAt])
+  @@index([role])
+  @@index([sessionId, createdAt])
+}
+
+model AgentTask {
+  id          String          @id @default(cuid())
+  sessionId   String
+  type        AgentTaskType
+  status      AgentTaskStatus @default("PENDING")
+  priority    Int             @default(0)
+  params      String?
+  result      String?
+  progress    Int             @default(0)
+  error       String?
+  retryCount  Int             @default(0)
+  pointsCost  Int?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  session     AgentSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([status])
+  @@index([type])
+  @@index([priority])
+  @@index([createdAt])
+  @@index([sessionId, status])
+  @@index([status, priority])
+}
+
+model AssetRegistry {
+  id            String        @id @default(cuid())
+  projectId     String?
+  sessionId     String?
+  taskId        String?
+  templateId    String?
+  favoriteId    String?
+  isReferenced  Boolean       @default(false)
+  isOfficial    Boolean       @default(false)
+  type          AssetType
+  status        AssetStatus   @default("ACTIVE")
+  filename      String
+  url           String
+  mimeType      String?
+  sizeBytes     Int?
+  metadata      String?
+  pointsCost    Int?
+  accessedAt    DateTime      @default(now())
+  accessedCount Int           @default(0)
+  expiresAt     DateTime?
+  deletedAt     DateTime?
+  deletedBy     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  session       AgentSession? @relation(fields: [sessionId], references: [id])
+  project       Project?      @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([sessionId])
+  @@index([templateId])
+  @@index([favoriteId])
+  @@index([type])
+  @@index([status])
+  @@index([isReferenced])
+  @@index([isOfficial])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([deletedAt])
 }
 
 enum UserRole {
@@ -393,27 +656,6 @@ enum OrderStatus {
   FAILED
 }
 
-model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String?
-  type      String
-  content   String?
-  reason    String?
-  severity  String
-  metadata  String?
-   ip        String?
-   createdAt DateTime @default(now())
-
-   @@index([userId])
-   @@index([type])
-   @@index([severity])
-   @@index([createdAt])
-}
-
-// ============================================================
-// 退款管理模块
-// ============================================================
-
 enum RefundStatus {
   PENDING
   PENDING_SECOND
@@ -423,103 +665,6 @@ enum RefundStatus {
   FAILED
   MANUAL_REQUIRED
 }
-
-model RefundRequest {
-  id                String       @id @default(uuid())
-  refundNo          String       @unique
-  userId            String
-  orderId           String
-  amount            Float
-  status            RefundStatus @default(PENDING)
-  reason            String
-  description       String?
-  remark            String?
-  
-  // 处理信息
-  processedAt       DateTime?
-  completedAt       DateTime?
-  processedBy       String?
-  secondApprovedBy  String?
-  
-  // 异常处理
-  failReason        String?
-  exceptionType     String?
-  requireManualAt   DateTime?
-  
-  // 退款交易信息
-  transactionId     String?
-  
-  // 时间戳
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-  
-  // 关联
-  user              User         @relation(fields: [userId], references: [id])
-  order             Order        @relation(fields: [orderId], references: [id])
-  
-  @@index([userId])
-  @@index([orderId])
-  @@index([status])
-  @@index([createdAt])
-
-  history           RefundHistory[]
-  retryLogs         RefundRetryLog[]
-}
-
-model RefundHistory {
-  id        String   @id @default(uuid())
-  refundId  String
-  action    String   // SUBMIT, AUTO_APPROVE, APPROVE, REJECT, PROCESS, COMPLETE, FAIL
-  operator  String   // 操作人标识：'user', 'system' 或 管理员 ID/姓名
-  note      String?  // 审核备注或失败原因
-  createdAt DateTime @default(now())
-
-  refund    RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
-
-  @@index([refundId])
-}
-
-model UserRefundStats {
-  userId            String    @id
-  totalRequests     Int       @default(0)
-  approvedCount     Int       @default(0)
-  rejectedCount     Int       @default(0)
-  lastRequestAt     DateTime?
-  riskScore         Int       @default(0)
-  user              User      @relation(fields: [userId], references: [id])
-  
-  @@index([riskScore])
-}
-
-model RefundRetryLog {
-  id          String    @id @default(uuid())
-  refundId    String
-  retryCount  Int
-  error       String?
-  scheduledAt DateTime
-  executedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  
-  refundRequest RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
-  
-  @@index([refundId])
-  @@index([scheduledAt])
-}
-
-model BenefitRevokeLog {
-  id          String   @id @default(uuid())
-  userId      String
-  refundId    String
-  revokedAt   DateTime @default(now())
-  reason      String
-
-  @@index([userId])
-  @@index([refundId])
-}
-
-// ============================================================
-// 消息中心模块 - 站内信系统
-// ============================================================
 
 enum MessageType {
   SYSTEM
@@ -533,69 +678,54 @@ enum MessageType {
   LEAD
 }
 
-model UserMessage {
-  id            String      @id @default(uuid())
-  userId        String
-  type          MessageType
-  title         String
-  content       String
-  summary       String?
-
-  bizType       String?
-  bizId         String?
-  actionUrl     String?
-
-  isRead        Boolean     @default(false)
-  readAt        DateTime?
-  isImportant   Boolean     @default(false)
-  isDeleted     Boolean     @default(false)
-  isArchived    Boolean     @default(false)
-  archivedAt    DateTime?
-  expiresAt     DateTime?
-
-  handledBy     String?
-  handledAt     DateTime?
-  handleAction  String?
-
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-
-  user          User        @relation(fields: [userId], references: [id])
-  handler       User?       @relation("MessageHandler", fields: [handledBy], references: [id])
-
-  @@index([userId])
-  @@index([isRead])
-  @@index([isArchived])
-  @@index([bizType])
-  @@index([createdAt])
-  @@index([handledBy])
-  @@index([expiresAt])
+enum AgentSessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
 }
 
-model MessageTemplate {
-  id          String      @id @default(uuid())
-  code        String      @unique
-  name        String
-  type        MessageType
-  title       String
-  content     String
-  bizType     String
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+enum AgentMode {
+  GUIDED
+  AUTO
 }
 
-model UserMessageSettings {
-  userId         String   @id
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Global switches
-  emailEnabled   Boolean  @default(true)
-  browserEnabled Boolean  @default(true)
+enum AgentTaskType {
+  OUTLINE
+  CONTENT
+  IMAGE
+  EXPORT
+  IMPORT
+  MODIFY
+  STYLE
+  SNAPSHOT
+}
 
-  // Granular types config (JSON String)
-  // Structure: Record<MessageType, { email: boolean, browser: boolean }>
-  preferences    String   @default("{}") 
+enum AgentTaskStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
 
-  updatedAt      DateTime @updatedAt
+enum AssetType {
+  IMAGE
+  TEMPLATE_IMAGE
+  FAVORITE_IMAGE
+  USER_UPLOAD
+  OUTLINE
+  EXPORT_ZIP
+  EXPORT_PDF
+  EXPORT_PPTX
+  DOCUMENT
+  THUMBNAIL
+}
+
+enum AssetStatus {
+  ACTIVE
+  TRASHED
+  ARCHIVED
+  DELETED
 }

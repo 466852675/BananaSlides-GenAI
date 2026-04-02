@@ -28,21 +28,66 @@ const ALL_PERMISSIONS = [
     // --- 管理侧 (Admin Side) ---
     { code: 'admin.access', name: '访问管理后台', module: 'ADMIN', description: '核心权限：允许登录并进入 /admin 管理后台。' },
     { code: 'admin.dashboard.view', name: '仪表盘概览', module: 'DASHBOARD', description: '允许查看系统整体运营数据、图表及关键指标概览。' },
+
+    // 用户管理
     { code: 'admin.users.view', name: '查看用户列表', module: 'USERS', description: '允许浏览所有注册用户及其基础信息（不含敏感隐私）。' },
-    { code: 'admin.users.manage', name: '管理用户 (封禁等)', module: 'USERS', description: '允许编辑用户信息、重置密码、修改权益等级或封禁账号。' },
+    { code: 'admin.users.create', name: '创建用户', module: 'USERS', description: '允许手动创建新用户账号。' },
+    { code: 'admin.users.manage', name: '管理用户 (封禁等)', module: 'USERS', description: '允许编辑用户信息、修改权益等级或封禁账号。' },
+    { code: 'admin.users.manage.role', name: '修改用户角色', module: 'USERS', description: '允许修改用户的角色等级。' },
+    { code: 'admin.users.reset.password', name: '重置用户密码', module: 'USERS', description: '允许重置用户登录密码。' },
+    { code: 'admin.users.delete', name: '删除用户', module: 'USERS', description: '允许删除用户账号。' },
+    { code: 'admin.users.batch.action', name: '批量用户操作', module: 'USERS', description: '允许批量执行用户管理操作。' },
+
+    // 订单管理
     { code: 'admin.orders.view', name: '查看订单流水', module: 'ORDERS', description: '允许查看所有支付订单详情、状态及金额记录。' },
+    { code: 'admin.orders.update.status', name: '更新订单状态', module: 'ORDERS', description: '允许手动更新订单状态。' },
     { code: 'admin.orders.refund', name: '执行退款', module: 'ORDERS', description: '敏感权限：允许对已支付订单发起退款流程。' },
+
+    // 商品管理
     { code: 'admin.products.view', name: '查看商品列表', module: 'PRODUCTS', description: '允许查看当前上架的会员套餐及充值包信息。' },
-    { code: 'admin.products.manage', name: '商品上下架', module: 'PRODUCTS', description: '允许创建新商品、修改价格、调整权益或下架旧商品。' },
+    { code: 'admin.products.create', name: '创建商品', module: 'PRODUCTS', description: '允许创建新的会员套餐或充值包。' },
+    { code: 'admin.products.manage', name: '商品上下架', module: 'PRODUCTS', description: '允许调整商品权益或下架旧商品。' },
+    { code: 'admin.products.manage.price', name: '修改商品价格', module: 'PRODUCTS', description: '敏感权限：允许修改商品价格。' },
+    { code: 'admin.products.delete', name: '删除商品', module: 'PRODUCTS', description: '允许删除商品。' },
+
+    // 退款管理
+    { code: 'admin.refunds.view', name: '查看退款记录', module: 'REFUNDS', description: '允许查看退款申请及处理记录。' },
+    { code: 'admin.refunds.audit', name: '审核退款', module: 'REFUNDS', description: '允许审核并处理退款申请。' },
+
+    // 销售线索
     { code: 'admin.leads.view', name: '查看销售线索', module: 'LEADS', description: '允许查看企业版咨询表单提交的线索数据。' },
+    { code: 'admin.leads.view.detail', name: '查看线索详情', module: 'LEADS', description: '允许查看线索详细信息和跟进记录。' },
+    { code: 'admin.leads.manage.status', name: '管理线索状态', module: 'LEADS', description: '允许修改线索处理状态。' },
+    { code: 'admin.leads.manage.note', name: '添加线索备注', module: 'LEADS', description: '允许为线索添加跟进备注。' },
+    { code: 'admin.leads.manage.owner', name: '分配线索负责人', module: 'LEADS', description: '允许指派线索跟进人员。' },
+    { code: 'admin.leads.convert', name: '转化线索为用户', module: 'LEADS', description: '允许将销售线索转化为正式用户。' },
+    { code: 'admin.leads.delete', name: '删除线索', module: 'LEADS', description: '允许删除销售线索。' },
+
+    // 积分管理
     { code: 'admin.points.view', name: '查看积分规则', module: 'POINTS', description: '允许查看系统当前的积扣费逻辑配置。' },
     { code: 'admin.points.manage', name: '修改积分策略', module: 'POINTS', description: '敏感权限：允许调整各项 AI 操作的积分消耗数值及规则。' },
+    { code: 'admin.points.create', name: '创建积分规则', module: 'POINTS', description: '允许创建新的积分规则。' },
+    { code: 'admin.points.delete', name: '删除积分规则', module: 'POINTS', description: '允许删除积分规则。' },
+
+    // 角色权限
     { code: 'admin.roles.view', name: '查看角色权限', module: 'ROLES', description: '允许查看系统角色定义及其权限分配矩阵。' },
     { code: 'admin.roles.manage', name: '修改权限分配', module: 'ROLES', description: '特权权限：允许修改各角色的功能访问权限（SuperAdmin专用）。' },
+
+    // AI 模型
     { code: 'admin.ai.view', name: '查看模型状态', module: 'AI', description: '允许查看 AI 供应商配置、Key 池状态及模型路由策略。' },
     { code: 'admin.ai.manage', name: '切换模型/Key池', module: 'AI', description: '敏感权限：允许添加/删除 API Key，或切换默认 AI 模型。' },
+
+    // 系统设置
     { code: 'admin.settings.view', name: '查看系统信息', module: 'SETTINGS', description: '允许查看站点元数据、运行环境及版本信息。' },
     { code: 'admin.settings.manage', name: '修改系统参数', module: 'SETTINGS', description: '敏感权限：允许修改站点名称、注册门禁及系统维护模式。' },
+    { code: 'admin.settings.reset', name: '重置系统设置', module: 'SETTINGS', description: '允许将系统设置恢复为默认值。' },
+    { code: 'admin.settings.update.general', name: '更新常规设置', module: 'SETTINGS', description: '允许更新站点常规配置。' },
+
+    // Agent 功能 (新增)
+    { code: 'agent_use', name: '使用 Agent 功能', module: 'AGENT', description: '允许使用 AI Agent 对话生成演示文稿。' },
+    { code: 'agent_auto_mode', name: '自动执行模式', module: 'AGENT', description: '允许使用自动执行模式（跳过确认环节）。' },
+    { code: 'agent_priority', name: '优先队列', module: 'AGENT', description: '任务进入优先队列，获得更快的执行速度。' },
+    { code: 'agent_history_export', name: '导出 Agent 历史', module: 'AGENT', description: '允许导出 Agent 对话历史记录。' },
 ];
 
 /**
@@ -69,7 +114,9 @@ const ROLE_MATRIX: Record<UserRole, string[]> = {
         'creation.page.add', 'creation.page.duplicate',
         'template.favorite',
         // Pro features
-        'creation.export', 'creation.batch_generate'
+        'creation.export', 'creation.batch_generate',
+        // Agent features (Basic)
+        'agent_use'
     ],
 
     PREMIUM: [
@@ -81,7 +128,9 @@ const ROLE_MATRIX: Record<UserRole, string[]> = {
         'creation.page.add', 'creation.page.duplicate',
         'template.favorite', 'creation.export', 'creation.batch_generate',
         // Premium features
-        'history.snapshot', 'template.create'
+        'history.snapshot', 'template.create',
+        // Agent features
+        'agent_use', 'agent_auto_mode'
     ],
 
     ENTERPRISE: [
@@ -91,7 +140,9 @@ const ROLE_MATRIX: Record<UserRole, string[]> = {
         'creation.outline.input', 'creation.outline.refine', 'creation.outline.generate',
         'creation.slide.generate', 'creation.batch_generate', 'creation.page.add',
         'creation.page.duplicate', 'creation.export',
-        'template.favorite', 'template.create'
+        'template.favorite', 'template.create',
+        // Agent features (Full)
+        'agent_use', 'agent_auto_mode', 'agent_priority', 'agent_history_export'
     ],
 
     ADMIN: [
@@ -102,6 +153,8 @@ const ROLE_MATRIX: Record<UserRole, string[]> = {
         'creation.slide.generate', 'creation.batch_generate', 'creation.page.add',
         'creation.page.duplicate', 'creation.export',
         'template.favorite', 'template.create',
+        // Agent features (Full)
+        'agent_use', 'agent_auto_mode', 'agent_priority', 'agent_history_export',
         // Admin Business Features
         'admin.access', 'admin.dashboard.view',
         'admin.users.view', 'admin.users.manage',

@@ -36,6 +36,7 @@ const MESSAGE_TYPE_CONFIG: Record<MessageType, { icon: React.ReactNode; label: s
     VIP: { icon: <Crown size={14} />, label: 'VIP', style: 'bg-rose-100 text-rose-600' },
     ACTIVITY: { icon: <Gift size={14} />, label: '活动', style: 'bg-pink-100 text-pink-600' },
     SECURITY: { icon: <Shield size={14} />, label: '安全', style: 'bg-red-100 text-red-600' },
+    LEAD: { icon: <User size={14} />, label: '线索', style: 'bg-cyan-100 text-cyan-600' },
 };
 
 // 时间格式化

@@ -1,0 +1,593 @@
+/**
+ * AgentPreview 完成预览组件
+ *
+ * 当所有幻灯片生成完毕后，展示缩略图网格预览，
+ * 支持单页选中查看、修改、导出操作
+ */
+
+import React, { useState, useMemo, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Download,
+  FileDown,
+  Image as ImageIcon,
+  Presentation,
+  CheckCircle2,
+  Eye,
+  Edit3,
+  RefreshCw,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
+  Grid3X3,
+  Columns2,
+  Loader2,
+  AlertCircle
+} from 'lucide-react';
+import { exportToZip, exportToPdf, exportToPptx } from '../services/exportService';
+import type { GeneratedSlide } from '../types';
+import type { ToastType } from './Toast';
+
+interface AgentPreviewProps {
+  items: GeneratedSlide[];
+  projectTitle?: string;
+  onModifySlide?: (index: number) => void;
+  onRegenerateSlide?: (index: number) => void;
+  onClose?: () => void;
+  showToast?: (message: string, type: ToastType) => void;
+}
+
+type GridView = 'grid' | 'list';
+type ExportType = 'zip' | 'pdf' | 'pptx';
+
+export default function AgentPreview({
+  items,
+  projectTitle = '演示文稿',
+  onModifySlide,
+  onRegenerateSlide,
+  onClose,
+  showToast
+}: AgentPreviewProps) {
+  const [selectedSlide, setSelectedSlide] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<GridView>('grid');
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [lastExportType, setLastExportType] = useState<ExportType | null>(null);
+
+  // 导出类型名称映射
+  const exportTypeNames: Record<ExportType, string> = {
+    zip: '图片压缩包',
+    pdf: 'PDF 文档',
+    pptx: 'PPTX 演示文稿'
+  };
+
+  // 成功生成的幻灯片
+  const completedSlides = useMemo(
+    () => items.filter(item => item.status === 'success'),
+    [items]
+  );
+
+  // 选中幻灯片的详情
+  const selectedSlideData = selectedSlide !== null ? items[selectedSlide] : null;
+
+  // 获取缩略图 URL（优先使用 previewUrl，其次使用 variants[0]）
+  const getThumbnailUrl = (item: GeneratedSlide): string | null => {
+    if (item.previewUrl) return item.previewUrl;
+    if (item.variants && item.variants.length > 0) return item.variants[0];
+    return null;
+  };
+
+  // 页面类型标签
+  const getPageTypeLabel = (type: string): string => {
+    const labels: Record<string, string> = {
+      cover: '封面',
+      directory: '目录',
+      transition: '过渡',
+      content: '内容',
+      end: '结尾',
+      custom: '自定义'
+    };
+    return labels[type] || '内容';
+  };
+
+  // 显示错误信息
+  const showError = useCallback((message: string) => {
+    setExportError(message);
+    showToast?.(message, 'error');
+  }, [showToast]);
+
+  // 导出处理（带重试机制）
+  const handleExport = async (type: ExportType, isRetry = false) => {
+    setIsExportMenuOpen(false);
+    setExporting(true);
+    setExportError(null);
+    setLastExportType(type);
+
+    const exportName = exportTypeNames[type];
+
+    try {
+      if (isRetry) {
+        showToast?.(`正在重试导出 ${exportName}...`, 'info');
+      }
+
+      if (type === 'zip') {
+        await exportToZip(items, projectTitle);
+      } else if (type === 'pdf') {
+        await exportToPdf(items, projectTitle);
+      } else {
+        await exportToPptx(items, projectTitle);
+      }
+
+      showToast?.(`${exportName} 导出成功`, 'success');
+      setExportError(null);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // 根据导出类型提供特定错误提示
+      let specificMessage = `${exportName} 导出失败`;
+      if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        specificMessage = `网络连接异常，${exportName} 导出失败`;
+      } else if (errorMessage.includes('memory') || errorMessage.includes('size')) {
+        specificMessage = `文件过大，${exportName} 导出失败，请尝试减少页数`;
+      } else if (errorMessage.includes('permission') || errorMessage.includes('access')) {
+        specificMessage = `权限不足，无法保存 ${exportName}`;
+      } else if (errorMessage.includes('format') || errorMessage.includes('invalid')) {
+        specificMessage = `格式转换错误，${exportName} 导出失败`;
+      }
+
+      showError(specificMessage);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // 重试导出
+  const handleRetryExport = () => {
+    if (lastExportType) {
+      handleExport(lastExportType, true);
+    }
+  };
+
+  // 导航到上一页/下一页
+  const navigateSlide = (direction: 'prev' | 'next') => {
+    if (selectedSlide === null) return;
+
+    if (direction === 'prev' && selectedSlide > 0) {
+      setSelectedSlide(selectedSlide - 1);
+    } else if (direction === 'next' && selectedSlide < items.length - 1) {
+      setSelectedSlide(selectedSlide + 1);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-gray-50">
+      {/* 顶部工具栏 */}
+      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-100">
+        <div className="flex items-center gap-3">
+          <CheckCircle2 className="h-5 w-5 text-green-500" />
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">
+              {projectTitle}
+            </h2>
+            <p className="text-xs text-gray-500">
+              已完成 {completedSlides.length} / {items.length} 页
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* 视图切换 */}
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-md transition-colors ${
+                viewMode === 'grid' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'
+              }`}
+              title="网格视图"
+            >
+              <Grid3X3 size={16} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-md transition-colors ${
+                viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'
+              }`}
+              title="列表视图"
+            >
+              <Columns2 size={16} />
+            </button>
+          </div>
+
+          {/* 导出按钮 */}
+          <div className="relative">
+            <button
+              onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+              disabled={exporting}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                exportError
+                  ? 'bg-red-500 text-white hover:bg-red-600'
+                  : 'bg-black text-white hover:bg-gray-800'
+              } disabled:opacity-50`}
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : exportError ? (
+                <AlertCircle className="h-4 w-4" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {exportError ? '导出失败' : '导出'}
+            </button>
+
+            {/* 错误提示 + 重试按钮 */}
+            {exportError && !isExportMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="absolute top-full right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-red-100 p-3 z-50"
+              >
+                <p className="text-sm text-red-600 mb-2">{exportError}</p>
+                <button
+                  onClick={handleRetryExport}
+                  disabled={exporting}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
+                >
+                  {exporting ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw size={12} />
+                  )}
+                  重试导出
+                </button>
+              </motion.div>
+            )}
+
+            {isExportMenuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsExportMenuOpen(false)}
+                />
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="absolute top-full right-0 mt-2 w-52 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50"
+                >
+                  <button
+                    onClick={() => handleExport('zip')}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2.5 transition-colors"
+                  >
+                    <ImageIcon size={16} className="text-blue-500" />
+                    导出图片 (ZIP)
+                  </button>
+                  <button
+                    onClick={() => handleExport('pdf')}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2.5 border-t border-gray-50 transition-colors"
+                  >
+                    <FileDown size={16} className="text-rose-500" />
+                    导出 PDF
+                  </button>
+                  <button
+                    onClick={() => handleExport('pptx')}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2.5 border-t border-gray-50 transition-colors"
+                  >
+                    <Presentation size={16} className="text-orange-500" />
+                    导出 PPTX
+                  </button>
+                </motion.div>
+              </>
+            )}
+          </div>
+
+          {/* 关闭按钮 */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              title="关闭预览"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 主内容区域 */}
+      <div className="flex-1 min-h-0 flex overflow-hidden">
+        {/* 幻灯片列表 / 网格 */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {items.map((item, index) => {
+                const thumbUrl = getThumbnailUrl(item);
+                const isSelected = selectedSlide === index;
+
+                return (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: index * 0.03 }}
+                    onClick={() => setSelectedSlide(index)}
+                    className={`group relative aspect-video rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${
+                      isSelected
+                        ? 'border-indigo-500 shadow-lg shadow-indigo-100'
+                        : 'border-transparent hover:border-gray-200 hover:shadow-md'
+                    }`}
+                  >
+                    {thumbUrl ? (
+                      <img
+                        src={thumbUrl}
+                        alt={item.title || `第 ${index + 1} 页`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                        <ImageIcon className="h-8 w-8 text-gray-300" />
+                      </div>
+                    )}
+
+                    {/* 页码和类型标签 */}
+                    <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 bg-black/60 text-white text-[10px] font-bold rounded-md backdrop-blur-sm">
+                        {index + 1}
+                      </span>
+                      <span className="px-1.5 py-0.5 bg-white/90 text-gray-600 text-[10px] font-medium rounded-md">
+                        {getPageTypeLabel(item.pageType)}
+                      </span>
+                    </div>
+
+                    {/* 状态标签 */}
+                    {item.status !== 'success' && (
+                      <div className="absolute top-2 right-2">
+                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-md ${
+                          item.status === 'error'
+                            ? 'bg-red-100 text-red-600'
+                            : item.status === 'generating'
+                            ? 'bg-yellow-100 text-yellow-600'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {item.status === 'error' ? '失败' : item.status === 'generating' ? '生成中' : '待生成'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* 悬浮操作 */}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedSlide(index);
+                        }}
+                        className="p-2 bg-white/90 rounded-full shadow-md hover:bg-white transition-colors"
+                        title="查看大图"
+                      >
+                        <ZoomIn size={16} className="text-gray-700" />
+                      </button>
+                    </div>
+
+                    {/* 标题 */}
+                    {item.title && (
+                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent">
+                        <p className="text-white text-[11px] font-medium truncate">
+                          {item.title}
+                        </p>
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            /* 列表视图 */
+            <div className="space-y-2 max-w-4xl mx-auto">
+              {items.map((item, index) => {
+                const thumbUrl = getThumbnailUrl(item);
+                const isSelected = selectedSlide === index;
+
+                return (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    onClick={() => setSelectedSlide(index)}
+                    className={`flex items-center gap-4 p-3 rounded-xl cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-indigo-50 border-2 border-indigo-200'
+                        : 'bg-white border border-gray-100 hover:border-gray-200 hover:shadow-sm'
+                    }`}
+                  >
+                    {/* 缩略图 */}
+                    <div className="w-32 aspect-video rounded-lg overflow-hidden bg-gray-100 shrink-0">
+                      {thumbUrl ? (
+                        <img
+                          src={thumbUrl}
+                          alt={item.title || `第 ${index + 1} 页`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ImageIcon className="h-6 w-6 text-gray-300" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 信息 */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-bold text-gray-900">
+                          第 {index + 1} 页
+                        </span>
+                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-medium rounded">
+                          {getPageTypeLabel(item.pageType)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 truncate">
+                        {item.title || '未命名'}
+                      </p>
+                      {item.textContent && (
+                        <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">
+                          {item.textContent}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 状态 */}
+                    <div className="shrink-0">
+                      {item.status === 'success' ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      ) : item.status === 'error' ? (
+                        <span className="text-xs text-red-500">失败</span>
+                      ) : item.status === 'generating' ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />
+                      ) : (
+                        <span className="text-xs text-gray-400">待生成</span>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 右侧详情面板 */}
+        <AnimatePresence>
+          {selectedSlideData && selectedSlide !== null && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 400, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="border-l border-gray-100 bg-white flex flex-col shrink-0 overflow-hidden"
+            >
+              {/* 详情头部 */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-gray-900">
+                    第 {selectedSlide + 1} 页
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {getPageTypeLabel(selectedSlideData.pageType)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSelectedSlide(null)}
+                  className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* 大图预览 */}
+              <div className="p-4">
+                <div className="relative aspect-video rounded-xl overflow-hidden bg-gray-100">
+                  {getThumbnailUrl(selectedSlideData) ? (
+                    <img
+                      src={getThumbnailUrl(selectedSlideData)!}
+                      alt={selectedSlideData.title || `第 ${selectedSlide + 1} 页`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <ImageIcon className="h-12 w-12 text-gray-300" />
+                    </div>
+                  )}
+
+                  {/* 左右导航 */}
+                  {selectedSlide > 0 && (
+                    <button
+                      onClick={() => navigateSlide('prev')}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 bg-white/80 hover:bg-white rounded-full shadow-md transition-colors"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                  )}
+                  {selectedSlide < items.length - 1 && (
+                    <button
+                      onClick={() => navigateSlide('next')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-white/80 hover:bg-white rounded-full shadow-md transition-colors"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 详细信息 */}
+              <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
+                {/* 标题 */}
+                {selectedSlideData.title && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 mb-1 block">标题</label>
+                    <p className="text-sm text-gray-800">{selectedSlideData.title}</p>
+                  </div>
+                )}
+
+                {/* 文本内容 */}
+                {selectedSlideData.textContent && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 mb-1 block">正文内容</label>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                      {selectedSlideData.textContent}
+                    </p>
+                  </div>
+                )}
+
+                {/* 变体数量 */}
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">变体</label>
+                  <p className="text-sm text-gray-700">
+                    {selectedSlideData.variants.length} 个变体
+                  </p>
+                </div>
+
+                {/* 所有变体预览 */}
+                {selectedSlideData.variants.length > 1 && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 mb-2 block">所有变体</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {selectedSlideData.variants.map((variant, vIndex) => (
+                        <div
+                          key={vIndex}
+                          className="aspect-video rounded-lg overflow-hidden bg-gray-100 border border-gray-100"
+                        >
+                          <img
+                            src={variant}
+                            alt={`变体 ${vIndex + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 底部操作 */}
+              <div className="p-4 border-t border-gray-50 space-y-2">
+                <button
+                  onClick={() => onModifySlide?.(selectedSlide)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  <Edit3 size={14} />
+                  修改此页
+                </button>
+                <button
+                  onClick={() => onRegenerateSlide?.(selectedSlide)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-gray-500 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <RefreshCw size={14} />
+                  重新生成
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}

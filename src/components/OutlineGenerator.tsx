@@ -1048,7 +1048,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                             <textarea
                                                 value={topic}
                                                 onChange={(e) => setTopic(e.target.value)}
-                                                placeholder="请输入 PPT 主题，例如：'关于2025年人工智能发展趋势的商业路演'..."
+                                                placeholder="请输入 PPT 主题，例如：'关于2026年人工智能发展趋势的商业路演'..."
                                                 className={`w-full h-full p-4 text-base resize-none outline-none text-slate-700 placeholder:text-slate-300 rounded-xl transition-colors ${(isRefining || isGeneratingOutline)
                                                     ? 'bg-slate-50 border-transparent'
                                                     : 'bg-slate-50 border border-slate-100 focus:bg-white'

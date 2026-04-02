@@ -32,6 +32,7 @@ npm run db:seed      # 数据库种子数据
 npx playwright test tests/e2e/sanity.spec.ts  # 运行单个测试
 npx playwright test --headed                  # 可视化模式
 cd server && bun test                         # 后端单元测试
+cd server && bun test --watch                 # 后端测试监听模式
 ```
 
 ## 架构要点
@@ -56,6 +57,13 @@ cd server && bun test                         # 后端单元测试
 // model 包含 'gemini' → Gemini Native
 ```
 
+配置解析流程:
+1. 检查数据库 `AiRule` 表获取活跃规则
+2. 解析 `text`/`image`/`vision` 任务特定模型
+3. 如 provider 为 `CustomCombo` 应用组合配置
+4. 回退到环境变量设置
+5. 结果缓存 1 分钟
+
 ### 后端分层架构
 ```
 Controller → Service → Prisma (绝不在 Controller 中直接调用 Prisma)
@@ -64,6 +72,19 @@ Controller → Service → Prisma (绝不在 Controller 中直接调用 Prisma)
 ### 数据库
 - SQLite 文件: `server/prisma/dev.db`
 - 所有事务使用 `prisma.$transaction()`
+- Prisma Client 单例模式: `server/src/db.ts`
+
+### 积分与计费系统
+核心服务: `server/src/services/points.service.ts`
+
+- 标准用户支付 `rule.costPoints`
+- VIP 用户支付 `rule.vipCostPoints`（通常折扣或免费）
+- Admin 永久 VIP 身份
+
+交易生命周期:
+1. **Pending**: 扣除积分，`completedAt: null`
+2. **Completed**: AI 生成成功，记录完成时间
+3. **Refunded**: 失败时创建负金额交易退款
 
 ## 关键文件
 

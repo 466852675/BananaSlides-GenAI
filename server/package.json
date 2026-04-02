@@ -33,6 +33,7 @@
     "uuid": "^13.0.0",
     "wechatpay-node-v3": "^2.2.1",
     "winston": "^3.19.0",
+    "ws": "^8.16.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -45,6 +46,7 @@
     "@types/node": "^25.0.8",
     "@types/nodemailer": "^7.0.5",
     "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
     "prisma": "^6.19.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

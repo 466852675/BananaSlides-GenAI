@@ -57,6 +57,8 @@ import {
   ArrowDownNarrowWide,
   ArrowUpNarrowWide,
   RotateCcw,
+  Bot,
+  Monitor,
 } from "lucide-react";
 import { ImageUploader } from "./components/ImageUploader";
 import {
@@ -99,6 +101,7 @@ import {
   exportToPptx,
 } from "./services/exportService";
 import { Dashboard } from "./components/Dashboard";
+import { TrashPage } from "./components/TrashPage";
 import { OnboardingGuide } from "./components/OnboardingGuide";
 import { StyleTemplateManager, FilterTag } from "./components/StyleTemplateManager";
 import { StyleTemplateEditor } from './components/StyleTemplateEditor';
@@ -131,6 +134,9 @@ import { useAuth } from "./contexts/AuthContext";
 import { MyOrdersModal } from './components/user/MyOrdersModal';
 import { PurchaseModal } from './components/PurchaseModal';
 import { TopUpModal } from './components/TopUpModal';
+import AgentView from './components/AgentView';
+import AgentGlobalConfigModal from './components/AgentGlobalConfigModal';
+import useWebSocket from './hooks/useWebSocket';
 
 import { generateId } from "./utils";
 
@@ -823,7 +829,7 @@ const App: React.FC = () => {
   const [adminInitialPage, setAdminInitialPage] = useState<AdminPage | undefined>(undefined);
 
   const [viewMode, setViewMode] = useState<
-    "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "admin" | "login" | "messages"
+    "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "agent" | "admin" | "login" | "messages" | "trash"
   >(() => {
     const urlParams = new URLSearchParams(window.location.search);
     // 检查是否访问管理后台
@@ -1097,6 +1103,30 @@ const App: React.FC = () => {
   const saveTemplateMutation = useSaveTemplate();
   const addFavoriteMutation = useAddFavorite();
   const removeFavoriteMutation = useRemoveFavorite();
+
+  // WebSocket 连接 - 用于 IDE 模式接收 Agent 更新
+  const { lastMessage: wsMessage } = useWebSocket(
+    viewMode === 'workbench' ? currentProjectId || undefined : undefined
+  );
+
+  // 监听来自 Agent 的幻灯片更新
+  useEffect(() => {
+    if (viewMode === 'workbench' && wsMessage?.type === 'slides_update') {
+      const payload = wsMessage.payload;
+      if (payload?.source === 'agent' && payload?.items && Array.isArray(payload.items)) {
+        // 更新幻灯片列表
+        setItems(payload.items);
+        itemsRef.current = payload.items;
+        // 显示提示
+        setToast({
+          id: `ws-slides-update-${Date.now()}`,
+          message: 'Agent 已更新幻灯片内容',
+          type: 'info'
+        });
+        console.log('[Workbench] 收到 Agent 幻灯片更新:', payload.items.length, '页');
+      }
+    }
+  }, [wsMessage, viewMode]);
 
   // One-Time Migration Logic (LocalStorage -> SQLite)
   useEffect(() => {
@@ -1414,6 +1444,8 @@ const App: React.FC = () => {
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [isRefiningRequirements, setIsRefiningRequirements] = useState(false);
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
+  const [isAgentConfigOpen, setIsAgentConfigOpen] = useState(false);
+  const [agentConfigSaved, setAgentConfigSaved] = useState(false);
 
   // --- Real-time Points & Interruption ---
   useEffect(() => {
@@ -3477,12 +3509,12 @@ const App: React.FC = () => {
   const handleDeleteProject = (id: string) => {
     showConfirm(
       "删除项目",
-      "确定要永久删除此项目吗？此操作不可恢复。",
+      "确定要将此项目移至回收箱吗？项目将在回收箱中保留 30 天，之后自动永久删除。",
       () => {
         deleteProjectMutation.mutate(id);
         if (currentProjectId === id) {
           setCurrentProjectId(null);
-          prevProjectIdRef.current = null;
+          prevProjectRef.current = null;
           setIsHistoryOpen(false); // Ensure history sidebar closes if open
         }
         showToast("项目已删除", "success");
@@ -3668,6 +3700,22 @@ const App: React.FC = () => {
         onSave={handleSaveSettings}
         readOnly={!!previewSnapshot}
         showToast={showToast}
+      />
+
+      {/* Agent Global Config Modal */}
+      <AgentGlobalConfigModal
+        isOpen={isAgentConfigOpen}
+        onClose={() => setIsAgentConfigOpen(false)}
+        onSave={(newConfig, newStyleMap) => {
+          setConfig(newConfig);
+          configRef.current = newConfig;
+          setStyleMap(newStyleMap);
+          setAgentConfigSaved(true);
+          showToast('配置已保存', 'success');
+        }}
+        config={config}
+        styleMap={styleMap}
+        onStyleMapChange={setStyleMap}
       />
 
       {/* Snapshot Preview Banner */}
@@ -4168,7 +4216,7 @@ const App: React.FC = () => {
       </Modal>
 
       <ErrorBoundary>
-        <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans selection:bg-rose-100 selection:text-rose-600 flex flex-col overflow-x-hidden">
+        <div className={`bg-[#f8fafc] text-slate-800 font-sans selection:bg-rose-100 selection:text-rose-600 flex flex-col overflow-x-hidden ${viewMode === 'agent' ? 'h-screen' : 'min-h-screen'}`}>
 
 
 
@@ -4204,10 +4252,38 @@ const App: React.FC = () => {
                         </div>
                       </div>
                       <div>
-                        <h1 className={`${isScrolled ? 'text-base' : 'text-lg'} font-black text-slate-800 tracking-tight leading-none`}>智能PPT创作平台</h1>
-                        {!isScrolled && <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block">YH-AI PPT</span>}
+                        <h1 className={`${isScrolled ? 'text-base' : 'text-lg'} font-black text-slate-800 tracking-tight leading-none whitespace-nowrap`}>智能PPT创作平台</h1>
+                        {!isScrolled && <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mt-1 block whitespace-nowrap">YH-AI PPT</span>}
                       </div>
                     </div>
+
+                    {/* IDE/Agent Mode Toggle - 仅在非工作台模式下显示 */}
+                    {(viewMode === 'dashboard' || viewMode === 'history' || viewMode === 'templates' || viewMode === 'agent' || viewMode === 'trash') && (
+                      <div className="flex items-center bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 shrink-0">
+                        <button
+                          onClick={() => setViewMode('dashboard')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                            viewMode !== 'agent'
+                              ? 'bg-white text-slate-800 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          <Monitor size={12} />
+                          <span className="whitespace-nowrap">IDE模式</span>
+                        </button>
+                        <button
+                          onClick={() => setViewMode('agent')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                            viewMode === 'agent'
+                              ? 'bg-white text-slate-800 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          <Bot size={12} />
+                          <span className="whitespace-nowrap">Agent模式</span>
+                        </button>
+                      </div>
+                    )}
 
                     {/* Workbench Context: Back Button & Title */}
                     {(viewMode === 'workbench' || viewMode === 'history-detail') && (
@@ -4266,8 +4342,8 @@ const App: React.FC = () => {
                     )}
                   </div>
 
-                  {/* CENTER SECTION: Global Navigation (3 Tabs) */}
-                  {(viewMode === 'dashboard' || viewMode === 'history' || viewMode === 'templates') ? (
+                  {/* CENTER SECTION: Global Navigation (3 Tabs - 移除Agent) */}
+                  {(viewMode === 'dashboard' || viewMode === 'history' || viewMode === 'templates' || viewMode === 'trash') ? (
                     <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
                       <nav className="flex items-center bg-slate-100/50 p-1 rounded-xl border border-slate-200/50">
                         <button
@@ -4296,6 +4372,15 @@ const App: React.FC = () => {
                             }`}
                         >
                           <BookTemplate size={14} /> {!isScrolled && "模版间"}
+                        </button>
+                        <button
+                          onClick={() => setViewMode("trash")}
+                          className={`flex items-center gap-2 ${isScrolled ? 'px-3' : 'px-6'} py-2 rounded-lg text-xs font-bold transition-all ${viewMode === "trash"
+                            ? "bg-white text-slate-800 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                            }`}
+                        >
+                          <Trash2 size={14} /> {!isScrolled && "回收箱"}
                         </button>
                       </nav>
                     </div>
@@ -4361,7 +4446,7 @@ const App: React.FC = () => {
               }}
             />
           ) : (
-            viewMode !== 'templates' ? (
+            viewMode !== 'templates' && viewMode !== 'agent' ? (
               <main className="w-full max-w-[1480px] mx-auto px-6 py-6 space-y-8 flex-1">
                 {viewMode === "dashboard" && (
                   <Dashboard
@@ -4396,6 +4481,14 @@ const App: React.FC = () => {
                     setSortBy={setDashboardSortBy}
                     sortOrder={dashboardSortOrder}
                     setSortOrder={setDashboardSortOrder}
+                  />
+                )}
+
+                {viewMode === "trash" && (
+                  <TrashPage
+                    onBack={() => setViewMode("dashboard")}
+                    onShowConfirm={showConfirm}
+                    onCloseConfirm={closeConfirm}
                   />
                 )}
 
@@ -5178,7 +5271,42 @@ const App: React.FC = () => {
                 )}
               </main>
             ) : (
-              <main className="flex-1">
+              <main className="flex-1 min-h-0 overflow-hidden">
+                {/* Agent Mode (Full View) */}
+                {viewMode === 'agent' && (
+                  <div className="h-full bg-slate-50 flex flex-col">
+                    <AgentView
+                      items={items}
+                      config={config}
+                      styleMap={styleMap}
+                      currentProjectId={currentProjectId}
+                      onItemsChange={setItems}
+                      onConfigChange={setConfig}
+                      onStyleMapChange={setStyleMap}
+                      onCreateProject={async (title) => {
+                        const newProject = await createProjectMutation.mutateAsync({
+                          title: title || '新项目',
+                          status: 'idle',
+                          globalConfig: { ...config },
+                          globalStyleMap: { ...styleMap },
+                          isPinned: false
+                        });
+                        setCurrentProjectId(newProject.id);
+                        return newProject.id;
+                      }}
+                      onOpenConfig={() => {
+                        setIsAgentConfigOpen(true);
+                      }}
+                      onOpenStyle={() => {
+                        setIsFavoritesModalOpen(true);
+                      }}
+                      configSaved={agentConfigSaved}
+                      showToast={showToast}
+                      isVip={(user?.vipLevel ?? 0) > 0}
+                    />
+                  </div>
+                )}
+
                 {/* Style Template Manager (Full View) */}
                 {viewMode === 'templates' && (
                   <div className="flex-1 bg-slate-50 flex flex-col min-h-screen">

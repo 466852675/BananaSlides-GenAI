@@ -15,10 +15,12 @@ import {
     TrendingUp,
     Sliders,
     MessageSquare,
-    RefreshCcw
+    RefreshCcw,
+    Database,
+    Trash2
 } from 'lucide-react';
 
-export type AdminPage = 'dashboard' | 'users' | 'orders' | 'refunds' | 'leads' | 'points-rules' | 'roles' | 'ai-engine' | 'growth' | 'settings';
+export type AdminPage = 'dashboard' | 'users' | 'orders' | 'refunds' | 'leads' | 'points-rules' | 'roles' | 'ai-engine' | 'growth' | 'resources' | 'settings';
 
 interface AdminSidebarProps {
     currentPage: AdminPage;
@@ -36,6 +38,7 @@ const menuItems: { id: AdminPage; label: string; icon: React.ReactNode }[] = [
     { id: 'growth', label: '产品管理', icon: <TrendingUp size={18} /> },
     { id: 'roles', label: '角色权限', icon: <Shield size={18} /> },
     { id: 'ai-engine', label: '模型引擎', icon: <Bot size={18} /> },
+    { id: 'resources', label: '资源管理', icon: <Database size={18} /> },
     { id: 'settings', label: '系统设置', icon: <Settings size={18} /> },
 ];
 
