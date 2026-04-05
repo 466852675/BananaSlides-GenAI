@@ -84,6 +84,31 @@ export class TemplateService {
         if (existing.userId !== userId) return null;
         return prisma.styleTemplate.delete({ where: { id } });
     }
+
+    // Admin: Update official template's specific fields (isRecommended, recommendCount, etc.)
+    async updateAdminFields(id: string, data: Prisma.StyleTemplateUpdateInput) {
+        const existing = await prisma.styleTemplate.findUnique({ where: { id } });
+        if (!existing) return null;
+        if (!existing.isOfficial) return null;  // Only allow updating official templates
+
+        // Only allow updating specific fields for admin operations
+        const allowedFields = ['isRecommended', 'recommendCount', 'favoriteCount', 'usageCount', 'thumbnailUrl'];
+        const filteredData: any = {};
+        for (const key of allowedFields) {
+            if (data[key as keyof typeof data] !== undefined) {
+                filteredData[key] = data[key as keyof typeof data];
+            }
+        }
+
+        if (Object.keys(filteredData).length === 0) {
+            return existing;  // No allowed fields to update
+        }
+
+        return prisma.styleTemplate.update({
+            where: { id },
+            data: filteredData
+        });
+    }
 }
 
 export const templateService = new TemplateService();

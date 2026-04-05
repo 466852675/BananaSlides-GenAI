@@ -23,7 +23,9 @@ import {
   Grid3X3,
   Columns2,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Sparkles,
+  ArrowLeft
 } from 'lucide-react';
 import { exportToZip, exportToPdf, exportToPptx } from '../services/exportService';
 import type { GeneratedSlide } from '../types';
@@ -32,7 +34,7 @@ import type { ToastType } from './Toast';
 interface AgentPreviewProps {
   items: GeneratedSlide[];
   projectTitle?: string;
-  onModifySlide?: (index: number) => void;
+  onModifySlide?: (index: number, data: { title?: string; content?: string; requirements?: string }) => void;
   onRegenerateSlide?: (index: number) => void;
   onClose?: () => void;
   showToast?: (message: string, type: ToastType) => void;
@@ -55,6 +57,14 @@ export default function AgentPreview({
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [lastExportType, setLastExportType] = useState<ExportType | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  // 编辑模式状态
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editRequirements, setEditRequirements] = useState('');
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   // 导出类型名称映射
   const exportTypeNames: Record<ExportType, string> = {
@@ -208,7 +218,7 @@ export default function AgentPreview({
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                 exportError
                   ? 'bg-red-500 text-white hover:bg-red-600'
-                  : 'bg-black text-white hover:bg-gray-800'
+                  : 'bg-blue-600 text-white hover:bg-blue-700'
               } disabled:opacity-50`}
             >
               {exporting ? (
@@ -295,9 +305,9 @@ export default function AgentPreview({
       </div>
 
       {/* 主内容区域 */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* 幻灯片列表 / 网格 */}
-        <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 min-h-0 flex overflow-hidden relative">
+        {/* 幻灯片列表 / 网格 - 添加 min-w-0 确保可以被压缩 */}
+        <div className="flex-1 min-w-0 overflow-y-auto p-6">
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {items.map((item, index) => {
@@ -458,14 +468,14 @@ export default function AgentPreview({
         <AnimatePresence>
           {selectedSlideData && selectedSlide !== null && (
             <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 400, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
+              initial={{ x: '100%', opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="border-l border-gray-100 bg-white flex flex-col shrink-0 overflow-hidden"
+              className="absolute right-0 top-0 bottom-0 w-[360px] border-l border-gray-100 bg-white flex flex-col overflow-hidden z-10 shadow-xl"
             >
               {/* 详情头部 */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-50 shrink-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-gray-900">
                     第 {selectedSlide + 1} 页
@@ -482,19 +492,31 @@ export default function AgentPreview({
                 </button>
               </div>
 
-              {/* 大图预览 */}
-              <div className="p-4">
-                <div className="relative aspect-video rounded-xl overflow-hidden bg-gray-100">
+              {/* 大图预览 - 固定高度 */}
+              <div className="p-4 shrink-0">
+                <div className="relative aspect-video rounded-xl overflow-hidden bg-gray-100 group">
                   {getThumbnailUrl(selectedSlideData) ? (
                     <img
                       src={getThumbnailUrl(selectedSlideData)!}
                       alt={selectedSlideData.title || `第 ${selectedSlide + 1} 页`}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover cursor-zoom-in"
+                      onClick={() => setLightboxImage(getThumbnailUrl(selectedSlideData)!)}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <ImageIcon className="h-12 w-12 text-gray-300" />
                     </div>
+                  )}
+
+                  {/* 放大按钮 */}
+                  {getThumbnailUrl(selectedSlideData) && (
+                    <button
+                      onClick={() => setLightboxImage(getThumbnailUrl(selectedSlideData)!)}
+                      className="absolute top-2 right-2 p-2 bg-white/80 hover:bg-white rounded-full shadow-md transition-colors opacity-0 group-hover:opacity-100"
+                      title="全屏查看"
+                    >
+                      <ZoomIn size={16} className="text-gray-700" />
+                    </button>
                   )}
 
                   {/* 左右导航 */}
@@ -517,12 +539,12 @@ export default function AgentPreview({
                 </div>
               </div>
 
-              {/* 详细信息 */}
-              <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
+              {/* 详细信息 - 可滚动区域 */}
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 space-y-3">
                 {/* 标题 */}
                 {selectedSlideData.title && (
                   <div>
-                    <label className="text-xs font-medium text-gray-400 mb-1 block">标题</label>
+                    <label className="text-xs font-medium text-gray-400 mb-0.5 block">标题</label>
                     <p className="text-sm text-gray-800">{selectedSlideData.title}</p>
                   </div>
                 )}
@@ -530,8 +552,8 @@ export default function AgentPreview({
                 {/* 文本内容 */}
                 {selectedSlideData.textContent && (
                   <div>
-                    <label className="text-xs font-medium text-gray-400 mb-1 block">正文内容</label>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                    <label className="text-xs font-medium text-gray-400 mb-0.5 block">正文内容</label>
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed line-clamp-6">
                       {selectedSlideData.textContent}
                     </p>
                   </div>
@@ -539,7 +561,7 @@ export default function AgentPreview({
 
                 {/* 变体数量 */}
                 <div>
-                  <label className="text-xs font-medium text-gray-400 mb-1 block">变体</label>
+                  <label className="text-xs font-medium text-gray-400 mb-0.5 block">变体</label>
                   <p className="text-sm text-gray-700">
                     {selectedSlideData.variants.length} 个变体
                   </p>
@@ -548,9 +570,9 @@ export default function AgentPreview({
                 {/* 所有变体预览 */}
                 {selectedSlideData.variants.length > 1 && (
                   <div>
-                    <label className="text-xs font-medium text-gray-400 mb-2 block">所有变体</label>
+                    <label className="text-xs font-medium text-gray-400 mb-1 block">所有变体</label>
                     <div className="grid grid-cols-2 gap-2">
-                      {selectedSlideData.variants.map((variant, vIndex) => (
+                      {selectedSlideData.variants.slice(0, 4).map((variant, vIndex) => (
                         <div
                           key={vIndex}
                           className="aspect-video rounded-lg overflow-hidden bg-gray-100 border border-gray-100"
@@ -563,31 +585,167 @@ export default function AgentPreview({
                         </div>
                       ))}
                     </div>
+                    {selectedSlideData.variants.length > 4 && (
+                      <p className="text-xs text-gray-400 mt-1">还有 {selectedSlideData.variants.length - 4} 个变体</p>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* 底部操作 */}
-              <div className="p-4 border-t border-gray-50 space-y-2">
-                <button
-                  onClick={() => onModifySlide?.(selectedSlide)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
-                >
-                  <Edit3 size={14} />
-                  修改此页
-                </button>
-                <button
-                  onClick={() => onRegenerateSlide?.(selectedSlide)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-gray-500 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <RefreshCw size={14} />
-                  重新生成
-                </button>
+              {/* 底部操作 - 固定在底部 */}
+              <div className="p-4 border-t border-gray-50 space-y-2 shrink-0">
+                {isEditMode ? (
+                  /* 编辑模式 */
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 mb-1 block">标题</label>
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="输入标题..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 mb-1 block">正文内容</label>
+                      <textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        rows={3}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="输入正文内容..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 mb-1 block">修改需求（可选）</label>
+                      <textarea
+                        value={editRequirements}
+                        onChange={(e) => setEditRequirements(e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="描述你想要的修改，例如：调整配色、增加图表等..."
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={() => {
+                          setIsEditMode(false);
+                          setEditTitle('');
+                          setEditContent('');
+                          setEditRequirements('');
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        <ArrowLeft size={14} />
+                        取消
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setIsRegenerating(true);
+                          try {
+                            await onModifySlide?.(selectedSlide, {
+                              title: editTitle,
+                              content: editContent,
+                              requirements: editRequirements
+                            });
+                            setIsEditMode(false);
+                            setEditTitle('');
+                            setEditContent('');
+                            setEditRequirements('');
+                            showToast?.('已提交重新生成请求', 'success');
+                          } catch (error) {
+                            showToast?.('重新生成失败', 'error');
+                          } finally {
+                            setIsRegenerating(false);
+                          }
+                        }}
+                        disabled={isRegenerating}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {isRegenerating ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Sparkles size={14} />
+                        )}
+                        {isRegenerating ? '生成中...' : '再次生成'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* 正常模式 */
+                  <>
+                    <button
+                      onClick={() => {
+                        // 进入编辑模式，初始化表单数据
+                        setEditTitle(selectedSlideData.title || '');
+                        setEditContent(selectedSlideData.textContent || '');
+                        setEditRequirements('');
+                        setIsEditMode(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                      <Edit3 size={14} />
+                      修改此页
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setIsRegenerating(true);
+                        try {
+                          await onRegenerateSlide?.(selectedSlide);
+                          showToast?.('已提交重新生成请求', 'success');
+                        } catch (error) {
+                          showToast?.('重新生成失败', 'error');
+                        } finally {
+                          setIsRegenerating(false);
+                        }
+                      }}
+                      disabled={isRegenerating}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 text-gray-500 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      {isRegenerating ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={14} />
+                      )}
+                      {isRegenerating ? '生成中...' : '重新生成'}
+                    </button>
+                  </>
+                )}
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      {/* Lightbox 全屏查看 */}
+      <AnimatePresence>
+        {lightboxImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setLightboxImage(null)}
+            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 cursor-zoom-out"
+          >
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+            >
+              <X size={24} />
+            </button>
+            <motion.img
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              src={lightboxImage}
+              alt="全屏预览"
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

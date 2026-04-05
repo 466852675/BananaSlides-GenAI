@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     Users,
@@ -27,13 +27,55 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
-    Legend,
-    ResponsiveContainer
+    Legend
 } from 'recharts';
 import { getSystemStats, getGrowthStats } from '../../api/admin';
 
+const MeasuredChart: React.FC<{
+    className?: string;
+    style?: React.CSSProperties;
+    renderChart: (size: { width: number; height: number }) => React.ReactNode;
+    children?: React.ReactNode;
+}> = ({ className = '', style, renderChart, children }) => {
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [size, setSize] = useState({ width: 0, height: 0 });
+
+    useEffect(() => {
+        const node = containerRef.current;
+        if (!node) return;
+
+        const updateSize = () => {
+            const nextWidth = node.clientWidth;
+            const nextHeight = node.clientHeight;
+            setSize((prev) => {
+                if (prev.width === nextWidth && prev.height === nextHeight) {
+                    return prev;
+                }
+                return { width: nextWidth, height: nextHeight };
+            });
+        };
+
+        updateSize();
+
+        const observer = new ResizeObserver(() => {
+            updateSize();
+        });
+
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, []);
+
+    const isReady = size.width > 0 && size.height > 0;
+
+    return (
+        <div ref={containerRef} className={className} style={style}>
+            {isReady ? renderChart(size) : null}
+            {children}
+        </div>
+    );
+};
+
 export const SystemStats: React.FC = () => {
-    const [mounted, setMounted] = React.useState(false);
     const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
         queryKey: ['admin', 'system-stats'],
         queryFn: getSystemStats
@@ -46,10 +88,6 @@ export const SystemStats: React.FC = () => {
 
     const isLoading = statsLoading || growthLoading;
     const error = statsError;
-
-    React.useEffect(() => {
-        setMounted(true);
-    }, []);
 
     const trendData = useMemo(() => {
         if (!stats) return [];
@@ -182,10 +220,10 @@ export const SystemStats: React.FC = () => {
                             </div>
                         </div>
 
-                        <div style={{ width: '100%', height: 260, minWidth: 200, minHeight: 200 }}>
-                            {mounted && (
-                                <ResponsiveContainer width="100%" height="100%" debounce={100}>
-                                    <AreaChart data={trendData}>
+                        <MeasuredChart
+                            style={{ width: '100%', height: 260, minWidth: 200, minHeight: 200 }}
+                            renderChart={({ width, height }) => (
+                                    <AreaChart width={width} height={height} data={trendData}>
                                         <defs>
                                             <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
                                                 <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
@@ -206,9 +244,8 @@ export const SystemStats: React.FC = () => {
                                         <Area type="monotone" dataKey="users" name="用户总量" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorUsers)" />
                                         <Area type="monotone" dataKey="orders" name="订单总量" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorOrders)" />
                                     </AreaChart>
-                                </ResponsiveContainer>
                             )}
-                        </div>
+                        />
                     </div>
 
                     {/* Check-in & Referral Stats - From Growth Center */}
@@ -258,16 +295,17 @@ export const SystemStats: React.FC = () => {
                             <p className="text-sm text-slate-500 mb-6 font-medium">活跃 vs 禁用账户占比</p>
                         </div>
 
-                        <div className="relative flex-1 min-h-[180px] flex items-center justify-center" style={{ minWidth: 200 }}>
-                            {mounted && (
-                                <ResponsiveContainer width="100%" height={200} debounce={100}>
-                                    <PieChart>
+                        <MeasuredChart
+                            className="relative flex-1 min-h-[180px] flex items-center justify-center"
+                            style={{ minWidth: 200 }}
+                            renderChart={({ width, height }) => (
+                                    <PieChart width={width} height={height}>
                                         <Pie
                                             data={userStatusData}
                                             cx="50%"
                                             cy="50%"
-                                            innerRadius={60}
-                                            outerRadius={80}
+                                            innerRadius={Math.max(40, Math.min(width, height) * 0.24)}
+                                            outerRadius={Math.max(60, Math.min(width, height) * 0.32)}
                                             paddingAngle={5}
                                             dataKey="value"
                                             startAngle={90}
@@ -279,14 +317,14 @@ export const SystemStats: React.FC = () => {
                                         </Pie>
                                         <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
                                     </PieChart>
-                                </ResponsiveContainer>
                             )}
+                        >
                             {/* Center Text */}
                             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
                                 <div className="text-3xl font-black text-slate-800 tracking-tight">{stats.totalUsers}</div>
                                 <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total<br />Users</div>
                             </div>
-                        </div>
+                        </MeasuredChart>
 
                         <div className="space-y-3 mt-4">
                             <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
@@ -324,10 +362,11 @@ export const SystemStats: React.FC = () => {
                             <Calendar size={18} />
                         </div>
                     </div>
-                    <div className="h-48 w-full mt-2" style={{ minWidth: 200, minHeight: 192 }}>
-                        {mounted && (
-                            <ResponsiveContainer width="100%" height="100%" debounce={100}>
-                                <AreaChart data={growthStats?.trend || []}>
+                    <MeasuredChart
+                        className="h-48 w-full mt-2"
+                        style={{ minWidth: 200, minHeight: 192 }}
+                        renderChart={({ width, height }) => (
+                                <AreaChart width={width} height={height} data={growthStats?.trend || []}>
                                     <defs>
                                         <linearGradient id="colorCheck" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="#d946ef" stopOpacity={0.3} />
@@ -342,9 +381,8 @@ export const SystemStats: React.FC = () => {
                                     />
                                     <Area type="monotone" dataKey="count" name="签到数" stroke="#d946ef" strokeWidth={3} fillOpacity={1} fill="url(#colorCheck)" />
                                 </AreaChart>
-                            </ResponsiveContainer>
                         )}
-                    </div>
+                    />
                 </div>
 
                 <div className="bg-white/80 backdrop-blur-xl p-8 rounded-3xl border border-white/60 shadow-sm relative overflow-hidden group">
@@ -357,10 +395,11 @@ export const SystemStats: React.FC = () => {
                             <UserPlus size={18} />
                         </div>
                     </div>
-                    <div className="h-48 w-full mt-2" style={{ minWidth: 200, minHeight: 192 }}>
-                        {mounted && (
-                            <ResponsiveContainer width="100%" height="100%" debounce={100}>
-                                <LineChart data={growthStats?.trend || []}>
+                    <MeasuredChart
+                        className="h-48 w-full mt-2"
+                        style={{ minWidth: 200, minHeight: 192 }}
+                        renderChart={({ width, height }) => (
+                                <LineChart width={width} height={height} data={growthStats?.trend || []}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                     <XAxis dataKey="date" hide />
                                     <YAxis hide />
@@ -369,9 +408,8 @@ export const SystemStats: React.FC = () => {
                                     />
                                     <Line type="monotone" dataKey="count" name="邀请数" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} />
                                 </LineChart>
-                            </ResponsiveContainer>
                         )}
-                    </div>
+                    />
                 </div>
             </div>
 

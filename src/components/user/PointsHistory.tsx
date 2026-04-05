@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as PointsApi from '../../api/points';
 import { Loader2, X, Coins, Calendar, Search, Filter, ChevronLeft, ChevronRight, FileText, Image as ImageIcon, Sparkles, MonitorPlay } from 'lucide-react';
+import { formatDateTime } from '../../utils/time-format';
 
 interface PointsHistoryProps {
     isOpen: boolean;
@@ -33,19 +34,6 @@ const parseDescription = (desc: string, itemCreatedAt: string) => {
             successTime: itemCreatedAt
         };
     }
-};
-
-const formatTime = (time: string | number) => {
-    if (!time) return '-';
-    const date = new Date(time);
-    return date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
 };
 
 export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose }) => {
@@ -347,8 +335,8 @@ export const PointsHistory: React.FC<PointsHistoryProps> = ({ isOpen, onClose })
                                                     </span>
                                                 ) : '-'}
                                             </td>
-                                            <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap font-mono">{formatTime(info.triggerTime)}</td>
-                                            <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap font-mono">{formatTime(info.successTime)}</td>
+                                            <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap font-mono">{formatDateTime(info.triggerTime)}</td>
+                                            <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap font-mono">{formatDateTime(info.successTime)}</td>
                                             <td className={`px-4 py-2.5 text-xs font-bold text-right ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
                                                 {isPositive ? '+' : ''}{item.amount}
                                             </td>

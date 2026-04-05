@@ -7,7 +7,7 @@ export type AgentSessionStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'FAILED' | 
 export type AgentMode = 'GUIDED' | 'AUTO';
 
 // 任务类型
-export type AgentTaskType = 'OUTLINE' | 'CONTENT' | 'IMAGE' | 'EXPORT' | 'IMPORT' | 'MODIFY' | 'STYLE' | 'SNAPSHOT';
+export type AgentTaskType = 'CONFIG_CONFIRM' | 'OUTLINE' | 'CONTENT' | 'IMAGE' | 'IMAGE_BY_PAGE' | 'FINAL_OVERVIEW' | 'EXPORT' | 'IMPORT' | 'MODIFY' | 'STYLE' | 'SNAPSHOT';
 export type AgentTaskStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
 // Agent 会话
@@ -97,10 +97,17 @@ export interface AgentViewProps {
   onConfigChange?: (config: any) => void;
   onStyleMapChange?: (styleMap: any) => void;
   onCreateProject?: (title: string) => Promise<string>; // 返回新项目ID
+  onSelectProject?: (projectId: string) => void; // 选择项目时回调
   onOpenConfig?: () => void;
   onOpenStyle?: () => void;
   configSaved?: boolean;
   onConfigSaved?: (saved: boolean) => void;
   showToast?: (message: string, type?: 'success' | 'error' | 'loading' | 'info') => void;
   isVip?: boolean;
+  styleSelectionCleared?: number; // 当这个值变化时清除风格选中状态
+  // WebSocket 相关 - 由 App.tsx 统一管理
+  wsStatus?: { connected: boolean; reconnecting: boolean; error: string | null };
+  wsMessage?: { type: string; payload?: any; timestamp?: number } | null;
+  onWsJoinProject?: (projectId: string) => void;
+  onWsLeaveProject?: (projectId: string) => void;
 }

@@ -3,7 +3,7 @@
 
 import { Router } from 'express';
 import * as AuthController from '../controllers/auth.controller';
-import { authenticate } from '../middlewares/auth.middleware';
+import { authenticate, optionalAuth } from '../middlewares/auth.middleware';
 
 const router = Router();
 
@@ -14,6 +14,9 @@ router.post('/send-code', AuthController.sendPhoneCode);
 router.post('/login-phone', AuthController.loginWithPhone);
 router.post('/forgot-password', AuthController.forgotPassword);
 router.post('/reset-password', AuthController.resetPassword);
+
+// Token 刷新接口（需要有效的 token）
+router.post('/refresh', authenticate, AuthController.refreshToken);
 
 // 需要登录的接口
 router.get('/me', authenticate, AuthController.me);

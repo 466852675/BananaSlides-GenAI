@@ -334,6 +334,29 @@ export async function getCurrentUser(userId: string) {
 }
 
 /**
+ * 刷新用户 Token
+ */
+export async function refreshUserToken(userId: string): Promise<string> {
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true, status: true }
+    });
+
+    if (!user) {
+        throw new AuthError('USER_NOT_FOUND', '用户不存在');
+    }
+
+    if (user.status === UserStatus.DISABLED) {
+        throw new AuthError('ACCOUNT_DISABLED', '账户已被禁用');
+    }
+
+    return signToken({
+        userId: user.id,
+        role: user.role
+    });
+}
+
+/**
  * 发送密码重置验证码
  */
 export async function forgotPassword(email: string): Promise<void> {

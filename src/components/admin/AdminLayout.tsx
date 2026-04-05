@@ -127,7 +127,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack, initialPage })
             />
 
             {/* 主内容区 */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
                 {/* 头部 */}
                 <AdminHeader
                     title={title}

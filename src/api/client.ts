@@ -12,6 +12,23 @@ export const client = axios.create({
     },
 });
 
+// 是否正在刷新 token
+let isRefreshing = false;
+// 等待 token 刷新的请求队列
+let failedQueue: { resolve: (token: string) => void; reject: (error: Error) => void }[] = [];
+
+// 处理队列中的请求
+const processQueue = (error: Error | null, token: string | null) => {
+    failedQueue.forEach(prom => {
+        if (error) {
+            prom.reject(error);
+        } else if (token) {
+            prom.resolve(token);
+        }
+    });
+    failedQueue = [];
+};
+
 // 🆕 请求拦截器：自动附加 Token
 client.interceptors.request.use(
     (config) => {
@@ -27,13 +44,77 @@ client.interceptors.request.use(
 // Response interceptor for error handling
 client.interceptors.response.use(
     (response) => response.data,
-    (error) => {
+    async (error) => {
+        const originalRequest = error.config;
+
+        // 🆕 处理 401 未授权：尝试刷新 token
+        if (error.response?.status === 401 && !originalRequest._retry) {
+            // 如果是刷新 token 的请求本身失败了，直接登出
+            if (originalRequest.url?.includes('/auth/refresh')) {
+                localStorage.removeItem(TOKEN_KEY);
+                window.dispatchEvent(new CustomEvent('auth:logout'));
+                return Promise.reject(new Error('登录已过期，请重新登录'));
+            }
+
+            // 如果正在刷新 token，将请求加入队列等待
+            if (isRefreshing) {
+                return new Promise((resolve, reject) => {
+                    failedQueue.push({ resolve, reject });
+                }).then(token => {
+                    originalRequest.headers.Authorization = `Bearer ${token}`;
+                    return client(originalRequest);
+                }).catch(err => {
+                    return Promise.reject(err);
+                });
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
+
+            try {
+                // 尝试刷新 token
+                const oldToken = localStorage.getItem(TOKEN_KEY);
+                if (!oldToken) {
+                    throw new Error('No token to refresh');
+                }
+
+                // 调用刷新接口（需要先设置旧的 token）
+                const response = await axios.post('/api/auth/refresh', {}, {
+                    headers: {
+                        Authorization: `Bearer ${oldToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const newToken = response.data?.data?.token;
+                if (!newToken) {
+                    throw new Error('Failed to get new token');
+                }
+
+                // 保存新 token
+                localStorage.setItem(TOKEN_KEY, newToken);
+
+                // 处理队列中的请求
+                processQueue(null, newToken);
+
+                // 重试原始请求
+                originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                return client(originalRequest);
+            } catch (refreshError) {
+                // 刷新失败，清除 token 并登出
+                processQueue(new Error('Token refresh failed'), null);
+                localStorage.removeItem(TOKEN_KEY);
+                window.dispatchEvent(new CustomEvent('auth:logout'));
+                return Promise.reject(new Error('登录已过期，请重新登录'));
+            } finally {
+                isRefreshing = false;
+            }
+        }
+
         let message = error.response?.data?.error?.message || error.response?.data?.error || error.message;
 
-        // 🆕 处理 401 未授权：自动清除 Token 并触发登出事件
+        // 🆕 处理 401 未授权（刷新失败后的情况）
         if (error.response?.status === 401) {
-            localStorage.removeItem(TOKEN_KEY);
-            window.dispatchEvent(new CustomEvent('auth:logout'));
             message = error.response?.data?.error?.message || '登录已过期，请重新登录';
         }
 

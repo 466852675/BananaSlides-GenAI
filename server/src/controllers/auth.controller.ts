@@ -123,6 +123,35 @@ export async function me(req: Request, res: Response): Promise<void> {
 }
 
 /**
+ * 刷新 Token
+ * POST /api/auth/refresh
+ */
+export async function refreshToken(req: Request, res: Response): Promise<void> {
+    try {
+        if (!req.user) {
+            res.status(401).json({
+                success: false,
+                error: { code: 'UNAUTHORIZED', message: '请先登录' }
+            });
+            return;
+        }
+
+        const newToken = await AuthService.refreshUserToken(req.user.id);
+
+        res.status(200).json({
+            success: true,
+            data: { token: newToken }
+        });
+    } catch (error: any) {
+        console.error('[Auth] 刷新 Token 失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '刷新 Token 失败' }
+        });
+    }
+}
+
+/**
  * 忘记密码 - 发送验证码
  * POST /api/auth/forgot-password
  */

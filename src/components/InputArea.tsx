@@ -79,8 +79,8 @@ export default function InputArea({
   };
 
   return (
-    <div className="border-t border-gray-200 bg-white p-3">
-      <div className="mx-auto max-w-2xl">
+    <div className="p-4">
+      <div className="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
         {/* 输入框容器 - 带跑马灯效果 */}
         <div className={`relative ${isAIRefining ? 'p-[2px] rounded-xl' : ''}`}>
           {isAIRefining && (
@@ -94,7 +94,7 @@ export default function InputArea({
           <div className={`flex items-end gap-2 rounded-xl border bg-gray-50 p-2 ${
             isAIRefining
               ? 'border-transparent'
-              : 'border-gray-200 focus-within:border-black focus-within:ring-1 focus-within:ring-black'
+              : 'border-gray-200 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500'
           }`}>
             {/* 附件按钮 */}
             <div className="relative">
@@ -181,7 +181,7 @@ export default function InputArea({
             <button
               onClick={onSend}
               disabled={isLoading || !value.trim()}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-black text-white disabled:bg-gray-200 disabled:text-gray-400"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
               aria-label="发送"
             >
               {isLoading ? (
@@ -199,8 +199,10 @@ export default function InputArea({
             {/* 模式切换 */}
             <button
               onClick={onToggleAutoMode}
-              className={`flex items-center gap-1.5 text-xs transition-colors ${
-                autoMode ? 'text-black font-medium' : 'text-gray-500 hover:text-gray-700'
+              className={`flex items-center gap-1.5 text-xs transition-colors px-2 py-1 rounded-full border ${
+                autoMode
+                  ? 'bg-blue-100 text-blue-700 border-blue-200 font-medium'
+                  : 'bg-purple-100 text-purple-700 border-purple-200 font-medium'
               }`}
               title={autoMode ? '自动执行模式：Agent 自动完成所有步骤' : '引导模式：每一步都需要确认'}
             >
@@ -218,26 +220,26 @@ export default function InputArea({
             <button
               onClick={onOpenConfig}
               className={`flex items-center gap-1.5 text-xs hover:text-gray-700 ${
-                configSaved ? 'text-green-600' : 'text-gray-500'
+                configSaved ? 'text-blue-600' : 'text-gray-500'
               }`}
               title="配置"
             >
               <Settings2 className="h-3.5 w-3.5" />
               <span>配置</span>
-              {configSaved && <div className="h-1.5 w-1.5 rounded-full bg-green-500" />}
+              {configSaved && <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
             </button>
 
             {/* 风格按钮 */}
             <button
               onClick={onOpenStyle}
               className={`flex items-center gap-1.5 text-xs hover:text-gray-700 ${
-                styleSelected ? 'text-green-600' : 'text-gray-500'
+                styleSelected ? 'text-blue-600' : 'text-gray-500'
               }`}
               title="风格"
             >
               <Palette className="h-3.5 w-3.5" />
               <span>风格</span>
-              {styleSelected && <div className="h-1.5 w-1.5 rounded-full bg-green-500" />}
+              {styleSelected && <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
             </button>
           </div>
 

@@ -123,6 +123,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/upload', uploadRoutes);
+// Agent 路由必须放在 /api (snapshotRoutes) 之前，因为 snapshotRoutes 有全局 authenticate 中间件
+// 会拦截所有 /api/* 请求，导致 SSE 端点（/api/agent/sessions/:id/progress）无法到达
+app.use('/api/agent', agentRoutes);
 app.use('/api', snapshotRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/doc-parser', mineruRoutes);
@@ -138,7 +141,6 @@ app.use('/webhooks', webhookRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/growth', growthRoutes);
-app.use('/api/agent', agentRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/trash', trashRoutes);
 

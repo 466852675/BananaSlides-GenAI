@@ -16,8 +16,8 @@ model User {
   nickname           String?
   avatar             String?
   bio                String?
-  role               UserRole             @default("USER")
-  status             UserStatus           @default("ACTIVE")
+  role               UserRole             @default(USER)
+  status             UserStatus           @default(ACTIVE)
   points             Int                  @default(30)
   pointsUsed         Int                  @default(0)
   vipLevel           Int                  @default(0)
@@ -131,7 +131,7 @@ model Order {
   originalPrice  Float
   discountPrice  Float?
   finalPrice     Float
-  status         OrderStatus     @default("PENDING")
+  status         OrderStatus     @default(PENDING)
   paymentMethod  String?
   paymentNo      String?
   paidAt         DateTime?
@@ -234,6 +234,7 @@ model Slide {
 model StyleTemplate {
   id             String     @id @default(uuid())
   name           String
+  thumbnailUrl   String?
   config         String
   styleMap       String?
   isCustom       Boolean    @default(true)
@@ -388,7 +389,7 @@ model RefundRequest {
   userId           String
   orderId          String
   amount           Float
-  status           RefundStatus     @default("PENDING")
+  status           RefundStatus     @default(PENDING)
   reason           String
   description      String?
   remark           String?
@@ -521,8 +522,8 @@ model UserMessageSettings {
 model AgentSession {
   id              String             @id @default(cuid())
   projectId       String             @unique
-  status          AgentSessionStatus @default("ACTIVE")
-  mode            AgentMode          @default("GUIDED")
+  status          AgentSessionStatus @default(ACTIVE)
+  mode            AgentMode          @default(GUIDED)
   isDeleted       Boolean            @default(false)
   deletedAt       DateTime?
   context         String?
@@ -568,7 +569,7 @@ model AgentTask {
   id          String          @id @default(cuid())
   sessionId   String
   type        AgentTaskType
-  status      AgentTaskStatus @default("PENDING")
+  status      AgentTaskStatus @default(PENDING)
   priority    Int             @default(0)
   params      String?
   result      String?
@@ -601,7 +602,7 @@ model AssetRegistry {
   isReferenced  Boolean       @default(false)
   isOfficial    Boolean       @default(false)
   type          AssetType
-  status        AssetStatus   @default("ACTIVE")
+  status        AssetStatus   @default(ACTIVE)
   filename      String
   url           String
   mimeType      String?
@@ -692,9 +693,12 @@ enum AgentMode {
 }
 
 enum AgentTaskType {
+  CONFIG_CONFIRM
   OUTLINE
   CONTENT
   IMAGE
+  IMAGE_BY_PAGE
+  FINAL_OVERVIEW
   EXPORT
   IMPORT
   MODIFY

@@ -157,6 +157,151 @@ router.get('/projects-with-sessions', authenticate, async (req: Request, res: Re
 });
 
 /**
+ * GET /api/agent/sessions/:id/progress
+ * SSE 端点，推送任务进度
+ * 支持 Authorization header 或 ?token= query parameter 认证（EventSource 不支持自定义 header）
+ * 注意：此路由必须在 GET /sessions/:id 之前定义，否则会被 :id 参数匹配
+ */
+router.get('/sessions/:id/progress', async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  logger.info(`[SSE] 收到进度连接请求，会话: ${id}, URL: ${req.url}`);
+
+  // SSE 认证：支持 header 和 query parameter 两种方式
+  const authHeader = req.headers.authorization;
+  const queryToken = req.query.token as string | undefined;
+
+  logger.info(`[SSE] 认证信息 - Header: ${authHeader ? '有' : '无'}, Query: ${queryToken ? '有' : '无'}`);
+
+  const token = (authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null) || queryToken;
+
+  if (!token) {
+    logger.warn('[SSE] 缺少认证 token');
+    res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'SSE 连接需要认证' } });
+    return;
+  }
+
+  // 验证 token
+  const { verifyToken } = await import('../utils/jwt.util');
+  const payload = verifyToken(token);
+  if (!payload) {
+    logger.warn(`[SSE] Token 验证失败，token 长度: ${token.length}, token 前缀: ${token.substring(0, 20)}...`);
+    res.status(401).json({ success: false, error: { code: 'INVALID_TOKEN', message: 'Token 无效或已过期' } });
+    return;
+  }
+
+  logger.info(`[SSE] Token 验证成功，用户: ${payload.userId}`);
+
+  // 验证用户存在且活跃
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    select: { id: true, role: true, status: true }
+  });
+  if (!user) {
+    logger.warn(`[SSE] 用户不存在: ${payload.userId}`);
+    res.status(401).json({ success: false, error: { code: 'USER_NOT_FOUND', message: '用户不存在' } });
+    return;
+  }
+
+  // 附加用户信息到 req
+  req.user = user as any;
+
+  // 验证会话归属
+  const ownership = await verifySessionOwnership(id, user.id);
+  if (!ownership.valid) {
+    logger.warn(`[SSE] 会话归属验证失败: ${ownership.error}`);
+    res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: ownership.error || '无权访问此会话' } });
+    return;
+  }
+
+  logger.info(`[SSE] 用户 ${user.id} 连接会话 ${id} 进度流`);
+
+  // 设置 SSE 响应头
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // 禁用 nginx 缓冲
+
+  // 心跳检测相关
+  let lastHeartbeat = Date.now();
+  const heartbeatInterval = 30000; // 30秒
+  const connectionTimeout = 90000; // 90秒无响应则断开
+
+  // 发送初始进度
+  try {
+    const progress = await agentService.getProgress(id);
+    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+  } catch (error: any) {
+    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+    res.end();
+    return;
+  }
+
+  // 进度更新定时器（3秒间隔，减少数据库压力）
+  const progressIntervalId = setInterval(async () => {
+    try {
+      const progress = await agentService.getProgress(id);
+      res.write(`data: ${JSON.stringify(progress)}\n\n`);
+
+      // 如果会话已完成，关闭连接
+      if (progress.status === 'COMPLETED' || progress.status === 'FAILED' || progress.status === 'CANCELLED') {
+        clearInterval(progressIntervalId);
+        clearInterval(heartbeatIntervalId);
+        res.end();
+      }
+    } catch (error: any) {
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      clearInterval(progressIntervalId);
+      clearInterval(heartbeatIntervalId);
+      res.end();
+    }
+  }, 3000);
+
+  // 心跳检测定时器 - 每30秒发送心跳并验证用户状态
+  const heartbeatIntervalId = setInterval(async () => {
+    try {
+      // 检查连接是否超时
+      const now = Date.now();
+      if (now - lastHeartbeat > connectionTimeout) {
+        logger.warn(`[SSE] 连接超时，关闭会话 ${id} 的 SSE 连接`);
+        clearInterval(progressIntervalId);
+        clearInterval(heartbeatIntervalId);
+        res.write(`data: ${JSON.stringify({ type: 'timeout', message: '连接超时' })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // 验证用户状态
+      const currentUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { id: true, status: true }
+      });
+
+      if (!currentUser || currentUser.status !== 'ACTIVE') {
+        logger.warn(`[SSE] 用户状态异常，关闭会话 ${id} 的 SSE 连接`);
+        clearInterval(progressIntervalId);
+        clearInterval(heartbeatIntervalId);
+        res.write(`data: ${JSON.stringify({ type: 'auth_expired', message: '用户状态已变更，请重新登录' })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // 发送心跳注释（SSE 标准）
+      res.write(': heartbeat\n\n');
+      lastHeartbeat = now;
+    } catch (error: any) {
+      logger.error(`[SSE] 心跳检测失败: ${error.message}`);
+    }
+  }, heartbeatInterval);
+
+  // 客户端断开连接时清理
+  req.on('close', () => {
+    clearInterval(progressIntervalId);
+    clearInterval(heartbeatIntervalId);
+    logger.info(`[SSE] 客户端断开连接，会话 ${id}`);
+  });
+});
+
+/**
  * GET /api/agent/sessions/:id
  * 获取会话详情
  */
@@ -297,6 +442,51 @@ router.post('/sessions/:id/cancel', authenticate, async (req: Request, res: Resp
     res.json(session);
   } catch (error: any) {
     logger.error('[Agent] 取消会话失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/agent/sessions/:id/mode
+ * 更新会话模式（引导/自动）
+ */
+router.patch('/sessions/:id/mode', authenticate, async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { mode } = req.body;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: '未授权' });
+    }
+
+    if (!mode || !['GUIDED', 'AUTO'].includes(mode)) {
+      return res.status(400).json({ error: '无效的模式，必须是 GUIDED 或 AUTO' });
+    }
+
+    // 验证会话归属
+    const ownership = await verifySessionOwnership(id, userId);
+    if (!ownership.valid) {
+      return res.status(403).json({ error: ownership.error });
+    }
+
+    // 检查自动执行权限
+    if (mode === 'AUTO') {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true }
+      });
+      const autoExecuteRoles = ['PROFESSIONAL', 'PREMIUM', 'ENTERPRISE', 'ADMIN', 'SUPER_ADMIN'];
+      if (!user || !autoExecuteRoles.includes(user.role)) {
+        return res.status(403).json({ error: '您的账户等级不支持自动执行模式，请升级到专业版' });
+      }
+    }
+
+    const session = await agentService.updateSessionMode(id, mode as AgentMode, userId);
+    logger.info(`[Agent] 用户 ${userId} 更新会话模式: ${id} -> ${mode}`);
+    res.json(session);
+  } catch (error: any) {
+    logger.error('[Agent] 更新会话模式失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -540,6 +730,60 @@ router.put('/sessions/:id/messages/:messageId', authenticate, async (req: Reques
 });
 
 /**
+ * DELETE /api/agent/sessions/:id/messages
+ * 清空会话的所有消息和任务
+ */
+router.delete('/sessions/:id/messages', authenticate, async (req: Request, res: Response) => {
+  try {
+    const sessionId = String(req.params.id);
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: '未授权' });
+    }
+
+    // 验证会话归属
+    const ownership = await verifySessionOwnership(sessionId, userId);
+    if (!ownership.valid) {
+      return res.status(403).json({ error: ownership.error });
+    }
+
+    // 删除该会话的所有消息
+    const messagesDeleteResult = await prisma.agentMessage.deleteMany({
+      where: { sessionId }
+    });
+
+    // 删除该会话的所有任务
+    const tasksDeleteResult = await prisma.agentTask.deleteMany({
+      where: { sessionId }
+    });
+
+    // 重置会话上下文（保留基本配置信息）
+    await prisma.agentSession.update({
+      where: { id: sessionId },
+      data: {
+        context: JSON.stringify({}),
+        totalTasks: 0,
+        completedTasks: 0,
+        failedTasks: 0,
+        totalPointsUsed: 0
+      }
+    });
+
+    logger.info(`[Agent] 用户 ${userId} 清空会话: ${sessionId}，删除消息 ${messagesDeleteResult.count} 条，任务 ${tasksDeleteResult.count} 个`);
+
+    res.json({
+      success: true,
+      deletedMessagesCount: messagesDeleteResult.count,
+      deletedTasksCount: tasksDeleteResult.count
+    });
+  } catch (error: any) {
+    logger.error('[Agent] 清空会话失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * DELETE /api/agent/sessions/:id/messages/:messageId
  * 重置消息（删除该消息及后续所有消息）
  */
@@ -593,10 +837,6 @@ router.delete('/sessions/:id/messages/:messageId', authenticate, async (req: Req
   }
 });
 
-/**
- * POST /api/agent/sessions/:id/tasks/:taskId/confirm
- * 确认任务（在引导模式下）
- */
 router.post('/sessions/:id/tasks/:taskId/confirm', agentTaskLimiter, authenticate, async (req: Request, res: Response) => {
   try {
     const sessionId = String(req.params.id);
@@ -626,16 +866,21 @@ router.post('/sessions/:id/tasks/:taskId/confirm', agentTaskLimiter, authenticat
       return res.status(400).json({ error: '只能确认待处理的任务' });
     }
 
-    // 更新任务状态为已确认（标记为准备执行）
+    // 更新任务状态为 RUNNING
     const updatedTask = await prisma.agentTask.update({
       where: { id: taskId },
       data: {
-        // 可以添加 confirmedAt 字段，或者直接执行
-        // 这里简单地将状态保持为 PENDING，由前端触发执行
+        status: 'RUNNING',
+        startedAt: new Date()
       }
     });
 
-    logger.info(`[Agent] 用户 ${userId} 确认任务: ${taskId}`);
+    logger.info(`[Agent] 用户 ${userId} 确认任务: ${taskId}，开始执行`);
+
+    // 异步执行任务（不等待完成）
+    agentService.executeTaskById(taskId, userId).catch(err => {
+      logger.error(`[Agent] 任务执行失败: ${taskId}`, err);
+    });
 
     res.json(updatedTask);
   } catch (error: any) {
@@ -739,7 +984,23 @@ router.post('/sessions/:id/tasks/:taskId/regenerate', agentTaskLimiter, authenti
       }
     });
 
-    logger.info(`[Agent] 用户 ${userId} 重新生成任务: ${taskId}`);
+    logger.info(`[Agent] 用户 ${userId} 重新生成任务: ${taskId}, 类型: ${task.type}`);
+
+    // 对于 CONFIG_CONFIRM 类型，需要触发 AI 重新生成配置
+    if (task.type === 'CONFIG_CONFIRM') {
+      // 获取第一条用户消息作为原始需求
+      const firstUserMessage = await prisma.agentMessage.findFirst({
+        where: { sessionId, role: 'USER' },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      if (firstUserMessage) {
+        // 异步调用 AI 重新分析并生成新配置
+        agentService.regenerateConfigConfirm(taskId, sessionId, firstUserMessage.content, userId).catch(err => {
+          logger.error(`[Agent] 重新生成配置失败: ${taskId}`, err);
+        });
+      }
+    }
 
     res.json(updatedTask);
   } catch (error: any) {
@@ -748,140 +1009,119 @@ router.post('/sessions/:id/tasks/:taskId/regenerate', agentTaskLimiter, authenti
   }
 });
 
-// ============================================================
-// SSE 进度推送
-// ============================================================
+/**
+ * POST /api/agent/sessions/:id/tasks/:taskId/confirm-images
+ * 确认所有配图（完成配图任务）
+ */
+router.post('/sessions/:id/tasks/:taskId/confirm-images', authenticate, async (req: Request, res: Response) => {
+  try {
+    const sessionId = String(req.params.id);
+    const taskId = String(req.params.taskId);
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: '未授权' });
+    }
+
+    // 验证会话归属
+    const ownership = await verifySessionOwnership(sessionId, userId);
+    if (!ownership.valid) {
+      return res.status(403).json({ error: ownership.error });
+    }
+
+    // 获取任务
+    const task = await prisma.agentTask.findFirst({
+      where: { id: taskId, sessionId }
+    });
+
+    if (!task) {
+      return res.status(404).json({ error: '任务不存在' });
+    }
+
+    if (task.type !== 'IMAGE') {
+      return res.status(400).json({ error: '只能确认配图任务' });
+    }
+
+    // 更新任务状态为已完成
+    const updatedTask = await prisma.agentTask.update({
+      where: { id: taskId },
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date()
+      }
+    });
+
+    // 更新会话统计
+    await prisma.agentSession.update({
+      where: { id: sessionId },
+      data: { completedTasks: { increment: 1 } }
+    });
+
+    logger.info(`[Agent] 用户 ${userId} 确认所有配图: ${taskId}`);
+
+    res.json(updatedTask);
+  } catch (error: any) {
+    logger.error('[Agent] 确认配图失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 /**
- * GET /api/agent/sessions/:id/progress
- * SSE 端点，推送任务进度
- * 支持 Authorization header 或 ?token= query parameter 认证（EventSource 不支持自定义 header）
+ * POST /api/agent/sessions/:id/tasks/:taskId/regenerate-images
+ * 重新生成选中的配图
  */
-router.get('/sessions/:id/progress', async (req: Request, res: Response) => {
-  // SSE 认证：支持 header 和 query parameter 两种方式
-  const authHeader = req.headers.authorization;
-  const queryToken = req.query.token as string | undefined;
-  const token = (authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null) || queryToken;
-
-  if (!token) {
-    res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'SSE 连接需要认证' } });
-    return;
-  }
-
-  // 验证 token
-  const { verifyToken } = await import('../utils/jwt.util');
-  const payload = verifyToken(token);
-  if (!payload) {
-    res.status(401).json({ success: false, error: { code: 'INVALID_TOKEN', message: 'Token 无效或已过期' } });
-    return;
-  }
-
-  // 验证用户存在且活跃
-  const user = await prisma.user.findUnique({
-    where: { id: payload.userId },
-    select: { id: true, role: true, status: true }
-  });
-  if (!user) {
-    res.status(401).json({ success: false, error: { code: 'USER_NOT_FOUND', message: '用户不存在' } });
-    return;
-  }
-
-  // 附加用户信息到 req
-  req.user = user as any;
-
-  const id = String(req.params.id);
-
-  // 验证会话归属
-  const ownership = await verifySessionOwnership(id, user.id);
-  if (!ownership.valid) {
-    res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: ownership.error || '无权访问此会话' } });
-    return;
-  }
-
-  // 设置 SSE 响应头
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // 禁用 nginx 缓冲
-
-  // 心跳检测相关
-  let lastHeartbeat = Date.now();
-  const heartbeatInterval = 30000; // 30秒
-  const connectionTimeout = 90000; // 90秒无响应则断开
-
-  // 发送初始进度
+router.post('/sessions/:id/tasks/:taskId/regenerate-images', agentTaskLimiter, authenticate, async (req: Request, res: Response) => {
   try {
-    const progress = await agentService.getProgress(id);
-    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+    const sessionId = String(req.params.id);
+    const taskId = String(req.params.taskId);
+    const { indexes, prompt } = req.body;
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: '未授权' });
+    }
+
+    if (!indexes || !Array.isArray(indexes) || indexes.length === 0) {
+      return res.status(400).json({ error: '请选择要重新生成的配图' });
+    }
+
+    // 验证会话归属
+    const ownership = await verifySessionOwnership(sessionId, userId);
+    if (!ownership.valid) {
+      return res.status(403).json({ error: ownership.error });
+    }
+
+    // 获取会话
+    const session = await prisma.agentSession.findUnique({
+      where: { id: sessionId },
+      select: { projectId: true }
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: '会话不存在' });
+    }
+
+    // 创建新的配图任务，只针对选中的页面
+    const newTask = await prisma.agentTask.create({
+      data: {
+        sessionId,
+        type: 'IMAGE',
+        params: JSON.stringify({
+          slideIndexes: indexes,
+          prompt: prompt || null
+        }),
+        priority: 60,
+        status: 'PENDING'
+      }
+    });
+
+    logger.info(`[Agent] 用户 ${userId} 创建重新生成配图任务: ${newTask.id}, 页面: ${indexes.join(',')}`);
+
+    res.status(201).json(newTask);
   } catch (error: any) {
-    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-    res.end();
-    return;
+    logger.error('[Agent] 创建重新生成配图任务失败:', error);
+    res.status(500).json({ error: error.message });
   }
-
-  // 进度更新定时器
-  const progressIntervalId = setInterval(async () => {
-    try {
-      const progress = await agentService.getProgress(id);
-      res.write(`data: ${JSON.stringify(progress)}\n\n`);
-
-      // 如果会话已完成，关闭连接
-      if (progress.status === 'COMPLETED' || progress.status === 'FAILED' || progress.status === 'CANCELLED') {
-        clearInterval(progressIntervalId);
-        clearInterval(heartbeatIntervalId);
-        res.end();
-      }
-    } catch (error: any) {
-      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-      clearInterval(progressIntervalId);
-      clearInterval(heartbeatIntervalId);
-      res.end();
-    }
-  }, 1000);
-
-  // 心跳检测定时器 - 每30秒发送心跳并验证用户状态
-  const heartbeatIntervalId = setInterval(async () => {
-    try {
-      // 检查连接是否超时
-      const now = Date.now();
-      if (now - lastHeartbeat > connectionTimeout) {
-        logger.warn(`[SSE] 连接超时，关闭会话 ${id} 的 SSE 连接`);
-        clearInterval(progressIntervalId);
-        clearInterval(heartbeatIntervalId);
-        res.write(`data: ${JSON.stringify({ type: 'timeout', message: '连接超时' })}\n\n`);
-        res.end();
-        return;
-      }
-
-      // 验证用户状态
-      const currentUser = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { id: true, status: true }
-      });
-
-      if (!currentUser || currentUser.status !== 'ACTIVE') {
-        logger.warn(`[SSE] 用户状态异常，关闭会话 ${id} 的 SSE 连接`);
-        clearInterval(progressIntervalId);
-        clearInterval(heartbeatIntervalId);
-        res.write(`data: ${JSON.stringify({ type: 'auth_expired', message: '用户状态已变更，请重新登录' })}\n\n`);
-        res.end();
-        return;
-      }
-
-      // 发送心跳注释（SSE 标准）
-      res.write(': heartbeat\n\n');
-      lastHeartbeat = now;
-    } catch (error: any) {
-      logger.error(`[SSE] 心跳检测失败: ${error.message}`);
-    }
-  }, heartbeatInterval);
-
-  // 客户端断开连接时清理
-  req.on('close', () => {
-    clearInterval(progressIntervalId);
-    clearInterval(heartbeatIntervalId);
-    logger.info(`[SSE] 客户端断开连接，会话 ${id}`);
-  });
 });
 
 // ============================================================

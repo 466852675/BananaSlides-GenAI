@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { ProjectSession, ProjectStatus } from '../types';
 import { STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from '../constants';
+import { formatTimeAgo } from '../utils/time-format';
 
 // --- Cascading Filter Component ---
 const CascadingFilter: React.FC<{
@@ -192,6 +193,7 @@ interface DashboardProps {
   onDeleteProject: (id: string) => void;
   onTogglePin: (id: string) => void;
   onStartProject: (id: string) => void;
+  onOpenHistory?: (projectId: string) => void; // 打开项目历史版本侧边栏
   // Lifted Search State
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -230,6 +232,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onDeleteProject,
   onTogglePin,
   onStartProject,
+  onOpenHistory,
   searchQuery,
   setSearchQuery,
   statusFilter = 'all',
@@ -261,19 +264,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const styleTags = useMemo(() => Array.from(new Set(projects.map(p => p.globalConfig?.styleName).filter(Boolean))), [projects]);
   const ratioTags = useMemo(() => Array.from(new Set(projects.map(p => p.globalConfig?.aspectRatio).filter(Boolean))), [projects]);
   const paletteTags = useMemo(() => Array.from(new Set(projects.map(p => p.globalConfig?.colorPalette).filter(Boolean))), [projects]);
-
-  // --- Helpers ---
-  const timeAgo = (timestamp: number) => {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000);
-    if (seconds < 60) return '刚刚';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes} 分钟前`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} 小时前`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days} 天前`;
-    return new Date(timestamp).toLocaleDateString();
-  };
 
   // --- Analytics Calculation (Project + Page Dimensions) ---
   const stats = useMemo(() => {
@@ -830,7 +820,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   onDelete={() => onDeleteProject(project.id)}
                   onTogglePin={() => onTogglePin(project.id)}
                   onStartProject={() => onStartProject(project.id)}
-                  timeAgo={timeAgo}
+                  onOpenHistory={() => onOpenHistory?.(project.id)}
                 />
               ))}
             </div>
@@ -907,8 +897,8 @@ const ProjectCard: React.FC<{
   onDelete: () => void;
   onTogglePin: () => void;
   onStartProject: () => void;
-  timeAgo: (t: number) => string;
-}> = ({ project, onOpen, onTogglePause, onDelete, onTogglePin, onStartProject, timeAgo }) => {
+  onOpenHistory?: () => void;
+}> = ({ project, onOpen, onTogglePause, onDelete, onTogglePin, onStartProject, onOpenHistory }) => {
   // Check if start button should be enabled
   const canStart = useMemo(() => {
     if (!project.items || project.items.length === 0) return false;
@@ -1070,7 +1060,7 @@ const ProjectCard: React.FC<{
             <span className="text-[10px] font-bold">
               {project.status === 'completed' && project.completedAt
                 ? new Date(project.completedAt).toLocaleString()
-                : timeAgo(project.lastModified)}
+                : formatTimeAgo(project.lastModified)}
 
             </span>
           </div>
@@ -1104,9 +1094,19 @@ const ProjectCard: React.FC<{
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition-all"
+            title="删除项目"
           >
             <Trash2 size={16} />
           </button>
+          {onOpenHistory && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenHistory(); }}
+              className="p-1.5 rounded-lg text-slate-400 hover:bg-indigo-100 hover:text-indigo-600 transition-all"
+              title="历史版本"
+            >
+              <History size={16} />
+            </button>
+          )}
           <button
             onClick={onOpen}
             className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:pr-3 transition-all ml-1 group"

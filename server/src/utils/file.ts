@@ -3,6 +3,83 @@ import fs from 'fs/promises';
 import path from 'path';
 import axios from 'axios';
 
+type StyleMapValue = string | null;
+type StyleMapRecord = Record<string, StyleMapValue>;
+
+const BARE_UPLOAD_FILENAME_RE = /^up-\d+.*$/i;
+
+const resolveManagedUploadAbsolutePath = (resource: string): string | null => {
+    if (!resource || resource.startsWith('http') || resource.startsWith('blob:') || resource.startsWith('data:')) {
+        return null;
+    }
+
+    if (resource.startsWith('/uploads/')) {
+        return path.resolve(process.cwd(), resource.slice(1));
+    }
+
+    if (resource.startsWith('uploads/')) {
+        return path.resolve(process.cwd(), resource);
+    }
+
+    if (BARE_UPLOAD_FILENAME_RE.test(resource)) {
+        return path.resolve(process.cwd(), 'uploads', resource);
+    }
+
+    return null;
+};
+
+export const uploadResourceExists = async (resource: string): Promise<boolean> => {
+    const absolutePath = resolveManagedUploadAbsolutePath(resource);
+    if (!absolutePath) return true;
+
+    try {
+        await fs.access(absolutePath);
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+export const sanitizeStyleMap = async (
+    styleMapInput: string | StyleMapRecord | null | undefined
+): Promise<{ styleMap: StyleMapRecord | null; changed: boolean }> => {
+    if (!styleMapInput) {
+        return { styleMap: null, changed: false };
+    }
+
+    let parsed: StyleMapRecord | null = null;
+    if (typeof styleMapInput === 'string') {
+        try {
+            parsed = JSON.parse(styleMapInput) as StyleMapRecord;
+        } catch {
+            return { styleMap: null, changed: false };
+        }
+    } else {
+        parsed = { ...styleMapInput };
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { styleMap: null, changed: false };
+    }
+
+    let changed = false;
+    const sanitized: StyleMapRecord = { ...parsed };
+
+    for (const [key, value] of Object.entries(parsed)) {
+        if (typeof value !== 'string' || value.length === 0) {
+            continue;
+        }
+
+        const exists = await uploadResourceExists(value);
+        if (!exists) {
+            sanitized[key] = null;
+            changed = true;
+        }
+    }
+
+    return { styleMap: sanitized, changed };
+};
+
 /**
  * Converts a local file path or remote URL to a Base64 string.
  * This is crucial for passing image/file data to Gemini/OpenAI.

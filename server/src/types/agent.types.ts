@@ -46,7 +46,7 @@ export interface AgentToolParameter {
 // 预定义的工具列表
 export const AGENT_TOOLS: AgentTool[] = [
   {
-    name: 'generateOutline',
+    name: 'OUTLINE',
     description: '生成PPT大纲结构',
     parameters: [
       { name: 'topic', type: 'string', description: 'PPT主题', required: true },
@@ -55,26 +55,25 @@ export const AGENT_TOOLS: AgentTool[] = [
     pointsCost: 5
   },
   {
-    name: 'generateSlideContent',
-    description: '生成单页幻灯片内容',
+    name: 'CONTENT',
+    description: '生成幻灯片内容',
     parameters: [
-      { name: 'slideIndex', type: 'number', description: '幻灯片索引', required: true },
-      { name: 'title', type: 'string', description: '页面标题' },
-      { name: 'brief', type: 'string', description: '内容概要' }
+      { name: 'slideIndex', type: 'number', description: '幻灯片索引' },
+      { name: 'slideCount', type: 'number', description: '幻灯片总数' }
     ],
     pointsCost: 2
   },
   {
-    name: 'generateSlideImage',
+    name: 'IMAGE',
     description: '为幻灯片生成配图',
     parameters: [
-      { name: 'slideIndex', type: 'number', description: '幻灯片索引', required: true },
+      { name: 'slideIndex', type: 'number', description: '幻灯片索引' },
       { name: 'prompt', type: 'string', description: '图片描述' }
     ],
     pointsCost: 3
   },
   {
-    name: 'modifySlide',
+    name: 'MODIFY',
     description: '修改幻灯片内容',
     parameters: [
       { name: 'slideIndex', type: 'number', description: '幻灯片索引', required: true },
@@ -84,15 +83,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     pointsCost: 1
   },
   {
-    name: 'deleteSlide',
-    description: '删除幻灯片',
-    parameters: [
-      { name: 'slideIndex', type: 'number', description: '幻灯片索引', required: true }
-    ],
-    pointsCost: 0
-  },
-  {
-    name: 'changeStyle',
+    name: 'STYLE',
     description: '更换演示文稿风格',
     parameters: [
       { name: 'styleId', type: 'string', description: '风格模板ID' }
@@ -100,7 +91,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     pointsCost: 1
   },
   {
-    name: 'exportPPT',
+    name: 'EXPORT',
     description: '导出PPT文件',
     parameters: [
       { name: 'format', type: 'string', description: '导出格式: pptx, pdf' }
@@ -108,7 +99,7 @@ export const AGENT_TOOLS: AgentTool[] = [
     pointsCost: 0
   },
   {
-    name: 'importDocument',
+    name: 'IMPORT',
     description: '导入文档作为参考资料',
     parameters: [
       { name: 'fileUrl', type: 'string', description: '文件URL', required: true }
@@ -116,12 +107,24 @@ export const AGENT_TOOLS: AgentTool[] = [
     pointsCost: 1
   },
   {
-    name: 'saveSnapshot',
+    name: 'SNAPSHOT',
     description: '保存项目快照',
     parameters: [],
     pointsCost: 0
   }
 ];
+
+// 任务类型到工具的映射（确保类型安全）
+export const TASK_TYPE_TOOL_MAP: Record<string, AgentTool | undefined> = {
+  OUTLINE: AGENT_TOOLS.find(t => t.name === 'OUTLINE'),
+  CONTENT: AGENT_TOOLS.find(t => t.name === 'CONTENT'),
+  IMAGE: AGENT_TOOLS.find(t => t.name === 'IMAGE'),
+  MODIFY: AGENT_TOOLS.find(t => t.name === 'MODIFY'),
+  STYLE: AGENT_TOOLS.find(t => t.name === 'STYLE'),
+  EXPORT: AGENT_TOOLS.find(t => t.name === 'EXPORT'),
+  IMPORT: AGENT_TOOLS.find(t => t.name === 'IMPORT'),
+  SNAPSHOT: AGENT_TOOLS.find(t => t.name === 'SNAPSHOT')
+};
 
 // ============================================================
 // OpenAI Function Calling 格式的工具定义
@@ -386,6 +389,46 @@ export interface AgentChatResponse {
   message: AgentMessage;
   tasks?: AgentTask[];
   progress?: AgentProgressResponse;
+}
+
+// ============================================================
+// 流式输出类型
+// ============================================================
+
+export interface StreamingOutlineChunk {
+  type: 'outline_chunk';
+  slideIndex: number;
+  title: string;
+  brief?: string;
+  pageType?: string;
+}
+
+export interface StreamingContentChunk {
+  type: 'content_chunk';
+  slideIndex: number;
+  content: string;
+  isComplete: boolean;
+}
+
+// ============================================================
+// 配置确认参数
+// ============================================================
+
+export interface ConfigConfirmParams {
+  topic: string;
+  styleTemplateId?: string;
+  styleName?: string;
+  aspectRatio?: string;
+  colorPalette?: string[];
+  pageCount?: number;
+  pageStructure?: {
+    cover: number;
+    directory: number;
+    transition: number;
+    content: number;
+    end: number;
+  };
+  requirements?: string;
 }
 
 // ============================================================

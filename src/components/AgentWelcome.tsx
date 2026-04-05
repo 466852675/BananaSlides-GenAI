@@ -1,12 +1,12 @@
 /**
  * AgentWelcome Agent 模式欢迎界面
  *
- * 显示示例提示、风格选择和快速开始入口
+ * 显示示例提示、热门推荐风格和快速开始入口
  */
 
 import { motion } from 'framer-motion';
-import { Sparkles, Lightbulb, Target, Calendar, Rocket, Palette, Check } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { Sparkles, Lightbulb, Target, Calendar, Rocket, Palette, Check, ChevronLeft, ChevronRight, Star, Heart } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
 import { client } from '../api/client';
 
 interface StyleTemplate {
@@ -14,14 +14,21 @@ interface StyleTemplate {
   name: string;
   thumbnailUrl?: string;
   description?: string;
-  color?: string;
-  borderColor?: string;
+  style?: string;
+  colorScheme?: string;
+  aspectRatio?: string;
+  recommendCount?: number;
+  favoriteCount?: number;
+  usageCount?: number;
+  isOfficial?: boolean;
+  styleMap?: Record<string, any>;
+  config?: Record<string, any>;
 }
 
 interface AgentWelcomeProps {
   onExampleClick: (example: string) => void;
   onCreateProject?: (title: string) => Promise<string>;
-  onStyleSelect?: (styleId: string | null) => void;
+  onStyleSelect?: (styleId: string | null, styleMap?: Record<string, any>, config?: Record<string, any>) => void;
   selectedStyleId?: string | null;
 }
 
@@ -37,51 +44,19 @@ const EXAMPLES = [
     icon: Rocket,
     title: '技术分享',
     prompt: '创建一个关于 React 19 新特性的技术分享 PPT，重点介绍并发特性和性能优化',
-    color: 'from-purple-500 to-purple-600'
+    color: 'from-blue-500 to-blue-600'
   },
   {
     icon: Calendar,
     title: '年度汇报',
     prompt: '帮我生成年度工作汇报演示文稿，包含项目成果、团队建设和未来规划三个部分',
-    color: 'from-orange-500 to-orange-600'
+    color: 'from-blue-500 to-blue-600'
   },
   {
     icon: Lightbulb,
     title: '创意策划',
     prompt: '制作一份品牌营销策划提案，为新品牌设计市场推广策略和创意方案',
-    color: 'from-green-500 to-green-600'
-  }
-];
-
-// 预设风格（扩展为 StyleTemplate 类型）
-const PRESET_STYLES: StyleTemplate[] = [
-  {
-    id: 'business',
-    name: '商务简约',
-    description: '专业大气，适合商务场景',
-    color: 'bg-slate-100',
-    borderColor: 'border-slate-300'
-  },
-  {
-    id: 'tech',
-    name: '科技感',
-    description: '前沿现代，适合技术演示',
-    color: 'bg-blue-100',
-    borderColor: 'border-blue-300'
-  },
-  {
-    id: 'creative',
-    name: '创意活泼',
-    description: '生动有趣，适合创意提案',
-    color: 'bg-purple-100',
-    borderColor: 'border-purple-300'
-  },
-  {
-    id: 'minimal',
-    name: '极简风格',
-    description: '简洁干净，突出内容',
-    color: 'bg-gray-100',
-    borderColor: 'border-gray-300'
+    color: 'from-blue-500 to-blue-600'
   }
 ];
 
@@ -91,31 +66,117 @@ export default function AgentWelcome({
   onStyleSelect,
   selectedStyleId
 }: AgentWelcomeProps) {
-  const [styleTemplates, setStyleTemplates] = useState<StyleTemplate[]>([]);
-  const [loadingStyles, setLoadingStyles] = useState(false);
+  // 热门推荐模板
+  const [hotTemplates, setHotTemplates] = useState<StyleTemplate[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
 
-  // 获取用户收藏的风格模板
+  // 我的收藏
+  const [favoriteTemplates, setFavoriteTemplates] = useState<StyleTemplate[]>([]);
+  const [loadingFavorites, setLoadingFavorites] = useState(false);
+
+  // 轮播索引
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const CAROUSEL_PAGE_SIZE = 4;
+
+  // 选中的风格来源（互斥）
+  const [selectedSource, setSelectedSource] = useState<'hot' | 'favorite' | null>(null);
+
+  // 获取热门推荐模板
   useEffect(() => {
-    const fetchStyleTemplates = async () => {
-      setLoadingStyles(true);
+    const fetchHotTemplates = async () => {
+      setLoadingTemplates(true);
       try {
-        // 尝试获取用户收藏的风格
-        const response = await client.get('/style-favorites') as unknown as any[];
-        if (Array.isArray(response) && response.length > 0) {
-          setStyleTemplates(response);
+        const response = await client.get('/templates') as unknown as any[];
+        if (Array.isArray(response)) {
+          // 筛选被设为推荐的模板（与 IDE 模式模板间热门推荐一致）
+          const recommended = response
+            .filter((t: any) => t.isRecommended === true)
+            .sort((a: any, b: any) => {
+              // 按热度分数排序（推荐数 + 收藏数 + 使用数）
+              const scoreA = (a.recommendCount || 0) + (a.favoriteCount || 0) + (a.usageCount || 0);
+              const scoreB = (b.recommendCount || 0) + (b.favoriteCount || 0) + (b.usageCount || 0);
+              return scoreB - scoreA;
+            });
+          setHotTemplates(recommended.slice(0, 12)); // 最多展示12个
         }
       } catch (error) {
-        console.log('No style favorites found, using presets');
+        console.log('Failed to fetch hot templates:', error);
       } finally {
-        setLoadingStyles(false);
+        setLoadingTemplates(false);
       }
     };
 
-    fetchStyleTemplates();
+    fetchHotTemplates();
   }, []);
 
-  // 合并预设风格和用户收藏
-  const allStyles = [...PRESET_STYLES, ...styleTemplates.slice(0, 4)];
+  // 获取我的收藏
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      setLoadingFavorites(true);
+      try {
+        const response = await client.get('/favorites') as unknown as any[];
+        if (Array.isArray(response)) {
+          // 转换数据格式以匹配 StyleTemplate 接口
+          const transformed = response.map((fav: any) => ({
+            id: fav.id,
+            name: fav.name,
+            thumbnailUrl: fav.sampleImages?.[0] || fav.styleMap?.cover || fav.styleMap?.content,
+            styleMap: fav.styleMap,
+            config: fav.config
+          }));
+          setFavoriteTemplates(transformed);
+        }
+      } catch (error) {
+        console.log('Failed to fetch favorites:', error);
+      } finally {
+        setLoadingFavorites(false);
+      }
+    };
+
+    fetchFavorites();
+  }, []);
+
+  // 选择热门推荐模板
+  const handleSelectHotTemplate = useCallback((template: StyleTemplate) => {
+    if (selectedStyleId === template.id && selectedSource === 'hot') {
+      // 取消选择
+      setSelectedSource(null);
+      onStyleSelect?.(null);
+    } else {
+      setSelectedSource('hot');
+      onStyleSelect?.(template.id, template.styleMap, template.config);
+    }
+  }, [selectedStyleId, selectedSource, onStyleSelect]);
+
+  // 选择我的收藏模板
+  const handleSelectFavoriteTemplate = useCallback((template: StyleTemplate) => {
+    if (selectedStyleId === template.id && selectedSource === 'favorite') {
+      // 取消选择
+      setSelectedSource(null);
+      onStyleSelect?.(null);
+    } else {
+      setSelectedSource('favorite');
+      onStyleSelect?.(template.id, template.styleMap, template.config);
+    }
+  }, [selectedStyleId, selectedSource, onStyleSelect]);
+
+  // 轮播控制
+  const handlePrevPage = () => {
+    setCarouselIndex(Math.max(0, carouselIndex - 1));
+  };
+
+  const handleNextPage = () => {
+    const maxIndex = Math.ceil(hotTemplates.length / CAROUSEL_PAGE_SIZE) - 1;
+    setCarouselIndex(Math.min(maxIndex, carouselIndex + 1));
+  };
+
+  // 当前页的模板
+  const visibleTemplates = hotTemplates.slice(
+    carouselIndex * CAROUSEL_PAGE_SIZE,
+    (carouselIndex + 1) * CAROUSEL_PAGE_SIZE
+  );
+
+  const totalPages = Math.ceil(hotTemplates.length / CAROUSEL_PAGE_SIZE);
 
   return (
     <div className="h-full overflow-y-auto bg-gray-50">
@@ -127,7 +188,7 @@ export default function AgentWelcome({
           className="mb-8 text-center"
         >
           <div className="mb-4 flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-black shadow-lg">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg">
               <Sparkles className="h-8 w-8 text-white" />
             </div>
           </div>
@@ -157,31 +218,24 @@ export default function AgentWelcome({
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.1 + index * 0.05 }}
                 onClick={async () => {
-                  // 先设置输入框内容，确保用户能看到
                   onExampleClick(example.prompt);
-
-                  // 然后创建项目（如果需要）
                   if (onCreateProject) {
                     try {
                       await onCreateProject(example.title);
                     } catch (error) {
                       console.error('Failed to create project:', error);
-                      // 创建失败不影响输入框内容
                     }
                   }
                 }}
-                className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-4 text-left transition-all hover:border-gray-300 hover:shadow-md"
+                className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-3 text-left transition-all hover:border-gray-300 hover:shadow-md"
               >
-                {/* 背景渐变 */}
                 <div className={`absolute inset-0 bg-gradient-to-br ${example.color} opacity-0 transition-opacity group-hover:opacity-5`} />
-
-                {/* 内容 */}
                 <div className="relative flex items-start gap-3">
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${example.color}`}>
-                    <example.icon className="h-5 w-5 text-white" />
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br ${example.color}`}>
+                    <example.icon className="h-4 w-4 text-white" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="mb-1 text-sm font-medium text-gray-800">
+                    <h3 className="mb-0.5 text-sm font-medium text-gray-800">
                       {example.title}
                     </h3>
                     <p className="text-xs text-gray-500 line-clamp-2">
@@ -194,83 +248,218 @@ export default function AgentWelcome({
           </div>
         </motion.div>
 
-        {/* 风格选择 */}
+        {/* 热门推荐 */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mb-8"
+          transition={{ delay: 0.2 }}
+          className="mb-5"
         >
-          <div className="mb-4 flex items-center gap-2">
-            <Palette className="h-4 w-4 text-gray-600" />
-            <h2 className="text-sm font-semibold text-gray-600">
-              选择风格
-            </h2>
-            {selectedStyleId && (
-              <button
-                onClick={() => onStyleSelect?.(null)}
-                className="ml-auto text-xs text-gray-500 hover:text-gray-700"
-              >
-                清除选择
-              </button>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-amber-500" />
+              <h2 className="text-sm font-semibold text-gray-600">
+                热门推荐
+              </h2>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handlePrevPage}
+                  disabled={carouselIndex === 0}
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="h-4 w-4 text-gray-600" />
+                </button>
+                <span className="text-xs text-gray-400">
+                  {carouselIndex + 1}/{totalPages}
+                </span>
+                <button
+                  onClick={handleNextPage}
+                  disabled={carouselIndex >= totalPages - 1}
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="h-4 w-4 text-gray-600" />
+                </button>
+              </div>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {allStyles.slice(0, 4).map((style) => {
-              const isSelected = selectedStyleId === style.id;
-              return (
-                <button
-                  key={style.id}
-                  onClick={() => onStyleSelect?.(isSelected ? null : style.id)}
-                  className={`relative overflow-hidden rounded-lg border-2 p-3 text-left transition-all ${
-                    isSelected
-                      ? 'border-black bg-gray-50 shadow-sm'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  {isSelected && (
-                    <div className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-black">
-                      <Check className="h-2.5 w-2.5 text-white" />
-                    </div>
-                  )}
 
-                  {/* 缩略图或颜色块 */}
-                  {style.thumbnailUrl ? (
-                    <div className="mb-2 h-12 w-full overflow-hidden rounded bg-gray-100">
-                      <img
-                        src={style.thumbnailUrl}
-                        alt={style.name}
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className={`mb-2 h-12 w-full rounded ${style.color ?? 'bg-gray-100'}`} />
-                  )}
+          {loadingTemplates ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="animate-pulse">
+                  <div className="bg-gray-200 h-24 rounded-lg mb-2" />
+                  <div className="bg-gray-200 h-3 w-3/4 rounded mb-1" />
+                  <div className="bg-gray-200 h-2 w-1/2 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : hotTemplates.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              暂无热门模板
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {visibleTemplates.map((template) => {
+                const isSelected = selectedStyleId === template.id && selectedSource === 'hot';
+                return (
+                  <button
+                    key={template.id}
+                    onClick={() => handleSelectHotTemplate(template)}
+                    className={`relative overflow-hidden rounded-lg border-2 p-2 text-left transition-all ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50/50 shadow-sm'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    {isSelected && (
+                      <div className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600">
+                        <Check className="h-3 w-3 text-white" />
+                      </div>
+                    )}
 
-                  <h3 className="text-xs font-medium text-gray-800 truncate">
-                    {style.name}
-                  </h3>
-                  {style.description && (
-                    <p className="text-xs text-gray-500 truncate">
-                      {style.description}
-                    </p>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                    {/* 缩略图 */}
+                    <div className="mb-1.5 h-14 w-full overflow-hidden rounded bg-gray-100">
+                      {(() => {
+                        const previewUrl = template.styleMap?.cover || template.styleMap?.content || template.thumbnailUrl;
+                        return previewUrl ? (
+                          <img
+                            src={previewUrl}
+                            alt={template.name}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center">
+                            <Palette className="h-6 w-6 text-gray-300" />
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* 模板信息 */}
+                    <h3 className="text-xs font-medium text-gray-800 truncate">
+                      {template.name}
+                    </h3>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {template.style && (
+                        <span className="text-[10px] text-gray-400">{template.style}</span>
+                      )}
+                      {template.colorScheme && (
+                        <span className="text-[10px] text-gray-400">• {template.colorScheme}</span>
+                      )}
+                    </div>
+                    {template.aspectRatio && (
+                      <span className="text-[10px] text-gray-400">{template.aspectRatio}</span>
+                    )}
+
+                    {/* 热度指标 */}
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400">
+                      {template.recommendCount && template.recommendCount > 0 && (
+                        <span className="flex items-center gap-0.5">
+                          <Star className="h-2.5 w-2.5" />
+                          {template.recommendCount}
+                        </span>
+                      )}
+                      {template.favoriteCount && template.favoriteCount > 0 && (
+                        <span className="flex items-center gap-0.5">
+                          <Heart className="h-2.5 w-2.5" />
+                          {template.favoriteCount}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </motion.div>
 
-        {/* 使用提示 */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="mt-8 text-center text-xs text-gray-400"
-        >
-          <p>输入您的需求，例如："生成一份关于 AI 发展的演示文稿"</p>
-          <p className="mt-1">支持自然语言描述、导入文档、修改现有内容等多种方式</p>
-        </motion.div>
+        {/* 我的收藏 */}
+        {favoriteTemplates.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <Heart className="h-4 w-4 text-rose-500" />
+              <h2 className="text-sm font-semibold text-gray-600">
+                我的收藏
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {favoriteTemplates.slice(0, 4).map((template) => {
+                const isSelected = selectedStyleId === template.id && selectedSource === 'favorite';
+                return (
+                  <button
+                    key={template.id}
+                    onClick={() => handleSelectFavoriteTemplate(template)}
+                    className={`relative overflow-hidden rounded-lg border-2 p-2 text-left transition-all ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-50/50 shadow-sm'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    {isSelected && (
+                      <div className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600">
+                        <Check className="h-3 w-3 text-white" />
+                      </div>
+                    )}
+
+                    {/* 缩略图 */}
+                    <div className="mb-1.5 h-14 w-full overflow-hidden rounded bg-gray-100">
+                      {(() => {
+                        const previewUrl = template.styleMap?.cover || template.styleMap?.content || template.thumbnailUrl;
+                        return previewUrl ? (
+                          <img
+                            src={previewUrl}
+                            alt={template.name}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center">
+                            <Palette className="h-6 w-6 text-gray-300" />
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <h3 className="text-xs font-medium text-gray-800 truncate">
+                      {template.name}
+                    </h3>
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* 选中提示 */}
+        {selectedStyleId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mb-4 p-3 bg-gray-100 rounded-lg text-center"
+          >
+            <p className="text-xs text-gray-600">
+              已选择风格模板，生成的配图将应用此风格
+            </p>
+            <button
+              onClick={() => {
+                setSelectedSource(null);
+                onStyleSelect?.(null);
+              }}
+              className="mt-1 text-xs text-gray-500 hover:text-gray-700 underline"
+            >
+              清除选择
+            </button>
+          </motion.div>
+        )}
+
       </div>
     </div>
   );

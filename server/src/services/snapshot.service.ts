@@ -2,6 +2,7 @@ import { AIService } from './ai.service';
 import { AppSettings, ProjectSession } from '../types';
 import { SettingService } from './setting.service';
 import { prisma } from '../db';
+import { sanitizeStyleMap } from '../utils/file';
 
 // --- Memory Queue for Notifications ---
 export const notificationQueue: Array<{
@@ -14,6 +15,41 @@ export const notificationQueue: Array<{
 }> = [];
 
 export class SnapshotService {
+    private toGlobalStyleMap(styleMap: Record<string, string | null> | null): ProjectSession['globalStyleMap'] {
+        return {
+            cover: styleMap?.cover ?? null,
+            directory: styleMap?.directory ?? null,
+            transition: styleMap?.transition ?? null,
+            content: styleMap?.content ?? null,
+            end: styleMap?.end ?? null,
+            custom: styleMap?.custom ?? null
+        };
+    }
+
+    private async sanitizeSnapshotDataString(dataString: string): Promise<{ dataString: string; changed: boolean }> {
+        try {
+            const parsed = JSON.parse(dataString) as ProjectSession & { styleMap?: Record<string, string | null> };
+            const sourceStyleMap = parsed.globalStyleMap ?? parsed.styleMap ?? null;
+            const { styleMap, changed } = await sanitizeStyleMap(sourceStyleMap);
+
+            if (!changed) {
+                return { dataString, changed: false };
+            }
+
+            if ('globalStyleMap' in parsed || !('styleMap' in parsed)) {
+                parsed.globalStyleMap = this.toGlobalStyleMap(styleMap);
+            } else {
+                parsed.styleMap = this.toGlobalStyleMap(styleMap);
+            }
+
+            return {
+                dataString: JSON.stringify(parsed),
+                changed: true
+            };
+        } catch {
+            return { dataString, changed: false };
+        }
+    }
 
     // Static poll method to match route usage, or instance method if we use instance
     // To minimize breakage, we use static for utility access or global instance pattern
@@ -228,6 +264,16 @@ export class SnapshotService {
             include: { project: { select: { userId: true } } }
         });
         if (!snapshot || snapshot.project.userId !== userId) return null;
+
+        const { dataString, changed } = await this.sanitizeSnapshotDataString(snapshot.data);
+        if (changed) {
+            await prisma.projectSnapshot.update({
+                where: { id: snapshot.id },
+                data: { data: dataString }
+            });
+            snapshot.data = dataString;
+        }
+
         return snapshot;
     }
 
@@ -239,8 +285,18 @@ export class SnapshotService {
         });
         if (!snapshot || snapshot.project.userId !== userId) throw new Error("Snapshot not found");
 
+        const { dataString, changed } = await this.sanitizeSnapshotDataString(snapshot.data);
+        if (changed) {
+            await prisma.projectSnapshot.update({
+                where: { id: snapshot.id },
+                data: { data: dataString }
+            });
+            snapshot.data = dataString;
+        }
+
         const data = JSON.parse(snapshot.data);
         const projectId = snapshot.projectId;
+        const { styleMap } = await sanitizeStyleMap(data.globalStyleMap || data.styleMap || null);
 
         // 2. Overwrite Project Data
         // Needs to update Project fields AND Items (Slides)
@@ -250,7 +306,7 @@ export class SnapshotService {
             where: { id: projectId },
             data: {
                 globalConfig: JSON.stringify(data.globalConfig || {}),
-                styleMap: JSON.stringify(data.globalStyleMap || {}),
+                styleMap: JSON.stringify(styleMap || {}),
                 // items are handled separately via transaction usually, 
                 // but here let's reuse projectService logic if possible?
                 // Or just do a hard delete/create transaction here.

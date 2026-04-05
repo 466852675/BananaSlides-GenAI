@@ -2,8 +2,26 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { saveBase64Image, isBase64Image } from '../utils/imageSaver';
 import { resourceService } from './resource.service';
+import { sanitizeStyleMap } from '../utils/file';
 
 export class ProjectService {
+    private async sanitizeProjectStyleMap<T extends { id: string; styleMap: string | null }>(project: T): Promise<T> {
+        const { styleMap, changed } = await sanitizeStyleMap(project.styleMap);
+        if (!changed) {
+            return project;
+        }
+
+        const serialized = styleMap ? JSON.stringify(styleMap) : null;
+        await prisma.project.update({
+            where: { id: project.id },
+            data: { styleMap: serialized }
+        });
+
+        return {
+            ...project,
+            styleMap: serialized
+        };
+    }
 
     // Helper: Generate Display ID (PID-YYMMDD-XXXXXX)
     private generateDisplayId(): string {
@@ -33,6 +51,7 @@ export class ProjectService {
 
         // Lazy Migration: Backfill displayId for existing projects
         const migrations = [];
+        const sanitizedProjects = [];
         for (const p of projects) {
             if (!p.displayId) {
                 const newId = this.generateDisplayId();
@@ -53,6 +72,8 @@ export class ProjectService {
                     data: { completedAt: p.updatedAt }
                 }));
             }
+
+            sanitizedProjects.push(await this.sanitizeProjectStyleMap(p));
         }
 
         if (migrations.length > 0) {
@@ -60,7 +81,7 @@ export class ProjectService {
             await prisma.$transaction(migrations);
         }
 
-        return projects;
+        return sanitizedProjects;
     }
 
     async countActive(ownerId: string) {
@@ -86,6 +107,8 @@ export class ProjectService {
         if (!isAdmin && project && project.userId !== userId) return null;
 
         if (project) {
+            const sanitizedProject = await this.sanitizeProjectStyleMap(project);
+            Object.assign(project, sanitizedProject);
             await this.migrateProjectImages(project);
         }
 
@@ -301,6 +324,9 @@ export class ProjectService {
                     status: slide.status || 'idle'
                 };
 
+                // 使用 upsert 避免 ID 冲突
+                // 如果 slide.id 存在且在当前项目中，更新它
+                // 如果 slide.id 不存在或不在当前项目中，创建新的（让数据库生成 ID）
                 if (slide.id && existingIds.has(slide.id)) {
                     // Update existing slide
                     await tx.slide.update({
@@ -308,12 +334,9 @@ export class ProjectService {
                         data: slideData
                     });
                 } else {
-                    // Create new slide
+                    // Create new slide - 不传递 ID，让数据库自动生成
                     await tx.slide.create({
-                        data: {
-                            id: slide.id, // Preserve the ID from frontend
-                            ...slideData
-                        }
+                        data: slideData
                     });
                 }
             }

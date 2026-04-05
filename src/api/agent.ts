@@ -8,7 +8,9 @@ import type {
   AgentMessage,
   AgentTask,
   AgentProgressResponse,
-  AgentChatResponse
+  AgentChatResponse,
+  AgentSessionStatus,
+  AgentMode,
 } from '../types/agent';
 
 const BASE_URL = '/agent';
@@ -21,19 +23,23 @@ export interface ProjectWithSession {
   thumbnailUrl: string | null;
   status: string;
   scenarioType: string;
+  isPinned: boolean;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
   agentSession: {
     id: string;
-    status: string;
-    mode: string;
+    status: AgentSessionStatus;
+    mode: AgentMode;
     totalTasks: number;
     completedTasks: number;
     failedTasks: number;
+    totalPointsUsed: number;
     createdAt: string;
     updatedAt: string;
-  } | null;
+    completedAt?: string;
+    projectId: string;
+  }
 }
 
 export const agentApi = {
@@ -90,6 +96,13 @@ export const agentApi = {
     return client.post(`${BASE_URL}/sessions/${sessionId}/cancel`);
   },
 
+  /**
+   * 更新会话模式（引导/自动）
+   */
+  async updateSessionMode(sessionId: string, mode: 'GUIDED' | 'AUTO'): Promise<AgentSession> {
+    return client.patch(`${BASE_URL}/sessions/${sessionId}/mode`, { mode });
+  },
+
   // ============================================================
   // 消息处理
   // ============================================================
@@ -125,6 +138,13 @@ export const agentApi = {
    */
   async resetMessage(sessionId: string, messageId: string): Promise<void> {
     return client.delete(`${BASE_URL}/sessions/${sessionId}/messages/${messageId}`);
+  },
+
+  /**
+   * 清空会话的所有消息和任务
+   */
+  async clearSession(sessionId: string): Promise<{ success: boolean; deletedMessagesCount: number; deletedTasksCount: number }> {
+    return client.delete(`${BASE_URL}/sessions/${sessionId}/messages`);
   },
 
   // ============================================================
@@ -169,6 +189,20 @@ export const agentApi = {
   },
 
   /**
+   * 确认所有配图
+   */
+  async confirmAllImages(sessionId: string, taskId: string): Promise<AgentTask> {
+    return client.post(`${BASE_URL}/sessions/${sessionId}/tasks/${taskId}/confirm-images`);
+  },
+
+  /**
+   * 重新生成选中的配图
+   */
+  async regenerateSelectedImages(sessionId: string, taskId: string, indexes: number[], prompt?: string): Promise<AgentTask> {
+    return client.post(`${BASE_URL}/sessions/${sessionId}/tasks/${taskId}/regenerate-images`, { indexes, prompt });
+  },
+
+  /**
    * 获取会话进度
    */
   async getProgress(sessionId: string): Promise<AgentProgressResponse> {
@@ -184,7 +218,9 @@ export const agentApi = {
    */
   createProgressEventSource(sessionId: string): EventSource {
     const token = localStorage.getItem(TOKEN_KEY);
-    const url = `${import.meta.env.VITE_API_URL || ''}/api${BASE_URL}/sessions/${sessionId}/progress?token=${token}`;
+    // 通过 Vite 代理路径，避免直连后端导致 CORS 和认证问题
+    const encodedToken = token ? encodeURIComponent(token) : '';
+    const url = `/api/agent/sessions/${sessionId}/progress?token=${encodedToken}`;
     return new EventSource(url);
   },
 

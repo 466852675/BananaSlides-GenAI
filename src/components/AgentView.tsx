@@ -6,17 +6,18 @@
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Settings, Sparkles, ChevronLeft, ChevronRight, Plus, Eye, MessageCircle, PanelLeft } from 'lucide-react';
+import { MessageSquare, Settings, Sparkles, ChevronLeft, ChevronRight, Plus, Eye, MessageCircle, PanelLeft, Trash2 } from 'lucide-react';
 import AgentSidebar from './AgentSidebar';
 import AgentHeader from './AgentHeader';
 import ChatArea from './ChatArea';
 import InputArea from './InputArea';
 import AgentWelcome from './AgentWelcome';
 import AgentPreview from './AgentPreview';
+import { ConfirmDialog } from './ConfirmDialog';
 import agentApi, { type ProjectWithSession } from '../api/agent';
 import { client } from '../api/client';
-import useWebSocket from '../hooks/useWebSocket';
 import { smartRefine } from '../services/geminiService';
+import { exportToZip, exportToPdf, exportToPptx } from '../services/exportService';
 import type {
   AgentSession,
   AgentMessage,
@@ -37,11 +38,18 @@ export default function AgentView({
   onConfigChange,
   onStyleMapChange,
   onCreateProject,
+  onSelectProject,
   onOpenConfig,
   onOpenStyle,
   configSaved: configSavedProp = false,
   showToast,
-  isVip = false
+  isVip = false,
+  styleSelectionCleared,
+  // WebSocket props - 由 App.tsx 统一管理
+  wsStatus,
+  wsMessage,
+  onWsJoinProject,
+  onWsLeaveProject
 }: AgentViewProps) {
 
   // 移动端检测
@@ -80,38 +88,81 @@ export default function AgentView({
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [progress, setProgress] = useState<AgentProgressResponse | null>(null);
 
+  // 流式输出状态
+  const [streamingOutline, setStreamingOutline] = useState<{
+    slides: any[];
+    isGenerating: boolean;
+  }>({ slides: [], isGenerating: false });
+
+  const [streamingContent, setStreamingContent] = useState<{
+    slides: any[];
+    isGenerating: boolean;
+  }>({ slides: [], isGenerating: false });
+
+  const [imageProgress, setImageProgress] = useState<{
+    pages: any[];
+    currentPage: number;
+  }>({ pages: [], currentPage: 0 });
+
   // UI 状态
   const [inputValue, setInputValue] = useState('');
   const [autoMode, setAutoMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true); // 默认折叠
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false); // 默认展开
   const [showPreview, setShowPreview] = useState(false);
+  const [userHasSelectedMode, setUserHasSelectedMode] = useState(false); // 用户是否主动选择了模式
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false); // 清空确认对话框状态
+
+  // 监听外部清除风格选中状态
+  useEffect(() => {
+    if (styleSelectionCleared !== undefined && styleSelectionCleared > 0) {
+      setSelectedStyleId(null);
+    }
+  }, [styleSelectionCleared]);
 
   // 风格选择处理
-  const handleStyleSelect = useCallback(async (styleId: string | null) => {
+  const handleStyleSelect = useCallback(async (styleId: string | null, styleMap?: Record<string, any>, config?: Record<string, any>) => {
     setSelectedStyleId(styleId);
 
     if (!styleId) {
-      // 清除风格选择
+      // 清除风格选择 - 同时清空 styleMap 和 config
       onStyleMapChange?.({});
+      onConfigChange?.({});
       return;
     }
 
+    // 如果传入了 styleMap 和 config，直接使用
+    if (styleMap && Object.keys(styleMap).length > 0) {
+      onStyleMapChange?.(styleMap);
+      // 同时更新 config（如果有传入）
+      if (config && Object.keys(config).length > 0) {
+        onConfigChange?.(config);
+      }
+      showToast?.('已应用风格模板', 'success');
+      return;
+    }
+
+    // 否则从 API 获取风格模板详情
     try {
-      // 获取风格模板详情
       const response = await client.get(`/templates/${styleId}`);
       const styleTemplate = response as any;
 
-      if (styleTemplate && styleTemplate.styleMap) {
-        // 应用风格到项目的 styleMap
-        onStyleMapChange?.(styleTemplate.styleMap);
+      if (styleTemplate) {
+        // 更新 styleMap
+        if (styleTemplate.styleMap) {
+          onStyleMapChange?.(styleTemplate.styleMap);
+        }
+        // 更新 config
+        if (styleTemplate.config) {
+          onConfigChange?.(styleTemplate.config);
+        }
         showToast?.(`已应用风格：${styleTemplate.name}`, 'success');
       }
     } catch (error) {
       showError('应用风格失败', error);
     }
-  }, [onStyleMapChange, showToast]);
+  }, [onStyleMapChange, onConfigChange, showToast]);
 
   // 检测是否有已完成的幻灯片可以预览
   const hasCompletedSlides = useMemo(
@@ -122,16 +173,76 @@ export default function AgentView({
   // 项目列表（侧边栏）- 使用 ProjectWithSession 类型
   const [projects, setProjects] = useState<ProjectWithSession[]>([]);
 
-  // WebSocket 连接
-  const { status: wsStatus, lastMessage: wsMessage, joinProject, leaveProject } = useWebSocket(currentProjectId);
+  // 获取当前项目状态（用于判断显示对话还是预览）
+  const currentProject = useMemo(() => {
+    if (!currentProjectId) return null;
+    return projects.find(p => p.id === currentProjectId);
+  }, [currentProjectId, projects]);
+
+  // 合并 session 数据：优先使用 session state，但补充 currentProject.agentSession 的进度数据
+  // 这样历史库项目的进度信息也能正确显示
+  const displaySession = useMemo(() => {
+    if (!session && !currentProject?.agentSession) return null;
+
+    // 如果有 session state，使用它
+    if (session) {
+      // 但如果 session 缺少进度数据，从 currentProject.agentSession 补充
+      const projectSession = currentProject?.agentSession;
+      if (projectSession && (session.totalTasks === 0 || session.totalPointsUsed === 0)) {
+        return {
+          ...session,
+          totalTasks: projectSession.totalTasks || session.totalTasks,
+          completedTasks: projectSession.completedTasks || session.completedTasks,
+          totalPointsUsed: projectSession.totalPointsUsed || session.totalPointsUsed,
+          failedTasks: projectSession.failedTasks || session.failedTasks
+        };
+      }
+      return session;
+    }
+
+    // 没有 session state 但有 currentProject.agentSession（历史库项目）
+    return currentProject?.agentSession || null;
+  }, [session, currentProject?.agentSession]);
+
+  // 切换项目时重置用户模式选择状态，并根据项目状态设置默认视图
+  useEffect(() => {
+    setUserHasSelectedMode(false);
+    // 已完成项目默认显示预览，其他状态默认显示对话
+    setShowPreview(currentProject?.status === 'completed');
+  }, [currentProjectId, currentProject?.status]);
+
+  // WebSocket 状态 - 使用从 App.tsx 传递的 props
+  // 默认值用于兼容旧调用
+  const connected = wsStatus?.connected ?? false;
+  const reconnecting = wsStatus?.reconnecting ?? false;
 
   // 上一次 WebSocket 连接状态（用于检测重连）
-  const prevWsConnectedRef = useRef(wsStatus.connected);
+  const prevWsConnectedRef = useRef(connected);
+
+  // 请求锁：防止 initSession 并发调用
+  const initSessionRef = useRef<string | null>(null);
+  const initSessionLoadingRef = useRef(false);
+  const lastInitializedProjectRef = useRef<string | null>(null);
+  const sessionProjectIdRef = useRef<string | null>(null);
+  const autoModeRef = useRef(autoMode);
+  const showErrorRef = useRef(showError);
+
+  useEffect(() => {
+    sessionProjectIdRef.current = session?.projectId ?? null;
+  }, [session?.projectId]);
+
+  useEffect(() => {
+    autoModeRef.current = autoMode;
+  }, [autoMode]);
+
+  useEffect(() => {
+    showErrorRef.current = showError;
+  }, [showError]);
 
   // WebSocket 重连后恢复状态
   useEffect(() => {
     // 检测从不连接到连接的状态变化（重连成功）
-    if (wsStatus.connected && !prevWsConnectedRef.current && session) {
+    if (connected && !prevWsConnectedRef.current && session) {
       console.log('[AgentView] WebSocket 重连成功，恢复会话状态...');
       // 重新获取会话状态
       agentApi.getSession(session.id)
@@ -144,17 +255,16 @@ export default function AgentView({
           showError('恢复会话状态失败', error);
         });
     }
-    prevWsConnectedRef.current = wsStatus.connected;
-  }, [wsStatus.connected, session, showToast]);
+    prevWsConnectedRef.current = connected;
+  }, [connected, session, showToast]);
 
   // SSE 连接
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // 初始化会话
+  // 初始化会话 - 使用 ref 存储最新的 projectId，避免依赖 initSession
+  const currentProjectIdRef = useRef(currentProjectId);
   useEffect(() => {
-    if (currentProjectId) {
-      initSession(currentProjectId);
-    }
+    currentProjectIdRef.current = currentProjectId;
   }, [currentProjectId]);
 
   // 获取项目列表（含 AgentSession 信息）
@@ -164,11 +274,11 @@ export default function AgentView({
         const response = await agentApi.getProjectsWithSessions();
         setProjects(response);
       } catch (error) {
-        showError('获取项目列表失败', error);
+        showErrorRef.current('获取项目列表失败', error);
       }
     };
     fetchProjects();
-  }, [showToast]);
+  }, []);
 
   // SSE 进度监听
   useEffect(() => {
@@ -208,19 +318,131 @@ export default function AgentView({
         if (wsMessage.payload?.progress) {
           setProgress(wsMessage.payload.progress);
         }
+        // 更新任务进度
+        if (wsMessage.payload?.taskId && wsMessage.payload?.progress !== undefined) {
+          setTasks(prev => prev.map(task =>
+            task.id === wsMessage.payload.taskId
+              ? {
+                  ...task,
+                  progress: wsMessage.payload.progress,
+                  status: wsMessage.payload.status ?? task.status,
+                  error: wsMessage.payload.error ?? task.error,
+                  result: wsMessage.payload.result !== undefined
+                    ? (typeof wsMessage.payload.result === 'string'
+                      ? wsMessage.payload.result
+                      : JSON.stringify(wsMessage.payload.result))
+                    : task.result
+                }
+              : task
+          ));
+        }
         break;
 
       case 'agent_task_complete':
         // 任务完成，更新任务列表
         if (wsMessage.payload?.task) {
+          const completedTask = wsMessage.payload.task;
           setTasks(prev => {
-            const existingIndex = prev.findIndex(t => t.id === wsMessage.payload.task.id);
+            const existingIndex = prev.findIndex(t => t.id === completedTask.id);
             if (existingIndex >= 0) {
               const updated = [...prev];
-              updated[existingIndex] = wsMessage.payload.task;
+              updated[existingIndex] = completedTask;
               return updated;
             }
-            return [...prev, wsMessage.payload.task];
+            return [...prev, completedTask];
+          });
+        }
+        break;
+
+      case 'agent_task_preview':
+        // 任务预览更新（引导模式下预生成结果）
+        if (wsMessage.payload?.task) {
+          const previewTask = wsMessage.payload.task;
+          console.log('[AgentView] 收到预览更新:', previewTask.id, previewTask.result);
+          setTasks(prev => {
+            const existingIndex = prev.findIndex(t => t.id === previewTask.id);
+            if (existingIndex >= 0) {
+              const updated = [...prev];
+              // result 从 WebSocket 接收时是对象，需要序列化为字符串存储
+              updated[existingIndex] = {
+                ...updated[existingIndex],
+                result: typeof previewTask.result === 'string'
+                  ? previewTask.result
+                  : JSON.stringify(previewTask.result)
+              };
+              return updated;
+            }
+            return prev;
+          });
+        }
+        break;
+
+      case 'outline_streaming_chunk':
+        // 大纲流式输出块
+        if (wsMessage.payload?.chunk) {
+          const chunk = wsMessage.payload.chunk;
+          setStreamingOutline(prev => ({
+            isGenerating: true,
+            slides: [...prev.slides, {
+              index: chunk.slideIndex,
+              title: chunk.title,
+              brief: chunk.brief,
+              pageType: chunk.pageType
+            }]
+          }));
+        }
+        break;
+
+      case 'content_streaming_chunk':
+        // 内容流式输出块
+        if (wsMessage.payload?.chunk) {
+          const chunk = wsMessage.payload.chunk;
+          setStreamingContent(prev => {
+            const slides = [...prev.slides];
+            if (chunk.isComplete || !slides[chunk.slideIndex]) {
+              slides[chunk.slideIndex] = {
+                index: chunk.slideIndex,
+                content: chunk.content
+              };
+            } else {
+              slides[chunk.slideIndex].content += chunk.content;
+            }
+            return { isGenerating: true, slides };
+          });
+        }
+        break;
+
+      case 'image_progress':
+        // 图片生成进度（逐页）
+        if (wsMessage.payload) {
+          const data = wsMessage.payload;
+          setImageProgress(prev => {
+            const pages = [...prev.pages];
+            pages[data.slideIndex] = {
+              slideIndex: data.slideIndex,
+              slideTitle: data.slideTitle,
+              status: data.status,
+              imageUrl: data.imageUrl,
+              error: data.error
+            };
+            return {
+              pages,
+              currentPage: data.status === 'generating' ? data.slideIndex : prev.currentPage
+            };
+          });
+        }
+        break;
+
+      case 'agent_task_created':
+        // 新任务创建（任务链）
+        if (wsMessage.payload?.task) {
+          setTasks(prev => {
+            // 避免重复添加
+            const exists = prev.some(t => t.id === wsMessage.payload.task.id);
+            if (!exists) {
+              return [...prev, wsMessage.payload.task];
+            }
+            return prev;
           });
         }
         break;
@@ -233,44 +455,80 @@ export default function AgentView({
         break;
 
       case 'connected':
-        console.log('[AgentView] WebSocket 已连接');
         break;
 
       case 'joined_project':
-        console.log('[AgentView] 已加入项目房间:', wsMessage.payload?.projectId);
         break;
     }
   }, [wsMessage, onItemsChange]);
 
   // 初始化会话
-  const initSession = async (projectId: string) => {
+  const initSession = useCallback(async (projectId: string) => {
+    if (!projectId) return;
+
+    if (initSessionLoadingRef.current && initSessionRef.current === projectId) {
+      return;
+    }
+
+    if (
+      lastInitializedProjectRef.current === projectId &&
+      sessionProjectIdRef.current === projectId
+    ) {
+      return;
+    }
+
+    // 如果正在加载其他项目，先取消前一个请求的后续处理
+    initSessionRef.current = projectId;
+    initSessionLoadingRef.current = true;
+
     try {
       setIsLoading(true);
       const existingSession = await agentApi.getSessionByProjectId(projectId);
+
+      // 确认返回的是当前请求的项目
+      if (initSessionRef.current !== projectId) {
+        return;
+      }
+
       setSession(existingSession);
       setMessages(existingSession.messages || []);
       setTasks(existingSession.tasks || []);
+      lastInitializedProjectRef.current = projectId;
     } catch (error: any) {
-      // 检查是否是"会话不存在"错误（后端返回 404）
-      // 由于 axios 拦截器会转换错误，需要通过消息内容判断
+      // 再次确认是当前请求的项目
+      if (initSessionRef.current !== projectId) return;
+
       const errorMessage = error.message || '';
       if (errorMessage.includes('会话不存在') || errorMessage.includes('404')) {
-        // 会话不存在，创建新会话
         try {
-          const newSession = await agentApi.createSession(projectId, autoMode ? 'AUTO' : 'GUIDED');
+          const newSession = await agentApi.createSession(projectId, autoModeRef.current ? 'AUTO' : 'GUIDED');
+          if (initSessionRef.current !== projectId) return;
           setSession(newSession);
           setMessages([]);
           setTasks([]);
+          lastInitializedProjectRef.current = projectId;
         } catch (createError) {
-          showError('创建会话失败', createError);
+          showErrorRef.current('创建会话失败', createError);
         }
       } else {
-        showError('获取会话失败', error);
+        showErrorRef.current('获取会话失败', error);
       }
     } finally {
-      setIsLoading(false);
+      if (initSessionRef.current === projectId) {
+        setIsLoading(false);
+        initSessionLoadingRef.current = false;
+      }
     }
-  };
+  }, []);
+
+  // 当 currentProjectId 变化时初始化会话
+  useEffect(() => {
+    if (currentProjectId) {
+      initSession(currentProjectId);
+      return;
+    }
+    lastInitializedProjectRef.current = null;
+  }, [currentProjectId, initSession]);
 
   // 发送消息
   const handleSend = useCallback(async () => {
@@ -361,9 +619,24 @@ export default function AgentView({
   }, [inputValue, session, isLoading, currentProjectId, autoMode, onCreateProject]);
 
   // 切换自动模式
-  const handleToggleAutoMode = useCallback(() => {
-    setAutoMode(prev => !prev);
-  }, []);
+  const handleToggleAutoMode = useCallback(async () => {
+    const newMode = !autoMode;
+
+    // 如果有会话，同步到后端
+    if (session) {
+      try {
+        const updatedSession = await agentApi.updateSessionMode(session.id, newMode ? 'AUTO' : 'GUIDED');
+        setSession(updatedSession);
+        setAutoMode(newMode);
+        showToast?.(newMode ? '已切换到自动执行模式' : '已切换到引导模式', 'info');
+      } catch (error) {
+        showError('切换模式失败', error);
+      }
+    } else {
+      // 没有会话时只更新本地状态
+      setAutoMode(newMode);
+    }
+  }, [autoMode, session, showToast]);
 
   // 暂停会话
   const handlePauseSession = useCallback(async () => {
@@ -417,10 +690,17 @@ export default function AgentView({
     }
   }, [session, showToast]);
 
-  // 选择项目
+  // 选择项目 - 直接更新 currentProjectId，React state setter 会自动处理相同值的优化
   const handleSelectProject = useCallback((projectId: string) => {
-    initSession(projectId);
-  }, []);
+    onSelectProject?.(projectId);
+  }, [onSelectProject]);
+
+  // 侧边栏选择项目 - 包装原始选择函数，添加移动端侧边栏收起逻辑
+  // 使用 useCallback 确保回调函数稳定，避免每次渲染创建新函数导致 AgentSidebar 不必要重渲染
+  const handleSidebarSelectProject = useCallback((projectId: string) => {
+    handleSelectProject(projectId);
+    if (isMobile) setSidebarCollapsed(true);
+  }, [handleSelectProject, isMobile, setSidebarCollapsed]);
 
   // 新建项目（用于侧边栏）
   const handleCreateNewProject = useCallback(async () => {
@@ -438,6 +718,31 @@ export default function AgentView({
     }
   }, [onCreateProject, showError]);
 
+  // 删除项目 - 实时从列表中移除
+  const handleDeleteProject = useCallback((projectId: string) => {
+    const wasCurrentProject = currentProjectId === projectId;
+
+    // 从列表中移除项目
+    setProjects(prev => {
+      const remaining = prev.filter(p => p.id !== projectId);
+
+      // 如果删除的是当前选中的项目
+      if (wasCurrentProject) {
+        if (remaining.length > 0) {
+          // 自动选择第一个项目（延迟执行，确保 state 更新完成）
+          setTimeout(() => initSession(remaining[0].id), 0);
+        } else {
+          // 没有其他项目，清除会话
+          setSession(null);
+          setMessages([]);
+          setTasks([]);
+        }
+      }
+
+      return remaining;
+    });
+  }, [currentProjectId]);
+
   // 欢迎界面示例点击
   const handleExampleClick = useCallback((example: string) => {
     setInputValue(example);
@@ -449,27 +754,49 @@ export default function AgentView({
 
     try {
       setIsLoading(true);
-      // 调用 API 确认任务
+      // 调用 API 确认任务（后端会将状态改为 RUNNING 并执行）
       await agentApi.confirmTask(session.id, taskId);
-      // 更新任务状态（标记为已确认）
+      // 更新任务状态为 RUNNING（等待 SSE/WebSocket 推送完成事件）
       setTasks(prev => prev.map(task =>
-        task.id === taskId ? { ...task, status: 'COMPLETED' as any } : task
+        task.id === taskId ? { ...task, status: 'RUNNING' as any } : task
       ));
+      showToast?.('任务开始执行', 'info');
     } catch (error) {
       showError('确认任务失败', error);
     } finally {
       setIsLoading(false);
     }
-  }, [session]);
+  }, [session, showToast]);
 
   // 修改任务
-  const handleModifyTask = useCallback(async (taskId: string) => {
-    // 设置输入框提示用户输入修改要求
-    const task = tasks.find(t => t.id === taskId);
-    if (task) {
-      setInputValue(`请修改${getTaskTypeLabel(task.type)}：`);
+  const handleModifyTask = useCallback(async (taskId: string, modifiedData?: any) => {
+    if (!session) return;
+
+    try {
+      setIsLoading(true);
+      // 如果提供了修改数据，直接调用 API 更新任务参数
+      if (modifiedData) {
+        await agentApi.modifyTask(session.id, taskId, { params: modifiedData });
+        // 更新本地任务的 result（将修改后的数据更新到显示中）
+        setTasks(prev => prev.map(task =>
+          task.id === taskId
+            ? { ...task, result: JSON.stringify({ topic: modifiedData.topic, config: modifiedData }) }
+            : task
+        ));
+        showToast?.('配置已修改', 'success');
+      } else {
+        // 原有逻辑：设置输入框提示用户输入修改要求
+        const task = tasks.find(t => t.id === taskId);
+        if (task) {
+          setInputValue(`请修改${getTaskTypeLabel(task.type)}：`);
+        }
+      }
+    } catch (error) {
+      showError('修改任务失败', error);
+    } finally {
+      setIsLoading(false);
     }
-  }, [tasks]);
+  }, [session, tasks, showToast, showError]);
 
   // 重新生成任务
   const handleRegenerateTask = useCallback(async (taskId: string) => {
@@ -478,14 +805,56 @@ export default function AgentView({
     try {
       setIsLoading(true);
       // 调用 API 重新生成任务
-      await agentApi.regenerateTask(session.id, taskId);
-      showToast?.('已提交重新生成请求', 'info');
+      const updatedTask = await agentApi.regenerateTask(session.id, taskId);
+      // 更新本地任务状态为 PENDING
+      setTasks(prev => prev.map(task =>
+        task.id === taskId ? { ...task, status: 'PENDING' as any, progress: 0, result: null, error: null } : task
+      ));
+      showToast?.('已重置任务，请重新确认', 'info');
     } catch (error) {
       showError('重新生成失败', error);
     } finally {
       setIsLoading(false);
     }
   }, [session, showToast]);
+
+  // 确认所有配图
+  const handleConfirmAllImages = useCallback(async (taskId: string) => {
+    if (!session) return;
+
+    try {
+      setIsLoading(true);
+      // 调用后端 API 确认所有配图
+      await agentApi.confirmAllImages(session.id, taskId);
+      // 更新本地任务状态
+      setTasks(prev => prev.map(task =>
+        task.id === taskId ? { ...task, status: 'COMPLETED' as any } : task
+      ));
+      showToast?.('配图已全部确认，演示文稿制作完成', 'success');
+    } catch (error) {
+      showError('确认失败', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [session, showToast, showError]);
+
+  // 重新生成选中的配图
+  const handleRegenerateSelectedImages = useCallback(async (taskId: string, indexes: number[], prompt?: string) => {
+    if (!session) return;
+
+    try {
+      setIsLoading(true);
+      // 调用后端 API 创建重新生成任务
+      const newTask = await agentApi.regenerateSelectedImages(session.id, taskId, indexes, prompt);
+      // 添加新任务到列表
+      setTasks(prev => [...prev, newTask]);
+      showToast?.(`已创建重新生成任务，将重新生成第 ${indexes.map(i => i + 1).join('、')} 页配图`, 'info');
+    } catch (error) {
+      showError('创建重新生成任务失败', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [session, showToast, showError]);
 
   // 编辑消息
   const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
@@ -534,6 +903,35 @@ export default function AgentView({
     }
   }, [session, messages]);
 
+  // 清空会话（删除所有消息和任务）
+  const handleClearSession = useCallback(() => {
+    if (!session) return;
+    setClearDialogOpen(true);
+  }, [session]);
+
+  // 确认清空会话
+  const confirmClearSession = useCallback(async () => {
+    if (!session) return;
+
+    try {
+      setIsLoading(true);
+      // 调用 API 清空会话
+      await agentApi.clearSession(session.id);
+      // 清空本地消息和任务状态
+      setMessages([]);
+      setTasks([]);
+      // 重置流式输出状态
+      setStreamingOutline({ slides: [], isGenerating: false });
+      setStreamingContent({ slides: [], isGenerating: false });
+      showToast?.('对话历史已清空', 'success');
+    } catch (error) {
+      showError('清空对话失败', error);
+    } finally {
+      setIsLoading(false);
+      setClearDialogOpen(false);
+    }
+  }, [session, showToast, showError]);
+
   // 任务类型标签
   const getTaskTypeLabel = (type: string): string => {
     const labels: Record<string, string> = {
@@ -558,6 +956,55 @@ export default function AgentView({
       showError('AI 修饰失败', error);
     }
   }, []);
+
+  // 导出功能处理
+  const handleExportZip = useCallback(async () => {
+    if (!items || items.length === 0) {
+      showToast?.('没有可导出的幻灯片', 'error');
+      return;
+    }
+    try {
+      setIsLoading(true);
+      await exportToZip(items, currentProject?.title || 'slides');
+      showToast?.('导出 ZIP 成功', 'success');
+    } catch (error) {
+      showError('导出 ZIP 失败', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [items, currentProject?.title, showToast]);
+
+  const handleExportPdf = useCallback(async () => {
+    if (!items || items.length === 0) {
+      showToast?.('没有可导出的幻灯片', 'error');
+      return;
+    }
+    try {
+      setIsLoading(true);
+      await exportToPdf(items, currentProject?.title || 'presentation');
+      showToast?.('导出 PDF 成功', 'success');
+    } catch (error) {
+      showError('导出 PDF 失败', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [items, currentProject?.title, showToast]);
+
+  const handleExportPptx = useCallback(async () => {
+    if (!items || items.length === 0) {
+      showToast?.('没有可导出的幻灯片', 'error');
+      return;
+    }
+    try {
+      setIsLoading(true);
+      await exportToPptx(items, currentProject?.title || 'presentation');
+      showToast?.('导出 PPTX 成功', 'success');
+    } catch (error) {
+      showError('导出 PPTX 失败', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [items, currentProject?.title, showToast]);
 
   // 文件上传处理
   const handleFileUpload = useCallback(async (type: 'outline' | 'document', file: File) => {
@@ -623,6 +1070,13 @@ export default function AgentView({
   // 检测 styleMap 是否有选择
   const hasStyleSelected = Object.values(styleMap || {}).some(v => v !== null);
 
+  // 检测 config 是否已应用（有有效的风格名称才表示真正应用了模板）
+  const hasConfigApplied = useMemo(() => {
+    if (!config) return false;
+    // 只有 styleName 才是模板应用的标志，aspectRatio 默认值是 16:9 不能作为判断依据
+    return !!config.styleName;
+  }, [config]);
+
   return (
     <div className="flex h-full bg-gray-50 overflow-hidden relative" role="main" aria-label="Agent 对话界面">
       {/* 移动端侧边栏覆盖层 */}
@@ -643,28 +1097,22 @@ export default function AgentView({
       <AnimatePresence>
         {!sidebarCollapsed && (
           <motion.div
-            initial={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
-            animate={{
-              width: isMobile ? 280 : 280,
-              opacity: 1,
-              x: 0
-            }}
-            exit={{ width: 0, opacity: 0, x: isMobile ? -280 : 0 }}
-            transition={{ duration: 0.2 }}
-            className={`flex-shrink-0 ${isMobile ? 'absolute left-0 top-0 bottom-0 z-30 shadow-xl' : ''}`}
+            initial={{ width: 0 }}
+            animate={{ width: 280 }}
+            exit={{ width: 0 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className={`flex-shrink-0 overflow-hidden ${isMobile ? 'absolute left-0 top-0 bottom-0 z-30 shadow-xl' : ''}`}
             role="navigation"
             aria-label="项目列表"
           >
             <AgentSidebar
               projects={projects}
               currentProjectId={currentProjectId}
-              onSelectProject={(id) => {
-                handleSelectProject(id);
-                if (isMobile) setSidebarCollapsed(true);
-              }}
-              session={session}
+              onSelectProject={handleSidebarSelectProject}
+              session={displaySession}
               progress={progress}
               onCreateProject={handleCreateNewProject}
+              onDeleteProject={handleDeleteProject}
             />
           </motion.div>
         )}
@@ -685,61 +1133,97 @@ export default function AgentView({
 
       {/* 主内容区域 */}
       <div className="flex flex-1 flex-col">
-        {/* 顶部导航 */}
-        <div className="flex items-center justify-between">
+        {/* 顶部导航栏 - 统一背景 */}
+        <div className="flex items-center justify-between bg-gray-50 border-b border-gray-100">
           <AgentHeader
-            session={session}
+            session={displaySession}
+            projectStatus={currentProject?.status}
+            progress={progress}
             isAutoMode={autoMode}
-            isExecuting={isLoading && session?.status === 'ACTIVE'}
+            isExecuting={isLoading && displaySession?.status === 'ACTIVE'}
             onPause={handlePauseSession}
             onResume={handleResumeSession}
             onCancel={handleCancelSession}
           />
-          {/* 预览/聊天切换 */}
-          {hasCompletedSlides && messages.length > 0 && (
-            <div className="flex items-center gap-1 pr-4">
+          {/* 预览/聊天切换 - 所有项目都可切换 */}
+          <div className="flex items-center gap-1 pr-4">
+            {/* 清空对话按钮 - 只在有消息时显示 */}
+            {messages.length > 0 && (
               <button
-                onClick={() => setShowPreview(false)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                  !showPreview ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'
-                }`}
+                onClick={handleClearSession}
+                disabled={isLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-full transition-colors disabled:opacity-50 mr-2"
+                title="清空对话历史"
               >
-                <MessageCircle size={14} />
-                对话
+                <Trash2 size={14} />
+                清空
               </button>
-              <button
-                onClick={() => setShowPreview(true)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                  showPreview ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'
-                }`}
-              >
-                <Eye size={14} />
-                预览
-              </button>
-            </div>
-          )}
+            )}
+            <button
+              onClick={() => {
+                setShowPreview(false);
+                setUserHasSelectedMode(true);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                !showPreview ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              <MessageCircle size={14} />
+              对话
+            </button>
+            <button
+              onClick={() => {
+                setShowPreview(true);
+                setUserHasSelectedMode(true);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                showPreview ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              <Eye size={14} />
+              预览
+            </button>
+          </div>
         </div>
 
-        {showPreview && hasCompletedSlides ? (
-          /* 预览模式 */
-          <AgentPreview
-            items={items}
-            projectTitle={session?.project?.title}
-            onModifySlide={(index) => {
-              setShowPreview(false);
-              if (items[index]) {
-                setInputValue(`请修改第 ${index + 1} 页「${items[index].title || ''}」的内容：`);
-              }
-            }}
-            onRegenerateSlide={(index) => {
-              // 触发重新生成该页
-              if (items[index]) {
-                setInputValue(`请重新生成第 ${index + 1} 页`);
-                handleSend();
-              }
-            }}
-            onClose={() => setShowPreview(false)}
-          />
+        {/* 根据 showPreview 状态决定显示预览或对话页面 */}
+        {showPreview ? (
+          /* 预览模式 - 需要明确的高度限制 */
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AgentPreview
+              items={items}
+              projectTitle={session?.project?.title}
+              onModifySlide={async (index, data) => {
+                // 在本弹窗中直接处理修改请求
+                if (items[index]) {
+                  const slide = items[index];
+                  let message = `请修改第 ${index + 1} 页`;
+                  if (data.title) {
+                    message += `「${data.title}」`;
+                  }
+                  message += '的内容';
+                  if (data.requirements) {
+                    message += `：${data.requirements}`;
+                  }
+                  // 设置输入值并发送
+                  setInputValue(message);
+                  await handleSend();
+                }
+              }}
+              onRegenerateSlide={async (index) => {
+                // 在本弹窗中直接处理重新生成请求
+                if (items[index]) {
+                  const message = `请重新生成第 ${index + 1} 页${items[index].title ? `「${items[index].title}」` : ''}`;
+                  setInputValue(message);
+                  await handleSend();
+                }
+              }}
+              onClose={() => {
+                setShowPreview(false);
+                setUserHasSelectedMode(true);
+              }}
+            />
+          </div>
         ) : (
           /* 对话模式 */
           <>
@@ -763,6 +1247,13 @@ export default function AgentView({
                   onRegenerateTask={handleRegenerateTask}
                   onEditMessage={handleEditMessage}
                   onResetMessage={handleResetMessage}
+                  onRegenerateSelectedImages={handleRegenerateSelectedImages}
+                  onConfirmAllImages={handleConfirmAllImages}
+                  onExportZip={handleExportZip}
+                  onExportPdf={handleExportPdf}
+                  onExportPptx={handleExportPptx}
+                  streamingOutline={streamingOutline}
+                  streamingContent={streamingContent}
                   isVip={isVip}
                 />
               )}
@@ -778,7 +1269,7 @@ export default function AgentView({
               onToggleAutoMode={handleToggleAutoMode}
               onOpenConfig={onOpenConfig}
               onOpenStyle={onOpenStyle}
-              configSaved={configSavedProp}
+              configSaved={configSavedProp || hasConfigApplied}
               styleSelected={hasStyleSelected}
               onAIRefine={handleAIRefine}
               onFileUpload={handleFileUpload}
@@ -787,6 +1278,19 @@ export default function AgentView({
         )}
 
       </div>
+
+      {/* 清空对话确认对话框 */}
+      <ConfirmDialog
+        isOpen={clearDialogOpen}
+        title="清空对话"
+        message="确定要清空所有对话历史吗？此操作不可恢复。"
+        onConfirm={confirmClearSession}
+        onCancel={() => setClearDialogOpen(false)}
+        type="danger"
+        confirmText="确认清空"
+        cancelText="取消"
+        isLoading={isLoading}
+      />
     </div>
   );
 }

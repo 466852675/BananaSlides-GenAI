@@ -31,6 +31,7 @@ interface AgentGlobalConfigModalProps {
   config: StyleConfig;
   styleMap: GlobalStyleMap;
   onStyleMapChange?: (styleMap: GlobalStyleMap) => void;
+  onResetAll?: () => void;
 }
 
 // 页面类型标签
@@ -52,7 +53,8 @@ export default function AgentGlobalConfigModal({
   onSave,
   config: initialConfig,
   styleMap: initialStyleMap,
-  onStyleMapChange
+  onStyleMapChange,
+  onResetAll
 }: AgentGlobalConfigModalProps) {
   const [config, setConfig] = useState<StyleConfig>(initialConfig);
   const [styleMap, setStyleMap] = useState<GlobalStyleMap>(initialStyleMap);
@@ -89,6 +91,47 @@ export default function AgentGlobalConfigModal({
     };
     setStyleMap(clearedMap);
     onStyleMapChange?.(clearedMap);
+  };
+
+  // 清空所有配置（风格参考图 + 风格配置）
+  const handleClearAllConfig = () => {
+    // 清空风格参考图
+    const clearedMap: GlobalStyleMap = {
+      cover: null,
+      directory: null,
+      transition: null,
+      content: null,
+      end: null,
+      custom: null
+    };
+    setStyleMap(clearedMap);
+
+    // 清空风格配置
+    const clearedConfig: StyleConfig = {
+      styleName: '',
+      aspectRatio: '16:9',
+      colorPalette: '',
+      targetPageCount: 10,
+      defaultVariantCount: 4,
+      pageStructure: {
+        cover: 1,
+        directory: 1,
+        transition: 0,
+        content: 7,
+        end: 1
+      },
+      requirements: ''
+    };
+    setConfig(clearedConfig);
+
+    // 立即保存清空后的配置
+    onSave(clearedConfig, clearedMap);
+
+    // 通知父组件重置所有（包括清除 Agent 模式的选中状态）
+    onResetAll?.();
+
+    // 关闭弹窗
+    onClose();
   };
 
   // AI 智能修饰设计要求
@@ -289,9 +332,17 @@ export default function AgentGlobalConfigModal({
 
           {/* 底部按钮 */}
           <div className="flex justify-between items-center gap-3 border-t border-gray-200 px-6 py-4 flex-shrink-0">
-            <p className="text-xs text-gray-500">
-              修改全局配置将影响后续所有 AI 生成的内容
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-gray-500">
+                修改全局配置将影响后续所有 AI 生成的内容
+              </p>
+              <button
+                onClick={handleClearAllConfig}
+                className="text-xs text-red-500 hover:text-red-600 underline"
+              >
+                重置所有配置
+              </button>
+            </div>
             <div className="flex gap-3">
               <button
                 onClick={onClose}

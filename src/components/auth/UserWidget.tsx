@@ -273,25 +273,6 @@ const ROLE_VIP_MAP: Record<string, number> = {
 };
 
 const UserRoleTag: React.FC<{ user: any, isAdmin: boolean, isSuperAdmin: boolean, compact?: boolean }> = ({ user, isAdmin, isSuperAdmin, compact }) => {
-    // 逻辑：超级管理员 > 管理员 > 企业用户 > 专业用户 > 基础用户
-    let label = "基础用户";
-    let style = "bg-slate-100 text-slate-600 border-slate-200";
-
-    if (isSuperAdmin) {
-        label = "超级管理员";
-        style = "bg-rose-50 text-rose-600 border-rose-200";
-    } else if (isAdmin) {
-        // 这里可以根据具体的业务逻辑细分，目前统称为系统管理员或业务管理员
-        label = "系统管理员";
-        style = "bg-blue-50 text-blue-600 border-blue-200";
-    } else if (user.role === 'ENTERPRISE' || user.vipLevel >= 3) {
-        label = "企业用户";
-        style = "bg-emerald-50 text-emerald-600 border-emerald-200";
-    } else if (user.role === 'PROFESSIONAL' || user.vipLevel >= 2) {
-        label = "专业用户";
-        style = "bg-violet-50 text-violet-600 border-violet-200";
-    }
-
     // 计算VIP等级（根据角色）
     const vipLevel = ROLE_VIP_MAP[user.role] ?? user.vipLevel ?? 0;
 
@@ -307,14 +288,9 @@ const UserRoleTag: React.FC<{ user: any, isAdmin: boolean, isSuperAdmin: boolean
     };
 
     return (
-        <div className="inline-flex items-center gap-1.5">
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg border text-xs font-bold whitespace-nowrap ${style} ${compact ? 'text-[10px] py-0' : ''}`}>
-                {label}
-            </span>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-black whitespace-nowrap ${getVipStyle(vipLevel)} ${compact ? 'text-[9px] py-0' : ''}`}>
-                Lv{vipLevel}
-            </span>
-        </div>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-black whitespace-nowrap ${getVipStyle(vipLevel)} ${compact ? 'text-[9px] py-0' : ''}`}>
+            Lv{vipLevel}
+        </span>
     );
 };
 

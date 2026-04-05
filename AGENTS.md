@@ -1,6 +1,8 @@
 # AGENTS.md - YH-AI PPT Development Guide
 
 **Generated:** 2026-02-22
+**Last Updated:** 2026-04-06
+**Version:** v1.3.0
 **Stack:** React 19.2 + Vite 6.2 + Express 5.2 + Prisma 6.19 + SQLite
 
 ## Quick Commands
@@ -155,6 +157,11 @@ YH-AI PPT/
 | Result Display | `src/components/ResultCard.tsx` | Slide preview/variants |
 | Auth Context | `src/contexts/AuthContext.tsx` | JWT session management |
 | Type Defs | `src/types.ts` | 167 lines of shared interfaces |
+| **Agent View** | **`src/components/AgentView.tsx`** | **Agent对话式生成UI** |
+| **Agent Service** | **`server/src/services/agent.service.ts`** | **Agent核心逻辑** |
+| **WebSocket Service** | **`server/src/services/websocket.service.ts`** | **实时通信服务** |
+| **Agent Routes** | **`server/src/routes/agent.routes.ts`** | **Agent API端点** |
+| **Agent Types** | **`server/src/types/agent.types.ts`** | **Agent类型定义** |
 
 ## Development Notes
 
@@ -325,6 +332,185 @@ if (process.env.NODE_ENV !== 'production') {
 - `Project`: User PPT projects
 - `AiRule`: AI model routing rules
 - `RolePermission`: Many-to-many role-permission mapping
+- **`AgentSession`**: Agent会话，绑定项目
+- **`AgentMessage`**: 消息历史，支持编辑/重置
+- **`AgentTask`**: 任务队列，状态追踪
+
+**Agent API 端点**:
+```
+POST   /api/agent/sessions                 创建会话
+GET    /api/agent/sessions/:id             获取会话详情
+POST   /api/agent/sessions/:id/messages    发送消息
+DELETE /api/agent/sessions/:id/messages/:msgId  删除消息
+POST   /api/agent/sessions/:id/messages/:msgId/reset  重置至此节点
+GET    /api/agent/sessions/:id/progress    SSE进度流
+GET    /api/agent/sessions/:id/tasks       获取任务列表
+POST   /api/agent/sessions/:id/tasks/:taskId/confirm  确认任务
+POST   /api/agent/sessions/:id/tasks/:taskId/modify   修改任务参数
+```
+
+### Agent 模式架构
+
+**Core Service**: [server/src/services/agent.service.ts](server/src/services/agent.service.ts)
+
+YH-AI PPT 提供两种并行的 PPT 创作范式：
+
+| 模式 | 特点 | 适用场景 |
+|------|------|----------|
+| **工作台模式** | 手动配置 + 批量生成 | 精细控制每页内容 |
+| **Agent 模式** | 自然语言驱动，AI 自动规划 | 快速创作、非技术用户 |
+
+**双模式数据共享**：
+- 共享状态层：`items` / `config` / `styleMap`
+- WebSocket 实时同步两端操作
+
+**执行模式权限**：
+| 模式 | 说明 | 最低角色 |
+|------|------|----------|
+| GUIDED | 每个关键步骤需用户确认 | USER |
+| AUTO | AI 自动执行全流程 | PROFESSIONAL |
+
+**Agent 数据模型** (Prisma Schema):
+```prisma
+model AgentSession {
+  id          String   @id @default(uuid())
+  projectId   String
+  mode        AgentMode      @default(GUIDED)
+  status      AgentSessionStatus @default(ACTIVE)
+  // ...
+}
+
+model AgentMessage {
+  id         String   @id @default(uuid())
+  sessionId  String
+  role       String   // "user" | "assistant"
+  content    String
+  isEdited   Boolean  @default(false)
+  // ...
+}
+
+model AgentTask {
+  id         String   @id @default(uuid())
+  sessionId  String
+  messageId  String
+  type       AgentTaskType
+  status     AgentTaskStatus @default(PENDING)
+  costPoints Int?
+  // ...
+}
+```
+
+**9 大 AI 工具 (Function Calling)**:
+| 工具名称 | 功能 | 参数 |
+|----------|------|------|
+| `generate_outline` | 生成PPT大纲 | topic, keywords, pageCount |
+| `modify_outline` | 修改大纲 | outlineId, changes |
+| `generate_content` | 生成页面内容 | slideIndex, title, description |
+| `modify_content` | 修改页面内容 | slideIndex, content |
+| `generate_image` | 生成配图 | slideIndex, style, prompt |
+| `regenerate_image` | 重新生成配图 | slideIndex, feedback |
+| `apply_style` | 应用风格模板 | styleTemplateId |
+| `import_document` | 导入文档 | documentUrl, type |
+| `export_ppt` | 导出PPT | format (PDF/PPTX/ZIP) |
+
+**Agent 权限检查**:
+```typescript
+// server/src/routes/agent.routes.ts
+router.post('/sessions',
+  authenticate,
+  requirePermission('agent.session.create'),
+  async (req, res) => {
+    // AUTO 模式需要 PROFESSIONAL+ 权限
+    if (mode === 'AUTO') {
+      const autoRoles = ['PROFESSIONAL', 'PREMIUM', 'ENTERPRISE', 'ADMIN', 'SUPER_ADMIN'];
+      if (!autoRoles.includes(user.role)) {
+        return res.status(403).json({ error: '需要升级到专业版' });
+      }
+    }
+  }
+);
+```
+
+### WebSocket 实时通信
+
+**Core Service**: [server/src/services/websocket.service.ts](server/src/services/websocket.service.ts)
+
+**项目房间机制**:
+- 基于 `projectId` 广播，支持多标签页/多设备同步
+- JWT 鉴权，连接时验证 token
+- 心跳检测：30s 间隔，自动清理断连客户端
+
+**连接方式**:
+```typescript
+// 前端 Hook
+const ws = new WebSocket(`ws://localhost:1111/ws?token=${jwtToken}`);
+
+// 使用示例
+import { useWebSocket } from '@/hooks/useWebSocket';
+
+function MyComponent() {
+  const { isConnected, subscribe, sendMessage } = useWebSocket();
+
+  useEffect(() => {
+    if (isConnected) {
+      subscribe('project-uuid', (message) => {
+        console.log('Received:', message);
+      });
+    }
+  }, [isConnected]);
+}
+```
+
+**消息类型**:
+| 类型 | 方向 | 说明 |
+|------|------|------|
+| `subscribe` | 客户端→服务端 | 订阅项目房间 |
+| `unsubscribe` | 客户端→服务端 | 取消订阅 |
+| `slides_update` | 服务端→客户端 | 幻灯片更新广播 |
+| `agent_progress` | 服务端→客户端 | Agent 任务进度 |
+| `task_complete` | 服务端→客户端 | 任务完成通知 |
+
+### SSE 进度流
+
+**端点**: `/api/agent/sessions/:sessionId/progress`
+
+**连接方式**:
+```typescript
+const eventSource = new EventSource(
+  `/api/agent/sessions/${sessionId}/progress?token=${jwtToken}`
+);
+
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Progress:', data);
+};
+
+eventSource.onerror = (error) => {
+  console.error('SSE Error:', error);
+  eventSource.close();
+};
+```
+
+**Vite 代理配置** (已配置 SSE 长连接):
+```typescript
+// vite.config.ts
+proxy: {
+  '/api': {
+    target: 'http://127.0.0.1:1111',
+    changeOrigin: true,
+    configure: (proxy) => {
+      proxy.on('proxyReq', (proxyReq) => {
+        proxyReq.setHeader('Connection', 'keep-alive');
+      });
+    }
+  }
+}
+```
+
+**调试技巧**:
+1. WebSocket 连接状态: DevTools → Network → WS
+2. SSE 连接状态: DevTools → Network → EventStream
+3. 后端日志: `server/logs/` 目录
 
 ---
 
@@ -341,6 +527,9 @@ if (process.env.NODE_ENV !== 'production') {
 7. **Never empty catch blocks** - Always log via Winston logger
 8. **Never use `any` type** - Backend strict mode enforced
 9. **Never commit without running `lsp_diagnostics`** on changed files
+10. **Never skip Agent message validation** - Validate all message content before AI processing
+11. **Never bypass SSE authentication** - Always require JWT token for progress streams
+12. **Never edit other users' sessions** - Agent sessions are user-private, enforce ownership check
 
 ### API Client Patterns
 

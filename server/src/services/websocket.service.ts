@@ -330,6 +330,71 @@ export class WebSocketService {
   }
 
   /**
+   * 广播 Agent 任务预览更新（引导模式下预生成结果）
+   */
+  broadcastAgentTaskPreview(sessionId: string, projectId: string, task: any): void {
+    this.broadcastToProject(projectId, {
+      type: 'agent_task_preview',
+      payload: {
+        sessionId,
+        task
+      },
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * 广播大纲流式输出块
+   */
+  broadcastOutlineChunk(sessionId: string, projectId: string, chunk: any): void {
+    this.broadcastToProject(projectId, {
+      type: 'outline_streaming_chunk',
+      payload: {
+        sessionId,
+        chunk
+      },
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * 广播内容流式输出块
+   */
+  broadcastContentChunk(sessionId: string, projectId: string, chunk: any): void {
+    this.broadcastToProject(projectId, {
+      type: 'content_streaming_chunk',
+      payload: {
+        sessionId,
+        chunk
+      },
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * 广播图片生成进度（逐页）
+   */
+  broadcastImageProgress(sessionId: string, projectId: string, data: {
+    slideIndex: number;
+    slideTitle?: string;
+    totalSlides?: number;
+    totalPages?: number;
+    currentPage?: number;
+    status: 'generating' | 'completed' | 'failed';
+    imageUrl?: string;
+    error?: string;
+  }): void {
+    this.broadcastToProject(projectId, {
+      type: 'image_progress',
+      payload: {
+        sessionId,
+        ...data
+      },
+      timestamp: Date.now()
+    });
+  }
+
+  /**
    * 广播幻灯片更新
    */
   broadcastSlidesUpdate(projectId: string, items: any[], source: 'agent' | 'workbench'): void {

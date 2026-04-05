@@ -16,14 +16,13 @@ import { snapshotService } from './snapshot.service';
 import { websocketService } from './websocket.service';
 import { resourceService } from './resource.service';
 import {
-  AgentTool,
   AgentToolCall,
   AgentMessageCreateInput,
   AgentTaskCreateInput,
   AgentSessionCreateInput,
   AgentProgressResponse,
   AgentChatResponse,
-  AGENT_TOOLS
+  TASK_TYPE_TOOL_MAP
 } from '../types/agent.types';
 import { logger } from '../utils/logger';
 
@@ -54,22 +53,37 @@ export class AgentService {
       return existingSession;
     }
 
-    // 创建新会话
-    const session = await prisma.agentSession.create({
-      data: {
-        projectId: input.projectId,
-        mode: input.mode || AgentMode.GUIDED,
-        status: AgentSessionStatus.ACTIVE
-      },
-      include: {
-        project: {
-          select: { id: true, title: true, thumbnailUrl: true }
+    // 创建新会话 - 捕获竞态条件导致的唯一约束冲突
+    try {
+      const session = await prisma.agentSession.create({
+        data: {
+          projectId: input.projectId,
+          mode: input.mode || AgentMode.GUIDED,
+          status: AgentSessionStatus.ACTIVE
+        },
+        include: {
+          project: {
+            select: { id: true, title: true, thumbnailUrl: true }
+          }
         }
-      }
-    });
+      });
 
-    logger.info(`[Agent] 创建会话: ${session.id}, 项目: ${input.projectId}`);
-    return session;
+      logger.info(`[Agent] 创建会话: ${session.id}, 项目: ${input.projectId}`);
+      return session;
+    } catch (error: any) {
+      // P2002 = Prisma Unique constraint failed
+      if (error.code === 'P2002' && error.meta?.target?.includes('projectId')) {
+        logger.warn(`[Agent] 会话已存在（竞态条件），返回现有会话: ${input.projectId}`);
+        // 返回已存在的会话
+        return prisma.agentSession.findUnique({
+          where: { projectId: input.projectId },
+          include: {
+            project: { select: { id: true, title: true, thumbnailUrl: true } }
+          }
+        });
+      }
+      throw error;
+    }
   }
 
   /**
@@ -130,9 +144,21 @@ export class AgentService {
         thumbnailUrl: true,
         status: true,
         scenarioType: true,
+        isPinned: true,
         createdAt: true,
         updatedAt: true,
         completedAt: true,
+        styleMap: true, // 用于缩略图回退
+        items: {
+          select: {
+            id: true,
+            status: true,
+            pageType: true,
+            variants: true,
+            previewUrl: true
+          },
+          orderBy: { index: 'asc' }
+        },
         agentSession: {
           select: {
             id: true,
@@ -141,18 +167,180 @@ export class AgentService {
             totalTasks: true,
             completedTasks: true,
             failedTasks: true,
+            totalPointsUsed: true,
             createdAt: true,
-            updatedAt: true
+            updatedAt: true,
+            completedAt: true
           }
         }
       },
-      orderBy: { updatedAt: 'desc' }
+      orderBy: { createdAt: 'desc' }
     });
 
-    return projects.map(p => ({
-      ...p,
-      agentSession: p.agentSession || null
-    }));
+    // 批量查询所有项目的积分消耗总和
+    const projectIds = projects.map(p => p.id);
+    const transactions = await prisma.transaction.groupBy({
+      by: ['projectId'],
+      where: {
+        projectId: { in: projectIds },
+        type: 'consume'
+      },
+      _sum: {
+        amount: true
+      }
+    });
+
+    // 转换为 Map 方便查询
+    const pointsMap = new Map<string, number>();
+    transactions.forEach(t => {
+      if (t.projectId) {
+        // amount 是负数，取绝对值
+        pointsMap.set(t.projectId, Math.abs(t._sum.amount || 0));
+      }
+    });
+
+    return projects.map(p => {
+      // 动态计算项目状态（与 IDE 模式 transformProject 保持一致）
+      const itemStatuses = p.items.map(i => i.status);
+      let effectiveStatus = p.status;
+
+      // 1. 如果没有 items，状态为 'idle'
+      if (itemStatuses.length === 0) {
+        effectiveStatus = 'idle';
+      }
+      // 2. 如果任何 item 有错误，状态为 'error'
+      else if (itemStatuses.some(s => s === 'error')) {
+        effectiveStatus = 'error';
+      }
+      // 3. 如果任何 item 正在生成，状态为 'generating'
+      else if (itemStatuses.some(s => s === 'generating')) {
+        effectiveStatus = 'generating';
+      }
+      // 4. 如果所有 items 都是 'success'，状态为 'completed'
+      else if (itemStatuses.length > 0 && itemStatuses.every(s => s === 'success')) {
+        effectiveStatus = 'completed';
+      }
+      // 5. 有 items 但不是全部完成，状态为 'in-progress'
+      else if (itemStatuses.length > 0) {
+        effectiveStatus = 'in-progress';
+      }
+
+      // 动态计算缩略图（与 IDE 模式 calculateThumbnail 保持一致）
+      const thumbnailUrl = this.calculateThumbnail(p.items, p.styleMap);
+
+      // 动态计算统计数据（如果 session 数据为 0 或不存在）
+      const session = p.agentSession;
+      const totalItems = p.items.length;
+      const completedItems = p.items.filter(i => i.status === 'success').length;
+      const totalPointsUsed = pointsMap.get(p.id) || 0;
+
+      // 如果 session 存在但统计数据为 0，使用动态计算的值
+      const enrichedSession = session ? {
+        ...session,
+        totalTasks: session.totalTasks > 0 ? session.totalTasks : totalItems,
+        completedTasks: session.completedTasks > 0 ? session.completedTasks : completedItems,
+        totalPointsUsed: session.totalPointsUsed > 0 ? session.totalPointsUsed : totalPointsUsed
+      } : (totalItems > 0 || totalPointsUsed > 0 ? {
+        // 如果没有 session 但有数据，创建一个虚拟 session
+        id: `virtual-${p.id}`,
+        projectId: p.id,
+        status: effectiveStatus === 'completed' ? 'COMPLETED' :
+                effectiveStatus === 'generating' ? 'ACTIVE' :
+                effectiveStatus === 'in-progress' ? 'ACTIVE' : 'ACTIVE',
+        mode: 'GUIDED',
+        totalTasks: totalItems,
+        completedTasks: completedItems,
+        failedTasks: 0,
+        totalPointsUsed: totalPointsUsed,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        completedAt: p.completedAt
+      } : null);
+
+      return {
+        id: p.id,
+        displayId: p.displayId,
+        title: p.title,
+        thumbnailUrl: thumbnailUrl || p.thumbnailUrl, // 优先使用动态计算的
+        status: effectiveStatus,
+        scenarioType: p.scenarioType,
+        isPinned: p.isPinned,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        completedAt: p.completedAt,
+        agentSession: enrichedSession
+      };
+    });
+  }
+
+  /**
+   * 计算项目缩略图（与前端 projects.ts calculateThumbnail 保持一致）
+   * 优先级：cover > directory > transition > content > end
+   */
+  private calculateThumbnail(items: any[], styleMap: any): string | null {
+    const pageTypePriority = ['cover', 'directory', 'transition', 'content', 'end'];
+
+    // 解析 styleMap
+    let parsedStyleMap: any = null;
+    if (styleMap) {
+      try {
+        parsedStyleMap = typeof styleMap === 'string' ? JSON.parse(styleMap) : styleMap;
+      } catch {
+        parsedStyleMap = null;
+      }
+    }
+
+    // 按页面类型优先级查找
+    for (const pageType of pageTypePriority) {
+      const slide = items.find(item => item.pageType === pageType);
+      if (slide) {
+        // 优先使用生成的 variant
+        if (slide.variants) {
+          try {
+            const variants = typeof slide.variants === 'string' ? JSON.parse(slide.variants) : slide.variants;
+            if (Array.isArray(variants) && variants.length > 0) {
+              const url = typeof variants[0] === 'string' ? variants[0] : variants[0]?.url;
+              if (url) return url;
+            }
+          } catch {
+            // 忽略解析错误
+          }
+        }
+        // 其次使用 previewUrl
+        if (slide.previewUrl) {
+          return slide.previewUrl;
+        }
+      }
+    }
+
+    // 回退到任意有图片的幻灯片
+    for (const item of items) {
+      if (item.variants) {
+        try {
+          const variants = typeof item.variants === 'string' ? JSON.parse(item.variants) : item.variants;
+          if (Array.isArray(variants) && variants.length > 0) {
+            const url = typeof variants[0] === 'string' ? variants[0] : variants[0]?.url;
+            if (url) return url;
+          }
+        } catch {
+          // 忽略解析错误
+        }
+      }
+      if (item.previewUrl) {
+        return item.previewUrl;
+      }
+    }
+
+    // 最后回退到 styleMap
+    if (parsedStyleMap) {
+      for (const pageType of pageTypePriority) {
+        if (parsedStyleMap[pageType]) {
+          return parsedStyleMap[pageType];
+        }
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -224,6 +412,26 @@ export class AgentService {
         const task = await this.createTask(sessionId, taskType, intent.params);
         tasks.push(task);
       }
+
+      // 引导模式下预生成大纲和内容预览
+      if (session.mode === AgentMode.GUIDED) {
+        logger.info(`[Agent] 引导模式，开始预生成任务预览，任务数: ${tasks.length}`);
+        for (const task of tasks) {
+          if (task.type === AgentTaskType.OUTLINE || task.type === AgentTaskType.CONTENT) {
+            // 异步预生成结果，不阻塞响应
+            logger.info(`[Agent] 开始预生成任务预览: ${task.id}, 类型: ${task.type}`);
+            this.pregenerateTaskPreview(task.id, userId).catch(err => {
+              logger.error(`[Agent] 预生成任务预览失败: ${task.id}`, err);
+            });
+          } else if (task.type === AgentTaskType.CONFIG_CONFIRM) {
+            // CONFIG_CONFIRM 任务立即执行并保存结果（但保持 PENDING 状态）
+            logger.info(`[Agent] 开始执行配置确认任务: ${task.id}`);
+            this.executeConfigConfirmForPreview(task.id, task.sessionId, task.params ? JSON.parse(task.params) : {}, userId).catch(err => {
+              logger.error(`[Agent] 配置确认任务执行失败: ${task.id}`, err);
+            });
+          }
+        }
+      }
     }
 
     // 生成助手回复
@@ -270,9 +478,14 @@ export class AgentService {
       topic?: string;
       pageCount?: number;
       style?: string;
+      styleName?: string;
+      aspectRatio?: string;
+      colorPalette?: string[];
+      requirements?: string;
       currentStep?: string;
       confirmedOutline?: boolean;
       confirmedContent?: boolean;
+      confirmedConfig?: boolean;
     } = {};
 
     try {
@@ -283,6 +496,46 @@ export class AgentService {
       }
     } catch (e) {
       // 忽略解析错误
+    }
+
+    // 从用户消息中提取配置信息
+    const extractedConfig = this.extractConfigFromMessage(content);
+    if (extractedConfig) {
+      context = { ...context, ...extractedConfig };
+    }
+
+    // 检查是否需要配置确认
+    // 如果有主题，且配置未确认，则显示配置确认卡片
+    if (context.topic && !context.confirmedConfig) {
+      // 检查是否有足够配置信息
+      if (this.hasEnoughConfig(context)) {
+        // 创建配置确认任务，让用户确认配置
+        return {
+          tasks: ['CONFIG_CONFIRM' as AgentTaskType],
+          params: {
+            topic: context.topic,
+            pageCount: context.pageCount,
+            styleName: context.styleName,
+            aspectRatio: context.aspectRatio || '16:9',
+            requirements: context.requirements || ''
+          },
+          response: `我已了解您的需求。请确认以下配置信息：\n\n**主题**：${context.topic}\n**页数**：${context.pageCount}页\n**风格**：${context.styleName}\n\n如需修改，请在下方配置卡片中点击"修改"按钮。确认无误后点击"确认配置"开始生成。`,
+          needsMoreInfo: false
+        };
+      } else {
+        // 需要用户提供更多配置信息
+        const missingItems = [];
+        if (!context.pageCount) missingItems.push('页数');
+        if (!context.styleName) missingItems.push('风格');
+
+        return {
+          tasks: [],
+          params: { topic: context.topic },
+          response: `我已了解您的需求："${context.topic}"。为了生成更合适的演示文稿，请提供以下信息：${missingItems.join('、')}。\n\n例如："生成10页，科技风格"`,
+          needsMoreInfo: true,
+          missingInfo: missingItems
+        };
+      }
     }
 
     // 构建 AI 意图识别 Prompt
@@ -311,6 +564,23 @@ export class AgentService {
       // 解析 AI 返回的 JSON
       const intent = this.parseIntentResponse(aiResponse, content, context);
 
+      // 【强制修复】如果配置未确认且是创建意图，必须确保第一个任务是 CONFIG_CONFIRM
+      if (!context.confirmedConfig &&
+          (intent.tasks.includes(AgentTaskType.OUTLINE) ||
+           intent.tasks.includes(AgentTaskType.CONTENT) ||
+           intent.tasks.includes(AgentTaskType.IMAGE))) {
+        // 检查是否已有 CONFIG_CONFIRM
+        if (!intent.tasks.includes(AgentTaskType.CONFIG_CONFIRM)) {
+          // 强制插入 CONFIG_CONFIRM 作为第一个任务
+          intent.tasks.unshift(AgentTaskType.CONFIG_CONFIRM);
+          // 同时更新 plannedTasks（如果存在）
+          if (intent.plannedTasks && !intent.plannedTasks.includes(AgentTaskType.CONFIG_CONFIRM)) {
+            intent.plannedTasks.unshift(AgentTaskType.CONFIG_CONFIRM);
+          }
+          logger.info(`[Agent] 强制插入 CONFIG_CONFIRM 任务，原任务: ${intent.tasks.slice(1).join(',')}`);
+        }
+      }
+
       // 更新会话上下文
       await this.updateSessionContext(session.id, intent, context);
 
@@ -334,7 +604,8 @@ export class AgentService {
 - 风格偏好: ${context.style || '未确定'}
 - 当前步骤: ${context.currentStep || '初始对话'}
 - 大纲已确认: ${context.confirmedOutline ? '是' : '否'}
-- 内容已确认: ${context.confirmedContent ? '是' : '否'}`
+- 内容已确认: ${context.confirmedContent ? '是' : '否'}
+- 配置已确认: ${context.confirmedConfig ? '是' : '否'}`
       : '\n当前对话上下文：新对话，无历史信息';
 
     return `
@@ -348,11 +619,14 @@ ${contextInfo}
 \`\`\`json
 {
   "intent": "create | modify | query | confirm | cancel | continue",
-  "tasks": ["outline" | "content" | "image" | "export" | "modify" | "style"],
+  "tasks": ["config_confirm" | "outline" | "content" | "image" | "export" | "modify" | "style"],
   "params": {
-    "topic": "PPT主题（如果用户提到了）",
-    "pageCount": 数字页数（如果用户提到了）,
-    "style": "风格描述（如果用户提到了）",
+    "topic": "PPT主题（从用户输入中提取，如'智能手表新品演示文稿'）",
+    "pageCount": 数字页数（如果用户提到了，否则默认10）,
+    "style": "风格描述（如果用户提到了，否则默认'商务'）",
+    "styleName": "风格名称（商务/科技/简约/活泼/创意/学术等）",
+    "aspectRatio": "比例（默认16:9）",
+    "requirements": "其他设计要求",
     "slideIndex": 要修改的幻灯片索引（如果是修改操作）,
     "field": "要修改的字段（title/content/image）",
     "value": "修改的值",
@@ -374,6 +648,7 @@ ${contextInfo}
 - continue: 用户想继续之前的流程
 
 任务说明：
+- config_confirm: 【必须第一个】配置确认，展示风格、页数、比例等配置供用户确认
 - outline: 生成大纲
 - content: 生成正文内容
 - image: 生成配图
@@ -381,13 +656,22 @@ ${contextInfo}
 - modify: 修改幻灯片
 - style: 更换风格
 
-判断规则：
-1. 如果用户说"做一个关于X的PPT"、"生成PPT"、"帮我写"等，intent 为 create
-2. 如果用户提到主题但没有页数，needsMoreInfo 为 true，missingInfo 包含 "pageCount"
-3. 如果用户确认（"好的"、"可以"、"确认"），intent 为 confirm
+【关键判断规则】：
+1. 如果用户说"做一个关于X的PPT"、"生成PPT"、"帮我写"等创建意图：
+   - intent 为 create
+   - tasks **必须**以 "config_confirm" 开头，然后是 ["outline", "content", "image", "export"]
+   - params.topic 必须从用户输入中提取主题内容
+   - params.pageCount 如果用户没提到，默认设为 10
+   - params.styleName 如果用户没提到，默认设为 "商务"
+   - needsMoreInfo 为 false（因为我们已经有默认值）
+
+2. 如果配置已确认（confirmedConfig 为 true），tasks 从 "outline" 开始
+
+3. 如果用户确认配置（"好的"、"可以"、"确认配置"），intent 为 confirm
+
 4. 如果用户修改（"改一下"、"换成"），intent 为 modify
+
 5. 如果上下文中已有大纲且用户说"继续"，tasks 应该是下一步的任务
-6. 如果用户没有提供足够信息，response 应该包含引导性问题
 
 请只返回 JSON，不要包含其他文字。
 `;
@@ -402,6 +686,7 @@ ${contextInfo}
     response: string;
     needsMoreInfo?: boolean;
     missingInfo?: string[];
+    plannedTasks?: AgentTaskType[]; // 新增：存储完整的任务链计划
   } {
     try {
       // 提取 JSON
@@ -422,6 +707,7 @@ ${contextInfo}
 
       // 转换任务类型
       const taskMapping: Record<string, AgentTaskType> = {
+        'config_confirm': AgentTaskType.CONFIG_CONFIRM,
         'outline': AgentTaskType.OUTLINE,
         'content': AgentTaskType.CONTENT,
         'image': AgentTaskType.IMAGE,
@@ -430,12 +716,20 @@ ${contextInfo}
         'style': AgentTaskType.STYLE
       };
 
-      const tasks = (parsed.tasks || [])
+      const allTasks = (parsed.tasks || [])
         .map((t: string) => taskMapping[t])
         .filter(Boolean);
 
+      // 【关键修复】线性流程：只返回第一个任务，其他任务存入 plannedTasks
+      // 任务链由 createNextTask 方法根据 plannedTasks 逐步创建
+      const firstTask = allTasks.length > 0 ? [allTasks[0]] : [];
+      const remainingTasks = allTasks.length > 1 ? allTasks.slice(1) : [];
+
+      logger.info(`[Agent] 意图解析完成，首个任务: ${firstTask[0] || '无'}, 计划任务链: ${allTasks.join(' -> ')}`);
+
       return {
-        tasks,
+        tasks: firstTask, // 只返回第一个任务
+        plannedTasks: allTasks, // 存储完整任务链供后续使用
         params: parsed.params || {},
         response: parsed.response || '',
         needsMoreInfo: parsed.needsMoreInfo,
@@ -498,6 +792,17 @@ ${contextInfo}
       newContext.confirmedContent = true;
     }
 
+    // 如果用户确认了配置（有主题且需要生成大纲，说明配置已确认）
+    if (intent.tasks?.includes(AgentTaskType.OUTLINE) && currentContext.topic && !currentContext.confirmedConfig) {
+      newContext.confirmedConfig = true;
+    }
+
+    // 【关键】存储任务链计划，供 createNextTask 使用
+    if (intent.plannedTasks && intent.plannedTasks.length > 0) {
+      newContext.plannedTasks = intent.plannedTasks;
+      logger.info(`[Agent] 任务链计划已存储: ${intent.plannedTasks.join(' -> ')}`);
+    }
+
     await prisma.agentSession.update({
       where: { id: sessionId },
       data: { context: JSON.stringify(newContext) }
@@ -531,7 +836,7 @@ ${contextInfo}
     // ============================================================
     // 确认意图处理 - 关键！
     // ============================================================
-    const confirmKeywords = ['开始', '确认', '好的', '可以', '没问题', '是的', '对', '继续', '执行', '生成'];
+    const confirmKeywords = ['开始', '确认', '好的', '可以', '没问题', '是的', '对', '继续', '执行'];
     if (confirmKeywords.some(kw => lowerContent.includes(kw))) {
       // 用户确认执行，根据当前上下文推断下一步
       if (context.confirmedContent) {
@@ -575,6 +880,9 @@ ${contextInfo}
         lowerContent.includes('创建') || lowerContent.includes('制作')) {
       result.tasks.push(AgentTaskType.OUTLINE);
       result.params.topic = content;
+      if (!result.response) {
+        result.response = `好的，我将为您生成关于"${content}"的 PPT 大纲。请稍候...`;
+      }
     }
 
     // 生成内容
@@ -627,8 +935,94 @@ ${contextInfo}
   }
 
   /**
-   * 生成助手响应
+   * 从用户消息中提取配置信息
    */
+  private extractConfigFromMessage(content: string): any {
+    const config: any = {};
+
+    // 提取页数（支持 "10页"、"十页"、"大概15页左右" 等格式）
+    const pageMatch = content.match(/(\d+)\s*[页张]/);
+    if (pageMatch) {
+      config.pageCount = parseInt(pageMatch[1]);
+    }
+
+    // 提取比例
+    if (content.includes('16:9') || content.includes('16比9') || content.includes('宽屏')) {
+      config.aspectRatio = '16:9';
+    } else if (content.includes('4:3') || content.includes('4比3') || content.includes('标准')) {
+      config.aspectRatio = '4:3';
+    }
+
+    // 提取风格
+    const styleKeywords: Record<string, string> = {
+      '商务': '商务',
+      '科技': '科技',
+      '简约': '简约',
+      '极简': '简约',
+      '活泼': '活泼',
+      '创意': '创意',
+      '学术': '学术',
+      '教育': '教育',
+      '专业': '专业',
+      '现代': '现代',
+      '传统': '传统',
+      '艺术': '艺术'
+    };
+
+    for (const [keyword, style] of Object.entries(styleKeywords)) {
+      if (content.includes(keyword)) {
+        config.styleName = style;
+        break;
+      }
+    }
+
+    // 提取设计要求（引号内的内容或特定关键词后的内容）
+    const requirementsMatch = content.match(/要求[:：]\s*([^。，]+)/);
+    if (requirementsMatch) {
+      config.requirements = requirementsMatch[1].trim();
+    }
+
+    return Object.keys(config).length > 0 ? config : null;
+  }
+
+  /**
+   * 检查是否有足够配置信息
+   */
+  private hasEnoughConfig(context: any): boolean {
+    // 必须包含主题、页数、风格
+    return !!(
+      context.topic &&
+      context.pageCount &&
+      context.pageCount > 0 &&
+      context.styleName
+    );
+  }
+
+  /**
+   * 标记配置已确认
+   */
+  private async markConfigConfirmed(sessionId: string) {
+    const session = await prisma.agentSession.findUnique({
+      where: { id: sessionId },
+      select: { context: true }
+    });
+    if (session?.context) {
+      try {
+        const context = typeof session.context === 'string'
+          ? JSON.parse(session.context)
+          : session.context;
+        context.confirmedConfig = true;
+        await prisma.agentSession.update({
+          where: { id: sessionId },
+          data: { context: JSON.stringify(context) }
+        });
+        logger.info(`[Agent] 配置已确认，sessionId: ${sessionId}`);
+      } catch (e) {
+        logger.error(`[Agent] 标记配置确认失败: ${e}`);
+      }
+    }
+  }
+
   private async generateResponse(
     session: any,
     userMessage: any,
@@ -657,9 +1051,12 @@ ${contextInfo}
     }
 
     const taskDescriptions: Record<AgentTaskType, string> = {
+      [AgentTaskType.CONFIG_CONFIRM]: '确认配置',
       [AgentTaskType.OUTLINE]: '生成大纲结构',
       [AgentTaskType.CONTENT]: '生成页面内容',
       [AgentTaskType.IMAGE]: '生成配图',
+      [AgentTaskType.IMAGE_BY_PAGE]: '逐页生成配图',
+      [AgentTaskType.FINAL_OVERVIEW]: '总览确认',
       [AgentTaskType.EXPORT]: '导出文件',
       [AgentTaskType.IMPORT]: '导入文档',
       [AgentTaskType.MODIFY]: '修改内容',
@@ -742,8 +1139,8 @@ ${contextInfo}
     type: AgentTaskType,
     params?: Record<string, unknown>
   ) {
-    // 计算积分消耗
-    const tool = AGENT_TOOLS.find(t => t.name === type);
+    // 计算积分消耗 - 使用映射表获取正确的工具定义
+    const tool = TASK_TYPE_TOOL_MAP[type];
     const pointsCost = tool?.pointsCost || 0;
 
     return prisma.agentTask.create({
@@ -758,13 +1155,106 @@ ${contextInfo}
   }
 
   /**
+   * 创建下一个任务（任务链）
+   * 在当前任务完成后自动创建下一个任务
+   */
+  private async createNextTask(sessionId: string, completedTaskType: AgentTaskType, userId: string) {
+    // 获取会话模式
+    const session = await prisma.agentSession.findUnique({
+      where: { id: sessionId },
+      select: { mode: true, projectId: true }
+    });
+
+    if (!session) return;
+
+    // 确定下一个任务类型
+    let nextTaskType: AgentTaskType | null = null;
+    let nextTaskParams: Record<string, unknown> = {};
+
+    switch (completedTaskType) {
+      case 'CONFIG_CONFIRM' as AgentTaskType:
+        // 配置确认完成后，标记配置已确认并创建大纲任务
+        await this.markConfigConfirmed(sessionId);
+        nextTaskType = AgentTaskType.OUTLINE;
+        break;
+
+      case AgentTaskType.OUTLINE:
+        // 大纲完成后创建内容任务
+        nextTaskType = AgentTaskType.CONTENT;
+        // 获取幻灯片数量
+        const slides = await prisma.slide.findMany({
+          where: { projectId: session.projectId },
+          select: { id: true }
+        });
+        nextTaskParams = { slideCount: slides.length };
+        break;
+
+      case AgentTaskType.CONTENT:
+        // 内容完成后创建配图任务
+        nextTaskType = AgentTaskType.IMAGE;
+        const contentSlides = await prisma.slide.findMany({
+          where: { projectId: session.projectId },
+          select: { id: true }
+        });
+        nextTaskParams = { slideCount: contentSlides.length };
+        break;
+
+      case AgentTaskType.IMAGE:
+        // 配图完成后，任务链结束
+        break;
+
+      default:
+        // 其他任务类型不创建后续任务
+        break;
+    }
+
+    if (nextTaskType) {
+      // 创建下一个任务
+      const nextTask = await this.createTask(sessionId, nextTaskType, nextTaskParams);
+      logger.info(`[Agent] 任务链: 创建下一个任务 ${nextTaskType} -> ${nextTask.id}`);
+
+      // 更新会话统计
+      await prisma.agentSession.update({
+        where: { id: sessionId },
+        data: { totalTasks: { increment: 1 } }
+      });
+
+      // 广播新任务创建事件给前端
+      const sessionWithProject = await prisma.agentSession.findUnique({
+        where: { id: sessionId },
+        select: { projectId: true }
+      });
+      if (sessionWithProject?.projectId) {
+        websocketService.broadcastToProject(sessionWithProject.projectId, {
+          type: 'agent_task_created',
+          payload: {
+            sessionId,
+            task: nextTask
+          },
+          timestamp: Date.now()
+        });
+      }
+
+      // 如果是自动模式，立即执行下一个任务
+      if (session.mode === AgentMode.AUTO) {
+        this.executeTasksAsync(sessionId, userId).catch(err => {
+          logger.error(`[Agent] 自动执行下一个任务失败: ${err.message}`);
+        });
+      }
+    }
+  }
+
+  /**
    * 获取任务优先级
    */
   private getTaskPriority(type: AgentTaskType): number {
     const priorities: Record<AgentTaskType, number> = {
+      [AgentTaskType.CONFIG_CONFIRM]: 110,
       [AgentTaskType.OUTLINE]: 100,
       [AgentTaskType.CONTENT]: 80,
       [AgentTaskType.IMAGE]: 60,
+      [AgentTaskType.IMAGE_BY_PAGE]: 55,
+      [AgentTaskType.FINAL_OVERVIEW]: 25,
       [AgentTaskType.MODIFY]: 90,
       [AgentTaskType.STYLE]: 50,
       [AgentTaskType.EXPORT]: 30,
@@ -794,13 +1284,69 @@ ${contextInfo}
    * 更新任务进度
    */
   async updateTaskProgress(taskId: string, progress: number, message?: string) {
-    return prisma.agentTask.update({
+    const task = await prisma.agentTask.update({
       where: { id: taskId },
       data: {
         progress: Math.min(100, Math.max(0, progress)),
         status: progress >= 100 ? AgentTaskStatus.COMPLETED : AgentTaskStatus.RUNNING
+      },
+      include: {
+        session: {
+          select: { projectId: true }
+        }
       }
     });
+
+    // 广播进度更新
+    if (task.session?.projectId) {
+      websocketService.broadcastAgentProgress(task.sessionId, task.session.projectId, {
+        taskId: task.id,
+        type: task.type,
+        progress: task.progress,
+        status: task.status,
+        message
+      });
+    }
+
+    return task;
+  }
+
+  /**
+   * 根据 ID 执行单个任务（用于引导模式确认后执行）
+   * 公开方法，供路由层调用
+   */
+  async executeTaskById(taskId: string, userId: string) {
+    // 获取任务详情
+    const task = await prisma.agentTask.findUnique({
+      where: { id: taskId }
+    });
+
+    if (!task) {
+      throw new Error('任务不存在');
+    }
+
+    if (task.status !== 'RUNNING') {
+      throw new Error(`任务状态不正确: ${task.status}`);
+    }
+
+    // 执行任务
+    await this.executeTask(task, userId);
+
+    // 检查是否还有待处理的任务，如果有则继续执行（引导模式下自动执行下一个）
+    const pendingCount = await prisma.agentTask.count({
+      where: { sessionId: task.sessionId, status: AgentTaskStatus.PENDING }
+    });
+
+    if (pendingCount === 0) {
+      // 所有任务完成，更新会话状态
+      await prisma.agentSession.update({
+        where: { id: task.sessionId },
+        data: {
+          status: AgentSessionStatus.COMPLETED,
+          completedAt: new Date()
+        }
+      });
+    }
   }
 
   /**
@@ -852,50 +1398,107 @@ ${contextInfo}
     const params = task.params ? JSON.parse(task.params) : {};
     let result: any = {};
 
+    // 获取 session 和 projectId（用于 WebSocket 广播）
+    const session = await prisma.agentSession.findUnique({
+      where: { id: task.sessionId },
+      select: { projectId: true }
+    });
+    const projectId = session?.projectId;
+
     try {
-      switch (task.type) {
-        case AgentTaskType.OUTLINE:
-          result = await this.executeOutline(task.sessionId, params, userId);
-          break;
-        case AgentTaskType.CONTENT:
-          result = await this.executeContent(task.sessionId, params, userId);
-          break;
-        case AgentTaskType.IMAGE:
-          result = await this.executeImage(task.sessionId, params, userId);
-          break;
-        case AgentTaskType.MODIFY:
-          result = await this.executeModify(task.sessionId, params);
-          break;
-        case AgentTaskType.EXPORT:
-          result = await this.executeExport(task.sessionId, params);
-          break;
-        default:
-          throw new Error(`未知任务类型: ${task.type}`);
+      // 检查是否有预生成的预览结果
+      let existingResult: any = null;
+      if (task.result) {
+        try {
+          const parsedResult = JSON.parse(task.result);
+          // 检查是否是预览结果
+          if (parsedResult && (parsedResult.slides || parsedResult.title)) {
+            existingResult = parsedResult;
+            logger.info(`[Agent] 任务 ${task.id} 发现预生成结果，将直接应用`);
+          }
+        } catch (e) {
+          // result 不是 JSON 格式，忽略
+        }
       }
 
-      // 标记完成
-      await prisma.agentTask.update({
+      // 如果有预生成结果，直接应用而不重新生成
+      if (existingResult && (task.type === AgentTaskType.OUTLINE || task.type === AgentTaskType.CONTENT)) {
+        if (task.type === AgentTaskType.OUTLINE) {
+          result = await this.applyOutlineFromPreview(task.id, task.sessionId, params, userId, existingResult);
+        } else if (task.type === AgentTaskType.CONTENT) {
+          result = await this.applyContentFromPreview(task.id, task.sessionId, params, userId, existingResult);
+        }
+      } else {
+        // 没有预生成结果，正常执行任务
+        switch (task.type) {
+          case 'CONFIG_CONFIRM' as AgentTaskType:
+            result = await this.executeConfigConfirm(task.id, task.sessionId, params, userId);
+            break;
+          case AgentTaskType.OUTLINE:
+            result = await this.executeOutline(task.id, task.sessionId, params, userId);
+            break;
+          case AgentTaskType.CONTENT:
+            result = await this.executeContent(task.id, task.sessionId, params, userId);
+            break;
+          case AgentTaskType.IMAGE:
+            result = await this.executeImage(task.id, task.sessionId, params, userId);
+            break;
+          case 'IMAGE_BY_PAGE' as any:
+            result = await this.executeImageByPage(task.id, task.sessionId, params, userId);
+            break;
+          case AgentTaskType.MODIFY:
+            result = await this.executeModify(task.sessionId, params);
+            break;
+          case AgentTaskType.EXPORT:
+            result = await this.executeExport(task.sessionId, params);
+            break;
+          default:
+            throw new Error(`未知任务类型: ${task.type}`);
+        }
+      }
+
+      // 标记完成 - 使用实际消耗的积分
+      const actualPointsUsed = result.pointsUsed || 0;
+      const completedTask = await prisma.agentTask.update({
         where: { id: task.id },
         data: {
           status: AgentTaskStatus.COMPLETED,
           progress: 100,
           result: JSON.stringify(result),
+          pointsCost: actualPointsUsed,  // 更新为实际消耗
           completedAt: new Date()
         }
       });
 
-      // 更新会话统计
+      // 更新会话统计 - 使用实际消耗的积分
       await prisma.agentSession.update({
         where: { id: task.sessionId },
         data: {
           completedTasks: { increment: 1 },
-          totalPointsUsed: { increment: task.pointsCost || 0 }
+          totalPointsUsed: { increment: actualPointsUsed }
         }
       });
 
+      // 广播任务完成事件
+      if (projectId) {
+        websocketService.broadcastAgentTaskComplete(task.sessionId, projectId, {
+          id: completedTask.id,
+          type: completedTask.type,
+          status: completedTask.status,
+          progress: completedTask.progress,
+          result: result
+        });
+        // 同时广播幻灯片更新（因为任务可能修改了幻灯片）
+        await this.broadcastSlidesUpdate(projectId, 'agent');
+        logger.info(`[Agent] 任务完成并广播: ${task.id}`);
+      }
+
+      // 创建下一个任务（任务链）
+      await this.createNextTask(task.sessionId, task.type, userId);
+
     } catch (error: any) {
       // 标记失败
-      await prisma.agentTask.update({
+      const failedTask = await prisma.agentTask.update({
         where: { id: task.id },
         data: {
           status: AgentTaskStatus.FAILED,
@@ -909,6 +1512,336 @@ ${contextInfo}
         data: { failedTasks: { increment: 1 } }
       });
 
+      // 广播任务失败事件
+      if (projectId) {
+        websocketService.broadcastAgentTaskComplete(task.sessionId, projectId, {
+          id: failedTask.id,
+          type: failedTask.type,
+          status: failedTask.status,
+          error: error.message
+        });
+        logger.error(`[Agent] 任务失败并广播: ${task.id}`, error);
+      }
+
+      throw error;
+    }
+  }
+
+  // ============================================================
+  // 任务预生成（引导模式下预览）
+  // ============================================================
+
+  /**
+   * 预生成任务预览结果（引导模式下）
+   * 在任务处于 PENDING 状态时生成预览内容，存储在 result 字段
+   * 用户确认后直接将预览内容应用到项目
+   */
+  private async pregenerateTaskPreview(taskId: string, userId: string) {
+    logger.info(`[Agent] pregenerateTaskPreview 被调用: ${taskId}`);
+    const task = await prisma.agentTask.findUnique({ where: { id: taskId } });
+    if (!task || task.status !== AgentTaskStatus.PENDING) {
+      logger.warn(`[Agent] 预生成跳过: 任务不存在或状态不是 PENDING`);
+      return;
+    }
+
+    const params = task.params ? JSON.parse(task.params) : {};
+    let previewResult: any = null;
+
+    try {
+      if (task.type === AgentTaskType.OUTLINE) {
+        previewResult = await this.generateOutlinePreview(task.sessionId, params);
+      } else if (task.type === AgentTaskType.CONTENT) {
+        previewResult = await this.generateContentPreview(task.sessionId, params);
+      }
+
+      if (previewResult) {
+        // 更新任务 result 字段，存储预览内容
+        await prisma.agentTask.update({
+          where: { id: taskId },
+          data: {
+            result: JSON.stringify({ ...previewResult, _isPreview: true, _previewGeneratedAt: new Date().toISOString() })
+          }
+        });
+
+        // 广播任务预览更新，通知前端刷新
+        const session = await prisma.agentSession.findUnique({
+          where: { id: task.sessionId },
+          select: { projectId: true }
+        });
+        if (session?.projectId) {
+          websocketService.broadcastAgentTaskPreview(task.sessionId, session.projectId, {
+            id: task.id,
+            type: task.type,
+            status: task.status,
+            progress: 0,
+            result: previewResult
+          });
+          logger.info(`[Agent] 任务预览已广播: ${taskId}`);
+        }
+
+        logger.info(`[Agent] 任务预览生成完成: ${taskId}`);
+      }
+    } catch (error: any) {
+      logger.error(`[Agent] 预生成任务预览失败: ${taskId}`, error);
+      // 预览生成失败不影响主流程，只是不显示预览
+    }
+  }
+
+  /**
+   * 生成大纲预览（不创建幻灯片，不扣积分）
+   */
+  private async generateOutlinePreview(sessionId: string, params: any) {
+    const session = await this.getSession(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    const project = await prisma.project.findUnique({ where: { id: session.projectId } });
+    if (!project) throw new Error('项目不存在');
+
+    // 解析风格配置
+    let styleConfig: any = {
+      styleName: 'default',
+      colorPalette: '#000000,#FFFFFF',
+      requirements: '',
+      aspectRatio: '16:9',
+      targetPageCount: params.pageCount || 10,
+      pageStructure: { cover: 1, directory: 1, transition: 0, content: (params.pageCount || 10) - 3, end: 1 }
+    };
+    try {
+      if (project.styleMap) {
+        const parsed = JSON.parse(project.styleMap);
+        styleConfig = { ...styleConfig, ...parsed };
+      }
+    } catch (e) {
+      // 使用默认风格
+    }
+
+    const defaultSettings = {
+      ai: { provider: 'Gemini' as const, baseUrl: '', apiKey: '', models: { text: '', image: '', vision: '' } },
+      docParser: { provider: 'None' as const, baseUrl: '', apiKey: '' },
+      imageGeneration: { resolution: '1920x1080' as const },
+      language: 'zh' as const
+    };
+
+    // 调用 AI 生成大纲（不创建幻灯片，不扣积分）
+    const outline = await AIService.generateOutline(
+      params.topic || '未命名主题',
+      styleConfig,
+      defaultSettings
+    );
+
+    return {
+      title: params.topic || '未命名主题',
+      slides: outline.map((item: any, index: number) => ({
+        id: `preview-${index}`,
+        index,
+        title: item.title,
+        content: item.brief || '',
+        pageType: item.pageType || 'content'
+      }))
+    };
+  }
+
+  /**
+   * 生成内容预览（不写入幻灯片，不扣积分）
+   */
+  private async generateContentPreview(sessionId: string, params: any) {
+    const session = await this.getSession(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    // 获取项目的幻灯片
+    const slides = await prisma.slide.findMany({
+      where: { projectId: session.projectId },
+      orderBy: { index: 'asc' }
+    });
+
+    if (slides.length === 0) {
+      return { slides: [], message: '暂无大纲，请先生成大纲' };
+    }
+
+    const defaultSettings = {
+      ai: { provider: 'Gemini' as const, baseUrl: '', apiKey: '', models: { text: '', image: '', vision: '' } },
+      docParser: { provider: 'None' as const, baseUrl: '', apiKey: '' },
+      imageGeneration: { resolution: '1920x1080' as const },
+      language: 'zh' as const
+    };
+
+    // 为每个幻灯片生成内容预览
+    const contentSlides = [];
+    for (let i = 0; i < slides.length; i++) {
+      const slide = slides[i];
+      const pageType = slide.pageType || 'content';
+
+      // 跳过封面、目录、结束页
+      if (pageType === 'cover' || pageType === 'tableOfContents' || pageType === 'end') {
+        contentSlides.push({
+          id: slide.id,
+          index: slide.index,
+          title: slide.title,
+          content: slide.content || '',
+          pageType
+        });
+        continue;
+      }
+
+      try {
+        const content = await AIService.generateSlideDetail(
+          slide.title || '',
+          slide.brief || '',
+          slide.title || '',
+          slide.index,
+          slides.length,
+          pageType,
+          defaultSettings
+        );
+        contentSlides.push({
+          id: slide.id,
+          index: slide.index,
+          title: slide.title,
+          content: content || '',
+          pageType
+        });
+      } catch (error) {
+        // 单页失败继续处理其他页
+        contentSlides.push({
+          id: slide.id,
+          index: slide.index,
+          title: slide.title,
+          content: slide.content || '',
+          pageType
+        });
+      }
+    }
+
+    return { slides: contentSlides };
+  }
+
+  /**
+   * 应用预生成的大纲预览结果（用户确认后执行）
+   */
+  private async applyOutlineFromPreview(taskId: string, sessionId: string, params: any, userId: string, previewResult: any) {
+    const session = await this.getSession(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    // 积分预扣
+    const pageCount = previewResult.slides?.length || 10;
+    const deductResult = await pointsService.deductPoints(
+      userId,
+      'outline_generation',
+      session.projectId,
+      `Agent 大纲生成 (${pageCount}页)`,
+      1,
+      { module: 'Agent', category: '文本生成', subcategory: '大纲' }
+    );
+
+    if (!deductResult.success) {
+      throw new Error(`积分不足: ${deductResult.message}`);
+    }
+
+    try {
+      // 更新进度
+      await this.updateTaskProgress(taskId, 50);
+
+      // 创建幻灯片（从预览结果）
+      for (let i = 0; i < previewResult.slides.length; i++) {
+        const slide = previewResult.slides[i];
+        await prisma.slide.create({
+          data: {
+            projectId: session.projectId,
+            index: i,
+            pageType: slide.pageType || 'content',
+            contentType: 'text',
+            title: slide.title,
+            content: '',
+            brief: slide.content || ''
+          }
+        });
+      }
+
+      // 积分确认扣费
+      if (deductResult.transactionId) {
+        await pointsService.completeTransaction(deductResult.transactionId);
+      }
+
+      // 广播幻灯片更新
+      await this.broadcastSlidesUpdate(session.projectId, 'agent');
+
+      return {
+        title: previewResult.title,
+        slides: previewResult.slides,
+        pointsUsed: deductResult.deductedAmount
+      };
+    } catch (error: any) {
+      // 失败时退款
+      if (deductResult.transactionId) {
+        await pointsService.refundPoints(
+          userId,
+          deductResult.deductedAmount,
+          deductResult.transactionId,
+          `大纲应用失败: ${error.message}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * 应用预生成的内容预览结果（用户确认后执行）
+   */
+  private async applyContentFromPreview(taskId: string, sessionId: string, params: any, userId: string, previewResult: any) {
+    const session = await this.getSession(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    // 积分预扣
+    const slideCount = previewResult.slides?.length || 0;
+    const deductResult = await pointsService.deductPoints(
+      userId,
+      'slide_content',
+      session.projectId,
+      `Agent 内容生成 (${slideCount}页)`,
+      slideCount,
+      { module: 'Agent', category: '文本生成', subcategory: '内容' }
+    );
+
+    if (!deductResult.success) {
+      throw new Error(`积分不足: ${deductResult.message}`);
+    }
+
+    try {
+      // 更新进度
+      await this.updateTaskProgress(taskId, 50);
+
+      // 应用内容到幻灯片
+      for (const slideData of previewResult.slides || []) {
+        if (slideData.id && !slideData.id.startsWith('preview-')) {
+          await prisma.slide.update({
+            where: { id: slideData.id },
+            data: { content: slideData.content || '' }
+          });
+        }
+      }
+
+      // 积分确认扣费
+      if (deductResult.transactionId) {
+        await pointsService.completeTransaction(deductResult.transactionId);
+      }
+
+      // 广播幻灯片更新
+      await this.broadcastSlidesUpdate(session.projectId, 'agent');
+
+      return {
+        slides: previewResult.slides,
+        pointsUsed: deductResult.deductedAmount
+      };
+    } catch (error: any) {
+      // 失败时退款
+      if (deductResult.transactionId) {
+        await pointsService.refundPoints(
+          userId,
+          deductResult.deductedAmount,
+          deductResult.transactionId,
+          `内容应用失败: ${error.message}`
+        );
+      }
       throw error;
     }
   }
@@ -950,7 +1883,7 @@ ${contextInfo}
     }
   }
 
-  private async executeOutline(sessionId: string, params: any, userId: string) {
+  private async executeOutline(taskId: string, sessionId: string, params: any, userId: string) {
     // 获取会话和项目信息
     const session = await this.getSession(sessionId);
     if (!session) throw new Error('会话不存在');
@@ -1020,7 +1953,7 @@ ${contextInfo}
       );
 
       // 更新进度
-      await this.updateTaskProgress(sessionId + '_current', 50);
+      await this.updateTaskProgress(taskId, 50);
 
       // 创建幻灯片
       for (let i = 0; i < outline.length; i++) {
@@ -1049,7 +1982,19 @@ ${contextInfo}
       // 广播幻灯片更新
       await this.broadcastSlidesUpdate(session.projectId, 'agent');
 
-      return { outline, slideCount: outline.length, pointsUsed: deductResult.deductedAmount };
+      // 返回前端期望的格式：包含标题和幻灯片列表
+      return {
+        title: params.topic || '未命名演示文稿',
+        slides: outline.map((item, index) => ({
+          id: `slide-${index}`,
+          index,
+          title: item.title,
+          content: item.brief || '',
+          pageType: item.pageType || 'content'
+        })),
+        slideCount: outline.length,
+        pointsUsed: deductResult.deductedAmount
+      };
 
     } catch (error: any) {
       // ============================================================
@@ -1069,7 +2014,7 @@ ${contextInfo}
     }
   }
 
-  private async executeContent(sessionId: string, params: any, userId: string) {
+  private async executeContent(taskId: string, sessionId: string, params: any, userId: string) {
     const session = await this.getSession(sessionId);
     if (!session) throw new Error('会话不存在');
 
@@ -1122,7 +2067,7 @@ ${contextInfo}
       for (const slide of slides) {
         // 更新进度
         const progress = Math.round((processedCount / slides.length) * 100);
-        await this.updateTaskProgress(sessionId + '_current', progress);
+        await this.updateTaskProgress(taskId, progress);
 
         // 调用 AI 生成详细内容
         const content = await AIService.generateSlideDetail(
@@ -1141,7 +2086,12 @@ ${contextInfo}
           data: { content }
         });
 
-        results.push({ slideIndex: slide.index, generated: true });
+        results.push({
+          id: slide.id,
+          index: slide.index,
+          title: slide.title,
+          content: content.slice(0, 200) + (content.length > 200 ? '...' : '') // 只返回预览
+        });
         processedCount++;
       }
 
@@ -1156,7 +2106,7 @@ ${contextInfo}
       // 广播幻灯片更新
       await this.broadcastSlidesUpdate(session.projectId, 'agent');
 
-      return { slidesProcessed: results.length, pointsUsed: deductResult.deductedAmount };
+      return { slidesProcessed: results.length, slides: results, pointsUsed: deductResult.deductedAmount };
 
     } catch (error: any) {
       // ============================================================
@@ -1182,7 +2132,7 @@ ${contextInfo}
     }
   }
 
-  private async executeImage(sessionId: string, params: any, userId: string) {
+  private async executeImage(taskId: string, sessionId: string, params: any, userId: string) {
     const session = await this.getSession(sessionId);
     if (!session) throw new Error('会话不存在');
 
@@ -1193,14 +2143,25 @@ ${contextInfo}
     if (!project) throw new Error('项目不存在');
 
     // 获取指定幻灯片或所有幻灯片
-    const slides = params.slideIndex !== undefined
-      ? await prisma.slide.findMany({
-          where: { projectId: session.projectId, index: params.slideIndex }
-        })
-      : await prisma.slide.findMany({
-          where: { projectId: session.projectId },
-          orderBy: { index: 'asc' }
-        });
+    let slides;
+    if (params.slideIndexes && Array.isArray(params.slideIndexes) && params.slideIndexes.length > 0) {
+      // 重新生成选中的页面
+      slides = await prisma.slide.findMany({
+        where: { projectId: session.projectId, index: { in: params.slideIndexes } },
+        orderBy: { index: 'asc' }
+      });
+    } else if (params.slideIndex !== undefined) {
+      // 单个指定页面
+      slides = await prisma.slide.findMany({
+        where: { projectId: session.projectId, index: params.slideIndex }
+      });
+    } else {
+      // 所有页面
+      slides = await prisma.slide.findMany({
+        where: { projectId: session.projectId },
+        orderBy: { index: 'asc' }
+      });
+    }
 
     if (slides.length === 0) {
       throw new Error('没有幻灯片，请先生成大纲');
@@ -1264,7 +2225,7 @@ ${contextInfo}
       for (const slide of slides) {
         // 更新进度
         const progress = Math.round((processedCount / slides.length) * 100);
-        await this.updateTaskProgress(sessionId + '_current', progress);
+        await this.updateTaskProgress(taskId, progress);
 
         // 调用 AI 生成配图
         const imageUrl = await AIService.generateSlideVariant(
@@ -1296,7 +2257,12 @@ ${contextInfo}
           logger.warn(`[Agent] 资源注册失败，但不影响生成: ${registerError}`);
         }
 
-        results.push({ slideIndex: slide.index, imageUrl });
+        results.push({
+          slideIndex: slide.index,
+          slideTitle: slide.title,
+          imageUrl,
+          pageType: slide.pageType
+        });
         processedCount++;
       }
 
@@ -1337,6 +2303,311 @@ ${contextInfo}
     }
   }
 
+  /**
+   * 执行配置确认任务（仅生成预览，不改变任务状态）
+   * 用于引导模式下立即展示配置信息
+   */
+  private async executeConfigConfirmForPreview(taskId: string, sessionId: string, params: any, userId: string) {
+    // 直接执行配置确认逻辑获取结果
+    const result = await this.executeConfigConfirm(taskId, sessionId, params, userId);
+
+    // 只更新 result 字段，保持 PENDING 状态
+    await prisma.agentTask.update({
+      where: { id: taskId },
+      data: {
+        result: JSON.stringify(result)
+      }
+    });
+
+    // 获取会话信息用于广播
+    const session = await this.getSession(sessionId);
+    if (session?.projectId) {
+      websocketService.broadcastAgentTaskPreview(sessionId, session.projectId, {
+        id: taskId,
+        type: AgentTaskType.CONFIG_CONFIRM,
+        status: AgentTaskStatus.PENDING,
+        progress: 100,
+        result
+      });
+      logger.info(`[Agent] 配置确认任务预览已广播: ${taskId}`);
+    }
+  }
+
+  /**
+   * 执行配置确认任务
+   * 返回配置信息供前端展示
+   *
+   * 场景判断逻辑：
+   * 1. 如果 globalConfig 中包含完整的配置信息（styleName, colorPalette, aspectRatio, targetPageCount, pageStructure），
+   *    则认为用户已选择模板，使用 globalConfig 作为基础配置
+   * 2. 否则，认为配置未确定，使用 AI 从 params 或 styleMap 推断的配置
+   */
+  private async executeConfigConfirm(taskId: string, sessionId: string, params: any, userId: string) {
+    const session = await this.getSession(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    // 获取项目完整信息
+    const project = await prisma.project.findUnique({
+      where: { id: session.projectId },
+      select: {
+        styleMap: true,
+        globalConfig: true,
+        title: true
+      }
+    });
+
+    // 解析配置
+    let styleConfig: any = {};
+    let globalConfig: any = {};
+
+    if (project?.styleMap) {
+      try {
+        styleConfig = JSON.parse(project.styleMap);
+      } catch (e) {
+        logger.warn(`[Agent] styleMap 解析失败: ${e}`);
+      }
+    }
+
+    if (project?.globalConfig) {
+      try {
+        globalConfig = JSON.parse(project.globalConfig);
+      } catch (e) {
+        logger.warn(`[Agent] globalConfig 解析失败: ${e}`);
+      }
+    }
+
+    // 判断场景：用户是否已选择模板（配置是否完整）
+    const hasUserSelectedTemplate = !!(
+      globalConfig.styleName &&
+      globalConfig.colorPalette &&
+      globalConfig.aspectRatio &&
+      globalConfig.targetPageCount &&
+      globalConfig.pageStructure
+    );
+
+    logger.info(`[Agent] 配置确认场景判断: ${hasUserSelectedTemplate ? '用户已选模板' : 'AI自动生成'}, projectId: ${session.projectId}`);
+
+    // 构建页面结构
+    const targetPageCount = globalConfig.targetPageCount || params.pageCount || 10;
+    const pageStructure = globalConfig.pageStructure || {
+      cover: 1,
+      directory: 1,
+      transition: 0,
+      content: Math.max(1, targetPageCount - 3),
+      end: 1
+    };
+
+    // 计算内容页数（确保总和等于目标页数）
+    const fixedPages = (pageStructure.cover || 1) + (pageStructure.directory || 1) + (pageStructure.end || 1) + (pageStructure.transition || 0);
+    pageStructure.content = Math.max(1, targetPageCount - fixedPages);
+
+    // 辅助函数：确保 colorPalette 是数组
+    const ensureColorPalette = (palette: any): string[] => {
+      if (Array.isArray(palette)) return palette;
+      if (typeof palette === 'string') {
+        try {
+          const parsed = JSON.parse(palette);
+          return Array.isArray(parsed) ? parsed : ['#000000', '#FFFFFF', '#2563EB', '#F59E0B'];
+        } catch {
+          return ['#000000', '#FFFFFF', '#2563EB', '#F59E0B'];
+        }
+      }
+      return ['#000000', '#FFFFFF', '#2563EB', '#F59E0B'];
+    };
+
+    // 构建配置确认结果
+    const config = {
+      topic: params.topic || project?.title || '未命名演示文稿',
+      pageCount: targetPageCount,
+      styleName: globalConfig.styleName || styleConfig.styleName || params.styleName || '默认风格',
+      aspectRatio: globalConfig.aspectRatio || styleConfig.aspectRatio || params.aspectRatio || '16:9',
+      colorPalette: ensureColorPalette(globalConfig.colorPalette || styleConfig.colorPalette || params.colorPalette),
+      colorPaletteName: globalConfig.colorPaletteName || styleConfig.colorPaletteName || '默认配色',
+      requirements: params.requirements || globalConfig.requirements || styleConfig.requirements || '',
+      pagesPerGeneration: globalConfig.pagesPerGeneration || styleConfig.pagesPerGeneration || 1,
+      pageStructure: pageStructure,
+      // 场景标记
+      configSource: hasUserSelectedTemplate ? 'user_selected' : 'ai_generated',
+      hasCompleteConfig: hasUserSelectedTemplate
+    };
+
+    logger.info(`[Agent] 配置确认任务执行完成: ${taskId}, topic: ${config.topic}, source: ${config.configSource}`);
+
+    return {
+      type: 'CONFIG_CONFIRM',
+      topic: config.topic,
+      config,
+      pointsUsed: 0,
+      configSource: config.configSource
+    };
+  }
+
+  /**
+   * 重新生成配置确认任务
+   * 调用 AI 重新分析用户需求并生成新的配置建议
+   */
+  async regenerateConfigConfirm(taskId: string, sessionId: string, userMessage: string, userId: string) {
+    const session = await this.getSession(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    logger.info(`[Agent] 开始重新生成配置: ${taskId}, 用户消息: "${userMessage.slice(0, 50)}..."`);
+
+    try {
+      // 获取项目配置
+      const project = await prisma.project.findUnique({
+        where: { id: session.projectId },
+        select: { styleMap: true }
+      });
+
+      let styleConfig: any = {};
+      if (project?.styleMap) {
+        try {
+          styleConfig = JSON.parse(project.styleMap);
+        } catch (e) {
+          // 忽略解析错误
+        }
+      }
+
+      // 构建重新生成配置的 Prompt
+      const prompt = `用户需求：${userMessage}
+
+请基于用户需求，生成一套新的演示文稿配置建议。注意：请生成不同于默认配置的新建议，可以适当调整风格、配色等元素。
+
+请以 JSON 格式返回配置，格式如下：
+{
+  "topic": "演示主题",
+  "pageCount": 页数（数字，建议5-20之间）,
+  "styleName": "风格名称（如：科技简约、商务大气、创意活泼等）",
+  "aspectRatio": "页面比例（如：16:9、4:3等）",
+  "colorPalette": ["主色", "辅色", "背景色", "文字色"],
+  "requirements": "设计要求说明"
+}
+
+注意：
+- 主题要精炼概括用户需求
+- 风格名称要具体且贴切
+- 配色方案要提供4个十六进制颜色值
+- 页数要合理，根据需求复杂度调整`;
+
+      // 调用 AI 生成新配置
+      const defaultSettings = {
+        ai: {
+          provider: 'Gemini' as const,
+          baseUrl: '',
+          apiKey: '',
+          models: { text: '', image: '', vision: '' }
+        },
+        docParser: { provider: 'None' as const, baseUrl: '', apiKey: '' },
+        imageGeneration: { resolution: '1920x1080' as const },
+        language: 'zh' as const
+      };
+
+      const aiResponse = await AIService.smartRefine(
+        prompt,
+        'content',
+        defaultSettings
+      );
+
+      // 解析 AI 返回的 JSON
+      let newConfig: any;
+      try {
+        // 尝试从 AI 响应中提取 JSON
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          newConfig = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('AI 响应中未找到有效的 JSON');
+        }
+      } catch (parseError) {
+        logger.error('[Agent] 解析 AI 配置响应失败:', parseError);
+        // 使用回退配置
+        newConfig = {
+          topic: userMessage.slice(0, 50),
+          pageCount: 10,
+          styleName: '简约现代',
+          aspectRatio: '16:9',
+          colorPalette: ['#2563eb', '#60a5fa', '#ffffff', '#1f2937'],
+          requirements: ''
+        };
+      }
+
+      // 构建完整的配置对象
+      const config = {
+        topic: newConfig.topic || userMessage.slice(0, 50),
+        pageCount: newConfig.pageCount || 10,
+        styleName: newConfig.styleName || styleConfig.styleName || '简约现代',
+        aspectRatio: newConfig.aspectRatio || styleConfig.aspectRatio || '16:9',
+        colorPalette: newConfig.colorPalette || styleConfig.colorPalette || ['#2563eb', '#60a5fa', '#ffffff', '#1f2937'],
+        requirements: newConfig.requirements || '',
+        pageStructure: {
+          cover: 1,
+          directory: 1,
+          transition: 0,
+          content: (newConfig.pageCount || 10) - 3,
+          end: 1
+        }
+      };
+
+      // 更新任务结果
+      const taskResult = {
+        type: 'CONFIG_CONFIRM',
+        topic: config.topic,
+        config
+      };
+
+      const completedTask = await prisma.agentTask.update({
+        where: { id: taskId },
+        data: {
+          status: AgentTaskStatus.COMPLETED,
+          progress: 100,
+          result: JSON.stringify(taskResult),
+          params: JSON.stringify({
+            topic: config.topic,
+            pageCount: config.pageCount,
+            styleName: config.styleName,
+            aspectRatio: config.aspectRatio,
+            requirements: config.requirements
+          }),
+          completedAt: new Date()
+        }
+      });
+
+      logger.info(`[Agent] 配置重新生成完成: ${taskId}, 新主题: ${config.topic}`);
+
+      // 使用完成事件广播，确保前端用新结果替换旧占位卡片
+      websocketService.broadcastAgentTaskComplete(sessionId, session.projectId, {
+        id: completedTask.id,
+        type: completedTask.type,
+        status: completedTask.status,
+        progress: completedTask.progress,
+        result: taskResult,
+        completedAt: completedTask.completedAt
+      });
+
+      // 添加 AI 响应消息
+      await prisma.agentMessage.create({
+        data: {
+          sessionId,
+          role: 'ASSISTANT',
+          content: `我已根据您的需求重新生成了一套新的配置建议，请查看并确认：`,
+          metadata: JSON.stringify({ taskId })
+        }
+      });
+
+    } catch (error) {
+      logger.error(`[Agent] 重新生成配置失败: ${taskId}`, error);
+
+      // 更新任务错误状态
+      await prisma.agentTask.update({
+        where: { id: taskId },
+        data: {
+          status: 'FAILED',
+          error: error instanceof Error ? error.message : '重新生成配置失败'
+        }
+      });
+    }
+  }
+
   private async executeModify(sessionId: string, params: any) {
     const session = await this.getSession(sessionId);
     if (!session) throw new Error('会话不存在');
@@ -1362,6 +2633,182 @@ ${contextInfo}
     await this.broadcastSlidesUpdate(session.projectId, 'agent');
 
     return { modified: true, field: params.field };
+  }
+
+  /**
+   * 逐页生成配图任务
+   * 一页一页地生成配图，每完成一页广播进度，用户可以实时看到进度
+   */
+  private async executeImageByPage(taskId: string, sessionId: string, params: any, userId: string) {
+    const session = await this.getSession(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    // 获取项目配置
+    const project = await prisma.project.findUnique({
+      where: { id: session.projectId }
+    });
+    if (!project) throw new Error('项目不存在');
+
+    // 获取所有幻灯片
+    const slides = await prisma.slide.findMany({
+      where: { projectId: session.projectId },
+      orderBy: { index: 'asc' }
+    });
+
+    if (slides.length === 0) {
+      throw new Error('没有幻灯片，请先生成大纲');
+    }
+
+    // 积分预扣
+    const pageCount = slides.length;
+    const deductResult = await pointsService.deductPoints(
+      userId,
+      'slide_image',
+      session.projectId,
+      `Agent 逐页配图生成 (${pageCount}页)`,
+      pageCount,
+      { module: 'Agent', category: '图像生成', subcategory: '逐页配图' }
+    );
+
+    if (!deductResult.success) {
+      throw new Error(`积分不足: ${deductResult.message}`);
+    }
+
+    logger.info(`[Agent] 逐页配图生成预扣积分: ${deductResult.deductedAmount}, 交易ID: ${deductResult.transactionId}`);
+
+    // 解析风格配置
+    let styleConfig: any = {
+      styleName: 'default',
+      colorPalette: '#000000,#FFFFFF',
+      requirements: '',
+      aspectRatio: '16:9',
+      targetPageCount: 10,
+      pageStructure: { cover: 1, directory: 1, transition: 0, content: 7, end: 1 }
+    };
+    try {
+      if (project.styleMap) {
+        const parsed = JSON.parse(project.styleMap);
+        styleConfig = { ...styleConfig, ...parsed };
+      }
+    } catch (e) {
+      // 使用默认风格
+    }
+
+    const defaultSettings = {
+      ai: {
+        provider: 'Gemini' as const,
+        baseUrl: '',
+        apiKey: '',
+        models: { text: '', image: '', vision: '' }
+      },
+      docParser: { provider: 'None' as const, baseUrl: '', apiKey: '' },
+      imageGeneration: { resolution: '1920x1080' as const },
+      language: 'zh' as const
+    };
+
+    const results = [];
+    const allSlideTitles = slides.map(s => s.title);
+    let processedCount = 0;
+
+    try {
+      for (const slide of slides) {
+        // 更新进度
+        const progress = Math.round((processedCount / slides.length) * 100);
+        await this.updateTaskProgress(taskId, progress);
+
+        // 广播当前正在生成的页面
+        websocketService.broadcastImageProgress(sessionId, session.projectId, {
+          slideIndex: slide.index,
+          slideTitle: slide.title,
+          status: 'generating',
+          totalPages: slides.length,
+          currentPage: processedCount
+        });
+
+        // 调用 AI 生成配图
+        const imageUrl = await AIService.generateSlideVariant(
+          slide.content || '',
+          null,
+          styleConfig,
+          'variant-1',
+          slide.title,
+          defaultSettings,
+          'text',
+          undefined,
+          slide.pageType || 'content',
+          slide.content || '',
+          undefined,
+          allSlideTitles
+        );
+
+        // 注册资源
+        try {
+          await resourceService.registerImage({
+            url: imageUrl,
+            projectId: session.projectId,
+            sessionId: session.id,
+            slideIndex: slide.index,
+            slideTitle: slide.title,
+            pointsCost: deductResult.deductedAmount / pageCount
+          });
+        } catch (registerError) {
+          logger.warn(`[Agent] 资源注册失败: ${registerError}`);
+        }
+
+        // 广播完成当前页
+        websocketService.broadcastImageProgress(sessionId, session.projectId, {
+          slideIndex: slide.index,
+          slideTitle: slide.title,
+          status: 'completed',
+          imageUrl,
+          totalPages: slides.length,
+          currentPage: processedCount
+        });
+
+        results.push({
+          slideIndex: slide.index,
+          slideTitle: slide.title,
+          imageUrl,
+          pageType: slide.pageType
+        });
+        processedCount++;
+      }
+
+      // 积分确认扣费
+      if (deductResult.transactionId) {
+        await pointsService.completeTransaction(deductResult.transactionId);
+        logger.info(`[Agent] 逐页配图生成积分确认: ${deductResult.transactionId}`);
+      }
+
+      // 广播幻灯片更新
+      await this.broadcastSlidesUpdate(session.projectId, 'agent');
+
+      return {
+        imagesGenerated: results.length,
+        images: results,
+        pointsUsed: deductResult.deductedAmount,
+        mode: 'by_page'
+      };
+
+    } catch (error: any) {
+      // 积分退还
+      if (deductResult.deductedAmount > 0) {
+        const actualPointsPerPage = deductResult.deductedAmount / pageCount;
+        const unusedPages = slides.length - processedCount;
+        const refundAmount = Math.round(unusedPages * actualPointsPerPage * 100) / 100;
+        if (refundAmount > 0) {
+          await pointsService.refundPoints(
+            userId,
+            refundAmount,
+            deductResult.transactionId,
+            `Agent 逐页配图生成部分失败: ${error.message}`
+          );
+          logger.info(`[Agent] 逐页配图生成退还未完成积分: ${refundAmount}`);
+        }
+      }
+
+      throw error;
+    }
   }
 
   private async executeExport(sessionId: string, params: any) {
@@ -1457,6 +2904,42 @@ ${contextInfo}
       })
     ]);
 
+    return this.getSession(sessionId);
+  }
+
+  /**
+   * 更新会话模式（引导/自动）
+   */
+  async updateSessionMode(sessionId: string, mode: AgentMode, userId: string) {
+    const session = await prisma.agentSession.findUnique({
+      where: { id: sessionId },
+      select: { mode: true, status: true }
+    });
+
+    if (!session) {
+      throw new Error('会话不存在');
+    }
+
+    // 更新模式
+    const updatedSession = await prisma.agentSession.update({
+      where: { id: sessionId },
+      data: { mode }
+    });
+
+    // 如果切换到自动模式且有待处理任务，开始执行
+    if (mode === AgentMode.AUTO && session.status === AgentSessionStatus.ACTIVE) {
+      const pendingTasks = await prisma.agentTask.count({
+        where: { sessionId, status: AgentTaskStatus.PENDING }
+      });
+
+      if (pendingTasks > 0) {
+        this.executeTasksAsync(sessionId, userId).catch(err => {
+          logger.error(`[Agent] 自动执行任务失败: ${err.message}`);
+        });
+      }
+    }
+
+    logger.info(`[Agent] 会话模式更新: ${sessionId} -> ${mode}`);
     return this.getSession(sessionId);
   }
 }

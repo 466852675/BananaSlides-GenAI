@@ -369,8 +369,8 @@ export const useUpdateProject = () => {
             }
         },
         onSettled: (_data, _error, { id }) => {
-            // Always refetch after error or success:
-            queryClient.invalidateQueries({ queryKey: ['projects'] });
+            // 只刷新单个项目缓存，避免频繁刷新整个项目列表
+            // 乐观更新已经在 onMutate 中更新了缓存，这里只需要确保数据一致性
             queryClient.invalidateQueries({ queryKey: ['project', id] });
         }
     });
@@ -402,8 +402,10 @@ export const useSyncProjectSlides = () => {
             return response;
         },
         onSuccess: (data: any, variables) => {
-            queryClient.invalidateQueries({ queryKey: ['projects'] });
+            // 只更新单个项目的缓存，避免刷新整个项目列表导致的 UI 闪烁
+            // 这对于自动保存场景非常重要
             queryClient.invalidateQueries({ queryKey: ['project', variables.projectId] });
+            // 不再 invalidate ['projects']，因为这会导致 Dashboard 每次自动保存后都刷新
         },
         onError: (error) => {
             console.error('[useSyncProjectSlides] Sync failed:', error);
