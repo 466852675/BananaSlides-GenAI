@@ -354,6 +354,75 @@ export class SnapshotService {
         if (!snapshot || snapshot.project.userId !== userId) return null;
         return prisma.projectSnapshot.delete({ where: { id } });
     }
+
+    // Fork snapshot as a new project
+    async fork(snapshotId: string, userId: string) {
+        // 1. Get Snapshot
+        const snapshot = await prisma.projectSnapshot.findUnique({
+            where: { id: snapshotId },
+            include: { project: { select: { userId: true, title: true } } }
+        });
+        if (!snapshot || snapshot.project.userId !== userId) {
+            throw new Error("Snapshot not found or access denied");
+        }
+
+        const data = JSON.parse(snapshot.data);
+        const originalProject = snapshot.project;
+
+        // 2. Generate new display ID
+        const date = new Date();
+        const yy = date.getFullYear().toString().slice(-2);
+        const mm = (date.getMonth() + 1).toString().padStart(2, '0');
+        const dd = date.getDate().toString().padStart(2, '0');
+        const timestamp = `${yy}${mm}${dd}`;
+        const randomHex = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0').toUpperCase();
+        const displayId = `PID-${timestamp}-${randomHex}`;
+
+        // 3. Create new project with copied data
+        const { styleMap } = await sanitizeStyleMap(data.globalStyleMap || data.styleMap || null);
+
+        const newProject = await prisma.$transaction(async (tx) => {
+            // Create project
+            const project = await tx.project.create({
+                data: {
+                    userId,
+                    displayId,
+                    title: `${originalProject.title} (副本 v${snapshot.version})`,
+                    globalConfig: JSON.stringify(data.globalConfig || {}),
+                    styleMap: JSON.stringify(styleMap || {}),
+                    status: 'idle',
+                    scenarioType: 'BLANK'
+                }
+            });
+
+            // Create slides from snapshot items
+            if (data.items && data.items.length > 0) {
+                for (const item of data.items) {
+                    await tx.slide.create({
+                        data: {
+                            id: item.id,
+                            projectId: project.id,
+                            index: item.index || 0,
+                            pageType: item.pageType,
+                            contentType: item.contentType,
+                            title: item.title,
+                            content: item.textContent || item.content || '',
+                            brief: item.brief,
+                            variants: JSON.stringify(item.variants || []),
+                            variantCount: item.variantCount || 2,
+                            previewUrl: item.previewUrl,
+                            originalFileRef: item.originalFile ? JSON.stringify(item.originalFile) : null,
+                            status: item.status || 'pending'
+                        }
+                    });
+                }
+            }
+
+            return project;
+        });
+
+        return { success: true, projectId: newProject.id, displayId: newProject.displayId };
+    }
 }
 
 export const snapshotService = new SnapshotService();

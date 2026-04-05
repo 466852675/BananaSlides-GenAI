@@ -95,6 +95,19 @@ export class SnapshotController {
             res.status(500).json({ error: error.message });
         }
     };
+
+    fork = async (req: Request, res: Response) => {
+        try {
+            const ownerId = getOwnerId(req);
+            if (!ownerId) return res.status(401).json({ error: 'UNAUTHORIZED' });
+            const snapshotId = req.params.snapshotId as string;
+            const result = await snapshotService.fork(snapshotId, ownerId);
+            res.json(result);
+        } catch (error: any) {
+            console.error("Snapshot fork error", error);
+            res.status(500).json({ error: error.message });
+        }
+    };
 }
 
 export const snapshotController = new SnapshotController();
