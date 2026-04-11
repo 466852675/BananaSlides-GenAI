@@ -67,6 +67,7 @@ export interface ProjectSession {
   title: string;
   displayId?: string; // New
   scenarioType?: ScenarioType;
+  source?: 'IDE' | 'AGENT'; // Project creation source
   lastModified: number;
   createdAt: number; // Added
   status: ProjectStatus; // Use the enum

@@ -1,7 +1,7 @@
 // server/src/services/points-notification.service.ts
 // 积分变动通知服务
 
-import { MessageType } from '@prisma/client';
+import { MessageType } from '../types/user.types';
 import { createMessage } from './message.service';
 
 interface CheckInRewardContext {

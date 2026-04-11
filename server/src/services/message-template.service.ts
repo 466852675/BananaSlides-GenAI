@@ -1,4 +1,4 @@
-import { MessageType } from '@prisma/client';
+import { MessageType, MessageTypeType } from '../types/user.types';
 import { prisma } from '../db';
 
 export interface RenderTemplateDTO {
@@ -9,7 +9,7 @@ export interface RenderTemplateDTO {
 export interface CreateTemplateDTO {
     code: string;
     name: string;
-    type: MessageType;
+    type: MessageTypeType;
     title: string;
     content: string;
     bizType: string;

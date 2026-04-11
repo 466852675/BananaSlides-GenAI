@@ -7,7 +7,7 @@
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Clock, CheckCircle, XCircle, Pause, Play, Loader2, FileText, Pin, MoreVertical, Edit2, Trash2, X, Search } from 'lucide-react';
+import { Plus, Clock, CheckCircle, XCircle, Pause, Play, Loader2, FileText, Pin, MoreVertical, Edit2, Trash2, X, Search, Sparkles, Presentation } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUpdateProject, useDeleteProject } from '../api/projects';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -44,6 +44,31 @@ const getSessionStatusIcon = (status: string) => {
       return <Clock className="h-3.5 w-3.5 text-gray-400" />;
   }
 };
+
+// 项目来源徽章组件（仅图标版）
+const ProjectSourceBadge = React.memo(function ProjectSourceBadge({ source }: { source: 'IDE' | 'AGENT' }) {
+  const isAgent = source === 'AGENT';
+
+  return (
+    <span
+      className={`
+        inline-flex items-center justify-center
+        w-4 h-4 rounded
+        ${isAgent
+          ? 'bg-gradient-to-br from-purple-500 to-pink-500'
+          : 'bg-gray-300'
+        }
+      `}
+      title={isAgent ? 'AI 生成' : '手动创建'}
+    >
+      {isAgent ? (
+        <Sparkles className="w-2.5 h-2.5 text-white" />
+      ) : (
+        <Presentation className="w-2.5 h-2.5 text-gray-600" />
+      )}
+    </span>
+  );
+});
 
 // 项目卡片组件 - 移到外部并使用 memo 优化，避免每次渲染重新创建
 interface ProjectCardProps {
@@ -154,10 +179,13 @@ const ProjectCard = React.memo(function ProjectCard({
                 {project.title || '未命名项目'}
               </span>
             )}
-            {/* 状态标签 */}
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${statusConfig.color} ${statusConfig.bgColor}`}>
-              {statusConfig.label}
-            </span>
+            {/* 状态标签 + 来源标识 */}
+            <div className="flex items-center gap-1">
+              <ProjectSourceBadge source={project.source || 'IDE'} />
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${statusConfig.color} ${statusConfig.bgColor}`}>
+                {statusConfig.label}
+              </span>
+            </div>
           </div>
 
           {/* 项目信息 */}

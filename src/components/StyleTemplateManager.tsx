@@ -684,10 +684,10 @@ export const StyleTemplateManager: React.FC<StyleTemplateManagerProps> = ({
   const handleDeleteTemplate = (id: string) => {
     confirmAction(
       '删除模板',
-      '确定要删除这个模板吗？此操作不可恢复。',
+      '确定要删除这个模板吗？模板将移至回收箱，30天内可恢复。',
       () => {
         deleteTemplateMutation.mutate(id, {
-          onSuccess: () => onShowToast('模板已删除', 'success'),
+          onSuccess: () => onShowToast('模板已移至回收箱', 'success'),
           onError: () => onShowToast('删除失败', 'error')
         });
       },

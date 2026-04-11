@@ -12,11 +12,14 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
-import type { AssetType, AssetStatus } from '@prisma/client';
 
 // ============================================================
 // 类型定义
 // ============================================================
+
+// 资源类型和状态（使用字符串类型，与数据库 schema 保持一致）
+export type AssetType = string;
+export type AssetStatus = string;
 
 export interface RegisterAssetParams {
   type: AssetType;

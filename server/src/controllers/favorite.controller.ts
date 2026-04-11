@@ -61,10 +61,11 @@ export const createFavorite = async (req: Request, res: Response) => {
 export const deleteFavorite = async (req: Request, res: Response) => {
     try {
         const ownerId = getOwnerId(req);
+        const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes((req as any).user?.role);
         const id = req.params.id as string;
-        const result = await favoriteService.delete(id, ownerId);
+        const result = await favoriteService.delete(id, ownerId, isAdmin);
         if (!result) {
-            res.status(404).json({ error: 'Favorite not found' });
+            res.status(404).json({ error: 'Favorite not found or not authorized' });
             return;
         }
         res.json({ success: true });

@@ -31,6 +31,9 @@ export interface TrashItem {
   userId: string | null;
   status: string;
   scenarioType?: string; // 项目类型，用于分类显示
+  source?: 'IDE' | 'AGENT'; // 项目来源
+  completedAt?: Date | null; // 完成时间
+  itemType: 'project' | 'template'; // 项目类型标识
 }
 
 export interface TrashListResult {
@@ -148,116 +151,157 @@ class TrashService {
   }
 
   /**
-   * 获取用户回收箱列表
+   * 获取用户回收箱列表（包含项目和模板）
    */
   async getUserTrashList(userId: string, params: TrashListParams): Promise<TrashListResult> {
-    const { page, pageSize, keyword, deletedBy, startDate, endDate, minRemainingDays, maxRemainingDays } = params;
+    const { page, pageSize, keyword, deletedBy, startDate, endDate } = params;
     const skip = (page - 1) * pageSize;
 
-    // 构建查询条件
-    const where: any = {
+    const now = new Date();
+
+    // 构建项目的查询条件
+    const projectWhere: any = {
       userId,
       isDeleted: true,
       deletedAt: { not: null }
     };
-
-    // 关键词搜索
-    if (keyword) {
-      where.title = { contains: keyword };
-    }
-
-    // 删除来源筛选
-    if (deletedBy) {
-      where.deletedBy = deletedBy;
-    }
-
-    // 项目状态筛选
-    if (params.status) {
-      where.status = params.status;
-    }
-
-    // 删除时间范围
+    if (keyword) projectWhere.title = { contains: keyword };
+    if (deletedBy) projectWhere.deletedBy = deletedBy;
+    if (params.status) projectWhere.status = params.status;
     if (startDate || endDate) {
-      where.deletedAt = {};
-      if (startDate) where.deletedAt.gte = startDate;
-      if (endDate) where.deletedAt.lte = endDate;
+      projectWhere.deletedAt = {};
+      if (startDate) projectWhere.deletedAt.gte = startDate;
+      if (endDate) projectWhere.deletedAt.lte = endDate;
     }
 
-    // 剩余天数范围
-    if (minRemainingDays !== undefined || maxRemainingDays !== undefined) {
-      const now = new Date();
-      where.deletedAt = where.deletedAt || {};
-
-      const minDays = minRemainingDays ?? 0;
-      const maxDays = maxRemainingDays ?? TRASH_RETENTION_DAYS;
-
-      if (minRemainingDays !== undefined) {
-        // remainingDays >= min => deletedAt <= now - (30 - min)天
-        const threshold = new Date(now.getTime() - (TRASH_RETENTION_DAYS - minDays) * 24 * 60 * 60 * 1000);
-        where.deletedAt.gte = threshold;
-      }
-      if (maxRemainingDays !== undefined) {
-        const threshold = new Date(now.getTime() - (TRASH_RETENTION_DAYS - maxDays) * 24 * 60 * 60 * 1000);
-        where.deletedAt.lte = threshold;
-      }
+    // 构建模板的查询条件
+    const templateWhere: any = {
+      userId,
+      isDeleted: true,
+      deletedAt: { not: null }
+    };
+    if (keyword) templateWhere.name = { contains: keyword };
+    if (deletedBy) templateWhere.deletedBy = deletedBy;
+    if (startDate || endDate) {
+      templateWhere.deletedAt = {};
+      if (startDate) templateWhere.deletedAt.gte = startDate;
+      if (endDate) templateWhere.deletedAt.lte = endDate;
     }
 
-    // 查询总数
-    const total = await prisma.project.count({ where });
-
-    // 查询列表
-    const projects = await prisma.project.findMany({
-      where,
-      skip,
-      take: pageSize,
-      orderBy: { deletedAt: 'desc' },
-      select: {
-        id: true,
-        displayId: true,
-        title: true,
-        thumbnailUrl: true,
-        styleMap: true,
-        deletedAt: true,
-        deletedBy: true,
-        createdAt: true,
-        userId: true,
-        status: true,
-        scenarioType: true,
-        items: {
-          select: { id: true, pageType: true, previewUrl: true, variants: true },
-          orderBy: { index: 'asc' }
+    // 并行查询项目和模板
+    const [projects, templates] = await Promise.all([
+      prisma.project.findMany({
+        where: projectWhere,
+        orderBy: { deletedAt: 'desc' },
+        select: {
+          id: true,
+          displayId: true,
+          title: true,
+          thumbnailUrl: true,
+          styleMap: true,
+          deletedAt: true,
+          deletedBy: true,
+          createdAt: true,
+          userId: true,
+          status: true,
+          scenarioType: true,
+          source: true,
+          completedAt: true,
+          Slide: {
+            select: { id: true, pageType: true, previewUrl: true, variants: true },
+            orderBy: { index: 'asc' }
+          }
         }
-      }
-    });
+      }),
+      prisma.styleTemplate.findMany({
+        where: templateWhere,
+        orderBy: { deletedAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          thumbnailUrl: true,
+          styleMap: true,
+          deletedAt: true,
+          deletedBy: true,
+          createdAt: true,
+          userId: true
+        }
+      })
+    ]);
 
-    // 构建返回结果
-    const items: TrashItem[] = projects.map(p => {
-      const deletedAt = p.deletedAt!;
-      const expiresAt = new Date(deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-      const remainingDays = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+    // 合并并转换为统一格式
+    const allItems: TrashItem[] = [
+      ...projects.map(p => {
+        const deletedAt = p.deletedAt!;
+        const expiresAt = new Date(deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        const remainingDays = Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)));
+        const thumbnailUrl = this.calculateThumbnail(p.thumbnailUrl, p.Slide as any[], p.styleMap);
 
-      // 计算缩略图（与前端 calculateThumbnail 逻辑一致）
-      const thumbnailUrl = this.calculateThumbnail(p.thumbnailUrl, p.items as any[], p.styleMap);
+        return {
+          id: p.id,
+          displayId: p.displayId,
+          title: p.title,
+          thumbnailUrl,
+          deletedAt,
+          deletedBy: p.deletedBy,
+          expiresAt,
+          remainingDays,
+          slideCount: p.Slide.length,
+          createdAt: p.createdAt,
+          userId: p.userId,
+          status: p.status,
+          scenarioType: (p as any).scenarioType || 'BUSINESS',
+          source: (p.source || 'IDE') as 'IDE' | 'AGENT',
+          completedAt: p.completedAt,
+          itemType: 'project' as const
+        };
+      }),
+      ...templates.map(t => {
+        const deletedAt = t.deletedAt!;
+        const expiresAt = new Date(deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        const remainingDays = Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)));
 
-      return {
-        id: p.id,
-        displayId: p.displayId,
-        title: p.title,
-        thumbnailUrl,
-        deletedAt,
-        deletedBy: p.deletedBy,
-        expiresAt,
-        remainingDays,
-        slideCount: p.items.length,
-        createdAt: p.createdAt,
-        userId: p.userId,
-        status: p.status,
-        scenarioType: (p as any).scenarioType || 'BUSINESS'
-      };
-    });
+        // 模板缩略图：优先使用 thumbnailUrl，否则从 styleMap 中提取
+        let thumbnailUrl = t.thumbnailUrl;
+        if (!thumbnailUrl && t.styleMap) {
+          try {
+            const styleMap = typeof t.styleMap === 'string' ? JSON.parse(t.styleMap) : t.styleMap;
+            thumbnailUrl = styleMap?.cover || styleMap?.content || null;
+          } catch (e) {
+            // 解析失败则保持 null
+          }
+        }
+
+        return {
+          id: t.id,
+          displayId: null,
+          title: t.name,
+          thumbnailUrl,
+          deletedAt,
+          deletedBy: t.deletedBy,
+          expiresAt,
+          remainingDays,
+          slideCount: 0,
+          createdAt: t.createdAt,
+          userId: t.userId,
+          status: 'completed',
+          scenarioType: 'TEMPLATE',
+          source: 'IDE' as const,
+          completedAt: t.createdAt,
+          itemType: 'template' as const
+        };
+      })
+    ];
+
+    // 按删除时间倒序排序
+    allItems.sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime());
+
+    // 分页
+    const total = allItems.length;
+    const paginatedItems = allItems.slice(skip, skip + pageSize);
 
     return {
-      items,
+      items: paginatedItems,
       total,
       page,
       pageSize,
@@ -340,11 +384,13 @@ class TrashService {
         userId: true,
         status: true,
         scenarioType: true,
-        items: {
+        source: true,
+        completedAt: true,
+        Slide: {
           select: { id: true, pageType: true, previewUrl: true, variants: true },
           orderBy: { index: 'asc' }
         },
-        user: { select: { id: true, nickname: true, email: true } }
+        User: { select: { id: true, nickname: true, email: true } }
       }
     });
 
@@ -355,7 +401,7 @@ class TrashService {
       const remainingDays = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
 
       // 计算缩略图（与前端 calculateThumbnail 逻辑一致）
-      const thumbnailUrl = this.calculateThumbnail(p.thumbnailUrl, p.items as any[], p.styleMap);
+      const thumbnailUrl = this.calculateThumbnail(p.thumbnailUrl, p.Slide as any[], p.styleMap);
 
       return {
         id: p.id,
@@ -366,11 +412,14 @@ class TrashService {
         deletedBy: p.deletedBy,
         expiresAt,
         remainingDays,
-        slideCount: p.items.length,
+        slideCount: p.Slide.length,
         createdAt: p.createdAt,
         userId: p.userId,
         status: p.status,
-        scenarioType: (p as any).scenarioType || 'BUSINESS'
+        scenarioType: (p as any).scenarioType || 'BUSINESS',
+        source: (p.source || 'IDE') as 'IDE' | 'AGENT',
+        completedAt: p.completedAt,
+        itemType: 'project' as const
       };
     });
 
@@ -384,11 +433,10 @@ class TrashService {
   }
 
   /**
-   * 获取回收箱统计
+   * 获取回收箱统计（包含项目和模板）
    */
   async getTrashStats(userId?: string): Promise<TrashStats> {
     const now = new Date();
-    const fiveDaysLater = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
 
     const whereBase: any = {
       isDeleted: true,
@@ -398,28 +446,49 @@ class TrashService {
       whereBase.userId = userId;
     }
 
-    // 总数
-    const total = await prisma.project.count({ where: whereBase });
+    // 并行统计项目和模板
+    const [
+      projectTotal,
+      templateTotal,
+      projectExpiring,
+      templateExpiring,
+      projectUserDeleted,
+      templateUserDeleted,
+      projectAdminDeleted,
+      templateAdminDeleted
+    ] = await Promise.all([
+      prisma.project.count({ where: whereBase }),
+      prisma.styleTemplate.count({ where: whereBase }),
+      prisma.project.count({
+        where: {
+          ...whereBase,
+          deletedAt: {
+            not: null,
+            lte: new Date(now.getTime() - (TRASH_RETENTION_DAYS - 5) * 24 * 60 * 60 * 1000)
+          }
+        }
+      }),
+      prisma.styleTemplate.count({
+        where: {
+          ...whereBase,
+          deletedAt: {
+            not: null,
+            lte: new Date(now.getTime() - (TRASH_RETENTION_DAYS - 5) * 24 * 60 * 60 * 1000)
+          }
+        }
+      }),
+      prisma.project.count({ where: { ...whereBase, deletedBy: 'user' } }),
+      prisma.styleTemplate.count({ where: { ...whereBase, deletedBy: 'user' } }),
+      prisma.project.count({ where: { ...whereBase, deletedBy: 'admin' } }),
+      prisma.styleTemplate.count({ where: { ...whereBase, deletedBy: 'admin' } })
+    ]);
 
-    // 即将过期（deletedAt <= now - 25天，即剩余 <= 5天）
-    const expiringWhere = { ...whereBase };
-    expiringWhere.deletedAt = {
-      not: null,
-      lte: new Date(now.getTime() - (TRASH_RETENTION_DAYS - 5) * 24 * 60 * 60 * 1000)
+    return {
+      total: projectTotal + templateTotal,
+      expiring: projectExpiring + templateExpiring,
+      userDeleted: projectUserDeleted + templateUserDeleted,
+      adminDeleted: projectAdminDeleted + templateAdminDeleted
     };
-    const expiring = await prisma.project.count({ where: expiringWhere });
-
-    // 用户删除
-    const userDeleted = await prisma.project.count({
-      where: { ...whereBase, deletedBy: 'user' }
-    });
-
-    // 管理员删除
-    const adminDeleted = await prisma.project.count({
-      where: { ...whereBase, deletedBy: 'admin' }
-    });
-
-    return { total, expiring, userDeleted, adminDeleted };
   }
 
   /**
@@ -671,17 +740,122 @@ class TrashService {
    * 清空用户回收箱（彻底删除所有）
    */
   async clearUserTrash(userId: string): Promise<{ success: boolean; deleted: number }> {
-    const projects = await prisma.project.findMany({
-      where: { userId, isDeleted: true },
-      select: { id: true }
-    });
+    // 获取所有已删除的项目和模板
+    const [projects, templates] = await Promise.all([
+      prisma.project.findMany({
+        where: { userId, isDeleted: true },
+        select: { id: true }
+      }),
+      prisma.styleTemplate.findMany({
+        where: { userId, isDeleted: true },
+        select: { id: true }
+      })
+    ]);
 
     const projectIds = projects.map(p => p.id);
-    const result = await this.batchPermanentDelete(projectIds, userId);
+    const templateIds = templates.map(t => t.id);
+
+    // 批量删除项目
+    const projectResult = await this.batchPermanentDelete(projectIds, userId);
+
+    // 批量删除模板
+    let templateDeleted = 0;
+    for (const templateId of templateIds) {
+      try {
+        await this.permanentDeleteTemplate(templateId, userId);
+        templateDeleted++;
+      } catch (err) {
+        console.error(`[Trash] 清空模板失败: ${templateId}`, err);
+      }
+    }
 
     return {
       success: true,
-      deleted: result.deleted
+      deleted: projectResult.deleted + templateDeleted
+    };
+  }
+
+  /**
+   * 恢复模板
+   */
+  async restoreTemplate(templateId: string, operatorId?: string): Promise<{ success: boolean; message: string }> {
+    const template = await prisma.styleTemplate.findUnique({
+      where: { id: templateId },
+      select: { id: true, userId: true, isDeleted: true, deletedAt: true }
+    });
+
+    if (!template) {
+      throw new Error('模板不存在');
+    }
+
+    if (!template.isDeleted) {
+      throw new Error('模板不在回收箱中');
+    }
+
+    // 检查是否过期
+    const expiresAt = new Date(template.deletedAt!.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    if (expiresAt < new Date()) {
+      throw new Error('模板已超过 30 天保留期，无法恢复');
+    }
+
+    // 恢复模板
+    await prisma.styleTemplate.update({
+      where: { id: templateId },
+      data: {
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null
+      }
+    });
+
+    // 记录操作日志
+    await prisma.auditLog.create({
+      data: {
+        userId: operatorId || template.userId,
+        type: 'TEMPLATE_RESTORE',
+        content: templateId,
+        severity: 'INFO'
+      }
+    });
+
+    return {
+      success: true,
+      message: '模板已恢复'
+    };
+  }
+
+  /**
+   * 彻底删除模板
+   */
+  async permanentDeleteTemplate(templateId: string, operatorId?: string): Promise<{ success: boolean; message: string }> {
+    const template = await prisma.styleTemplate.findUnique({
+      where: { id: templateId },
+      select: { id: true, userId: true, isDeleted: true, name: true }
+    });
+
+    if (!template) {
+      throw new Error('模板不存在');
+    }
+
+    // 删除模板
+    await prisma.styleTemplate.delete({
+      where: { id: templateId }
+    });
+
+    // 记录操作日志
+    await prisma.auditLog.create({
+      data: {
+        userId: operatorId || template.userId,
+        type: 'TEMPLATE_PERMANENT_DELETE',
+        content: templateId,
+        reason: `name: ${template.name}`,
+        severity: 'WARNING'
+      }
+    });
+
+    return {
+      success: true,
+      message: '模板已彻底删除'
     };
   }
 

@@ -7,73 +7,299 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id                 String               @id @default(uuid())
-  email              String?              @unique
-  phone              String?              @unique
-  username           String?              @unique
-  passwordHash       String?
-  nickname           String?
-  avatar             String?
-  bio                String?
-  role               UserRole             @default(USER)
-  status             UserStatus           @default(ACTIVE)
-  points             Int                  @default(30)
-  pointsUsed         Int                  @default(0)
-  vipLevel           Int                  @default(0)
-  vipExpiresAt       DateTime?
-  lastLoginAt        DateTime?
-  lastLoginIp        String?
-  loginFailCount     Int                  @default(0)
-  lockedUntil        DateTime?
-  resetCode          String?
-  resetCodeExp       DateTime?
-  inviteCode         String?              @unique
-  invitedById        String?
-  checkInDate        DateTime?
-  checkInStreak      Int                  @default(0)
-  riskScore          Int                  @default(0)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  checkInLogs        CheckInLog[]
-  favorites          Favorite[]
-  assignedLeads      Lead[]               @relation("LeadAssignee")
-  leads              Lead[]
-  orders             Order[]
-  createdPointsRules PointsRule[]         @relation("RuleCreator")
-  createdProducts    Product[]            @relation("ProductCreator")
-  projects           Project[]
-  refundRequests     RefundRequest[]
-  socialAccounts     SocialAccount[]
-  styleTemplates     StyleTemplate[]
-  transactions       Transaction[]
-  invitedBy          User?                @relation("Referrals", fields: [invitedById], references: [id])
-  referrals          User[]               @relation("Referrals")
-  handledMessages    UserMessage[]        @relation("MessageHandler")
-  messages           UserMessage[]
-  messageSettings    UserMessageSettings?
-  refundStats        UserRefundStats?
+model AgentMessage {
+  id           String       @id @default(cuid())
+  sessionId    String
+  role         String
+  content      String
+  toolCalls    String?
+  metadata     String?
+  isEdited     Boolean      @default(false)
+  editedAt     DateTime?
+  isDeleted    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  AgentSession AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
+  @@index([sessionId, createdAt])
   @@index([role])
-  @@index([status])
   @@index([createdAt])
+  @@index([sessionId])
 }
 
-model SocialAccount {
-  id          String   @id @default(uuid())
-  userId      String
-  provider    String
-  providerId  String
-  accessToken String?
-  createdAt   DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model AgentSession {
+  id              String          @id @default(cuid())
+  projectId       String          @unique
+  status          String          @default("ACTIVE")
+  mode            String          @default("GUIDED")
+  isDeleted       Boolean         @default(false)
+  deletedAt       DateTime?
+  context         String?
+  contextVersion  Int             @default(0)  // 乐观锁版本号
+  totalTasks      Int             @default(0)
+  completedTasks  Int             @default(0)
+  failedTasks     Int             @default(0)
+  totalPointsUsed Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  completedAt     DateTime?
+  AgentMessage    AgentMessage[]
+  Project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  AgentTask       AgentTask[]
+  AssetRegistry   AssetRegistry[]
 
-  @@unique([provider, providerId])
+  @@index([isDeleted])
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@index([status])
+  @@index([projectId])
+}
+
+model AgentTask {
+  id           String       @id @default(cuid())
+  sessionId    String
+  type         String
+  status       String       @default("PENDING")
+  priority     Int          @default(0)
+  params       String?
+  result       String?
+  progress     Int          @default(0)
+  error        String?
+  retryCount   Int          @default(0)
+  pointsCost   Int?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  AgentSession AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority])
+  @@index([sessionId, status])
+  @@index([createdAt])
+  @@index([priority])
+  @@index([type])
+  @@index([status])
+  @@index([sessionId])
+}
+
+model AiEngineRule {
+  id          String   @id @default(cuid())
+  name        String
+  provider    String
+  config      String
+  isActive    Boolean  @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model AppSettings {
+  id        String   @id @default("global")
+  config    String
+  updatedAt DateTime @updatedAt
+}
+
+model AssetRegistry {
+  id            String        @id @default(cuid())
+  projectId     String?
+  sessionId     String?
+  taskId        String?
+  templateId    String?
+  favoriteId    String?
+  isReferenced  Boolean       @default(false)
+  isOfficial    Boolean       @default(false)
+  type          String
+  status        String        @default("ACTIVE")
+  filename      String
+  url           String
+  mimeType      String?
+  sizeBytes     Int?
+  metadata      String?
+  pointsCost    Int?
+  accessedAt    DateTime      @default(now())
+  accessedCount Int           @default(0)
+  expiresAt     DateTime?
+  deletedAt     DateTime?
+  deletedBy     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  AgentSession  AgentSession? @relation(fields: [sessionId], references: [id])
+  Project       Project?      @relation(fields: [projectId], references: [id])
+
+  @@index([deletedAt])
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([isOfficial])
+  @@index([isReferenced])
+  @@index([status])
+  @@index([type])
+  @@index([favoriteId])
+  @@index([templateId])
+  @@index([sessionId])
+  @@index([projectId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  type      String
+  content   String?
+  reason    String?
+  severity  String
+  metadata  String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([severity])
+  @@index([type])
   @@index([userId])
 }
 
+model BenefitRevokeLog {
+  id            String    @id @default(cuid())
+  userId    String
+  refundId  String
+  revokedAt DateTime @default(now())
+  reason    String
+
+  @@index([refundId])
+  @@index([userId])
+}
+
+model CheckInLog {
+  id            String    @id @default(cuid())
+  userId    String
+  date      String
+  points    Int
+  streak    Int
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([createdAt])
+}
+
+model Favorite {
+  id            String         @id @default(cuid())
+  templateId    String?
+  name          String
+  config        String
+  styleMap      String?
+  sampleImages  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  userId        String?
+  User          User?          @relation(fields: [userId], references: [id])
+  StyleTemplate StyleTemplate? @relation(fields: [templateId], references: [id])
+}
+
+model GlobalConfig {
+  key       String   @id
+  value     String
+  category  String?
+  desc      String?
+  updatedAt DateTime @updatedAt
+}
+
+model Lead {
+  id            String    @id @default(cuid())
+  userId                     String?
+  name                       String
+  company                    String?
+  position                   String?
+  phone                      String
+  email                      String?
+  teamSize                   String?
+  industry                   String?
+  needs                      String?
+  status                     String         @default("PENDING")
+  priority                   String?        @default("MEDIUM")
+  assigneeId                 String?
+  nextFollowUpAt             DateTime?
+  source                     String?
+  notes                      String?
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
+  convertedOrderId           String?
+  User_Lead_assigneeIdToUser User?          @relation("Lead_assigneeIdToUser", fields: [assigneeId], references: [id])
+  User_Lead_userIdToUser     User?          @relation("Lead_userIdToUser", fields: [userId], references: [id])
+  LeadActivity               LeadActivity[]
+}
+
+model LeadActivity {
+  id            String    @id @default(cuid())
+  leadId     String
+  type       String
+  content    String
+  metadata   String?
+  operatorId String
+  createdAt  DateTime @default(now())
+  Lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([leadId])
+}
+
+model MessageTemplate {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  type      String
+  title     String
+  content   String
+  bizType   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id             String          @id @default(cuid())
+  orderNo        String          @unique
+  userId         String
+  productType    String
+  productName    String
+  productDesc    String?
+  quantity       Int             @default(1)
+  originalPrice  Float
+  discountPrice  Float?
+  finalPrice     Float
+  status         String          @default("PENDING")
+  paymentMethod  String?
+  paymentNo      String?
+  paidAt         DateTime?
+  refundReason   String?
+  refundedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  fulfillmentAt  DateTime?
+  productId      String?
+  beforeVipLevel Int?
+  afterVipLevel  Int?
+  User           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  RefundRequest  RefundRequest[]
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([userId])
+}
+
+model Permission {
+  id            String    @id @default(cuid())
+  code           String           @unique
+  name           String
+  module         String
+  description    String?
+  sortOrder      Int              @default(0)
+  createdAt      DateTime         @default(now())
+  RolePermission RolePermission[]
+}
+
 model PointsRule {
-  id                String   @id @default(uuid())
+  id            String    @id @default(cuid())
   code              String   @unique
   name              String
   description       String?
@@ -90,209 +316,11 @@ model PointsRule {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   vipCostPoints     Int?
-  createdBy         User?    @relation("RuleCreator", fields: [createdById], references: [id])
-}
-
-model Transaction {
-  id          String    @id @default(uuid())
-  userId      String
-  type        String
-  amount      Int
-  balance     Int
-  ruleCode    String?
-  projectId   String?
-  orderId     String?
-  operatorId  String?
-  description String?
-  createdAt   DateTime  @default(now())
-  category    String?
-  module      String?
-  subcategory String?
-  triggerTime DateTime?
-  templateId  String?
-  completedAt DateTime?
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([type])
-  @@index([createdAt])
-  @@index([completedAt])
-  @@index([userId, completedAt])
-}
-
-model Order {
-  id             String          @id @default(uuid())
-  orderNo        String          @unique
-  userId         String
-  productType    String
-  productName    String
-  productDesc    String?
-  quantity       Int             @default(1)
-  originalPrice  Float
-  discountPrice  Float?
-  finalPrice     Float
-  status         OrderStatus     @default(PENDING)
-  paymentMethod  String?
-  paymentNo      String?
-  paidAt         DateTime?
-  refundReason   String?
-  refundedAt     DateTime?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  fulfillmentAt  DateTime?
-  productId      String?
-  beforeVipLevel Int?
-  afterVipLevel  Int?
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  refundRequests RefundRequest[]
-
-  @@index([userId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model Permission {
-  id              String           @id @default(uuid())
-  code            String           @unique
-  name            String
-  module          String
-  description     String?
-  sortOrder       Int              @default(0)
-  createdAt       DateTime         @default(now())
-  rolePermissions RolePermission[]
-}
-
-model RolePermission {
-  id           String     @id @default(uuid())
-  role         UserRole
-  permissionId String
-  createdAt    DateTime   @default(now())
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@unique([role, permissionId])
-}
-
-model Project {
-  id           String            @id @default(uuid())
-  title        String
-  displayId    String?
-  status       String            @default("idle")
-  isPinned     Boolean           @default(false)
-  isDeleted    Boolean           @default(false)
-  deletedAt    DateTime?
-  deletedBy    String?
-  scenarioType String            @default("BUSINESS")
-  globalConfig String
-  styleMap     String?
-  thumbnailUrl String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @default(now())
-  completedAt  DateTime?
-  userId       String?
-  agentSession AgentSession?
-  assets       AssetRegistry[]
-  user         User?             @relation(fields: [userId], references: [id])
-  snapshots    ProjectSnapshot[]
-  items        Slide[]
-
-  @@index([userId])
-  @@index([createdAt])
-  @@index([isDeleted])
-  @@index([deletedAt])
-}
-
-model ProjectSnapshot {
-  id        String   @id @default(uuid())
-  projectId String
-  version   Int
-  summary   String?
-  data      String
-  createdAt DateTime @default(now())
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([projectId])
-}
-
-model Slide {
-  id              String   @id @default(uuid())
-  projectId       String
-  index           Int
-  pageType        String
-  contentType     String
-  title           String
-  content         String
-  brief           String?
-  variants        String   @default("[]")
-  variantCount    Int      @default(2)
-  previewUrl      String?
-  originalFileRef String?
-  status          String   @default("idle")
-  createdAt       DateTime @default(now())
-  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-}
-
-model StyleTemplate {
-  id             String     @id @default(uuid())
-  name           String
-  thumbnailUrl   String?
-  config         String
-  styleMap       String?
-  isCustom       Boolean    @default(true)
-  isOfficial     Boolean    @default(false)
-  isRecommended  Boolean    @default(false)
-  usageCount     Int        @default(0)
-  favoriteCount  Int        @default(0)
-  recommendCount Int        @default(0)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  userId         String?
-  favorites      Favorite[]
-  user           User?      @relation(fields: [userId], references: [id])
-}
-
-model Favorite {
-  id           String         @id @default(uuid())
-  templateId   String?
-  name         String
-  config       String
-  styleMap     String?
-  sampleImages String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  userId       String?
-  user         User?          @relation(fields: [userId], references: [id])
-  template     StyleTemplate? @relation(fields: [templateId], references: [id])
-}
-
-model AppSettings {
-  id        String   @id @default("global")
-  config    String
-  updatedAt DateTime @updatedAt
-}
-
-model GlobalConfig {
-  key       String   @id
-  value     String
-  category  String?
-  desc      String?
-  updatedAt DateTime @updatedAt
-}
-
-model AiEngineRule {
-  id          String   @id @default(uuid())
-  name        String
-  provider    String
-  config      String
-  isActive    Boolean  @default(false)
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([isActive])
+  User              User?    @relation(fields: [createdById], references: [id])
 }
 
 model Product {
-  id            String    @id @default(uuid())
+  id            String    @id @default(cuid())
   type          String
   name          String
   originalPrice Float?
@@ -310,86 +338,72 @@ model Product {
   createdById   String?
   effectiveAt   DateTime  @default(now())
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  createdBy     User?     @relation("ProductCreator", fields: [createdById], references: [id])
+  updatedAt     DateTime @updatedAt
+  User          User?     @relation(fields: [createdById], references: [id])
 }
 
-model CheckInLog {
-  id        String   @id @default(uuid())
-  userId    String
-  date      String
-  points    Int
-  streak    Int
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Project {
+  id            String    @id @default(cuid())
+  title           String
+  displayId       String?
+  status          String            @default("idle")
+  isPinned        Boolean           @default(false)
+  isDeleted       Boolean           @default(false)
+  deletedAt       DateTime?
+  deletedBy       String?
+  scenarioType    String            @default("BUSINESS")
+  source          String            @default("IDE") // IDE | AGENT - 项目创建来源
+  globalConfig    String
+  styleMap        String?
+  thumbnailUrl    String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @default(now())
+  completedAt     DateTime?
+  userId          String?
+  AgentSession    AgentSession?
+  AssetRegistry   AssetRegistry[]
+  User            User?             @relation(fields: [userId], references: [id])
+  ProjectSnapshot ProjectSnapshot[]
+  Slide           Slide[]
 
-  @@unique([userId, date])
+  @@index([deletedAt])
+  @@index([isDeleted])
   @@index([createdAt])
-}
-
-model Lead {
-  id               String         @id @default(uuid())
-  userId           String?
-  name             String
-  company          String?
-  position         String?
-  phone            String
-  email            String?
-  teamSize         String?
-  industry         String?
-  needs            String?
-  status           String         @default("PENDING")
-  priority         String?        @default("MEDIUM")
-  assigneeId       String?
-  nextFollowUpAt   DateTime?
-  source           String?
-  notes            String?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  convertedOrderId String?
-  assignee         User?          @relation("LeadAssignee", fields: [assigneeId], references: [id])
-  user             User?          @relation(fields: [userId], references: [id])
-  activities       LeadActivity[]
-}
-
-model LeadActivity {
-  id         String   @id @default(uuid())
-  leadId     String
-  type       String
-  content    String
-  metadata   String?
-  operatorId String
-  createdAt  DateTime @default(now())
-  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-
-  @@index([leadId])
-  @@index([createdAt])
-}
-
-model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String?
-  type      String
-  content   String?
-  reason    String?
-  severity  String
-  metadata  String?
-  ip        String?
-  createdAt DateTime @default(now())
-
   @@index([userId])
-  @@index([type])
-  @@index([severity])
-  @@index([createdAt])
+  @@index([source]) // 新增索引
+}
+
+model ProjectSnapshot {
+  id            String    @id @default(cuid())
+  projectId String
+  version   Int
+  summary   String?
+  data      String
+  createdAt DateTime @default(now())
+  Project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model RefundHistory {
+  id            String    @id @default(cuid())
+  refundId      String
+  action        String
+  operator      String
+  note          String?
+  createdAt     DateTime      @default(now())
+  RefundRequest RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
+
+  @@index([refundId])
 }
 
 model RefundRequest {
-  id               String           @id @default(uuid())
+  id            String    @id @default(cuid())
   refundNo         String           @unique
   userId           String
   orderId          String
   amount           Float
-  status           RefundStatus     @default(PENDING)
+  status           String           @default("PENDING")
   reason           String
   description      String?
   remark           String?
@@ -402,28 +416,219 @@ model RefundRequest {
   requireManualAt  DateTime?
   transactionId    String?
   createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  history          RefundHistory[]
-  order            Order            @relation(fields: [orderId], references: [id])
-  user             User             @relation(fields: [userId], references: [id])
-  retryLogs        RefundRetryLog[]
+  updatedAt        DateTime @updatedAt
+  RefundHistory    RefundHistory[]
+  Order            Order            @relation(fields: [orderId], references: [id])
+  User             User             @relation(fields: [userId], references: [id])
+  RefundRetryLog   RefundRetryLog[]
 
-  @@index([userId])
-  @@index([orderId])
-  @@index([status])
   @@index([createdAt])
+  @@index([status])
+  @@index([orderId])
+  @@index([userId])
 }
 
-model RefundHistory {
-  id        String        @id @default(uuid())
-  refundId  String
-  action    String
-  operator  String
-  note      String?
-  createdAt DateTime      @default(now())
-  refund    RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
+model RefundRetryLog {
+  id            String    @id @default(cuid())
+  refundId      String
+  retryCount    Int
+  error         String?
+  scheduledAt   DateTime
+  executedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  RefundRequest RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
 
+  @@index([scheduledAt])
   @@index([refundId])
+}
+
+model RolePermission {
+  id            String    @id @default(cuid())
+  role         String
+  permissionId String
+  createdAt    DateTime   @default(now())
+  Permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+}
+
+model Slide {
+  id              String   @id @default(cuid())
+  projectId       String
+  index           Int
+  pageType        String
+  contentType     String
+  title           String
+  content         String
+  brief           String?
+  variants        String   @default("[]")
+  variantCount    Int      @default(2)
+  previewUrl      String?
+  originalFileRef String?
+  status          String   @default("idle")
+  createdAt       DateTime @default(now())
+  Project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model SocialAccount {
+  id            String    @id @default(cuid())
+  userId      String
+  provider    String
+  providerId  String
+  accessToken String?
+  createdAt   DateTime @default(now())
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+}
+
+model StyleTemplate {
+  id            String    @id @default(cuid())
+  name           String
+  config         String
+  styleMap       String?
+  isCustom       Boolean    @default(true)
+  isOfficial     Boolean    @default(false)
+  isRecommended  Boolean    @default(false)
+  usageCount     Int        @default(0)
+  favoriteCount  Int        @default(0)
+  recommendCount Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime @updatedAt
+  userId         String?
+  thumbnailUrl   String?
+  // 软删除字段
+  isDeleted      Boolean   @default(false)
+  deletedAt      DateTime?
+  deletedBy      String?   // 'user' | 'admin'
+  Favorite       Favorite[]
+  User           User?      @relation(fields: [userId], references: [id])
+
+  @@index([isDeleted])
+  @@index([deletedAt])
+}
+
+model Transaction {
+  id            String    @id @default(cuid())
+  userId      String
+  type        String
+  amount      Int
+  balance     Int
+  ruleCode    String?
+  projectId   String?
+  orderId     String?
+  operatorId  String?
+  description String?
+  createdAt   DateTime  @default(now())
+  category    String?
+  module      String?
+  subcategory String?
+  triggerTime DateTime?
+  templateId  String?
+  completedAt DateTime?
+  User        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, completedAt])
+  @@index([completedAt])
+  @@index([createdAt])
+  @@index([type])
+  @@index([userId])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email                                   String?              @unique
+  phone                                   String?              @unique
+  username                                String?              @unique
+  passwordHash                            String?
+  nickname                                String?
+  avatar                                  String?
+  bio                                     String?
+  role                                    String               @default("USER")
+  status                                  String               @default("ACTIVE")
+  points                                  Int                  @default(30)
+  pointsUsed                              Int                  @default(0)
+  vipLevel                                Int                  @default(0)
+  vipExpiresAt                            DateTime?
+  lastLoginAt                             DateTime?
+  lastLoginIp                             String?
+  loginFailCount                          Int                  @default(0)
+  lockedUntil                             DateTime?
+  resetCode                               String?
+  resetCodeExp                            DateTime?
+  inviteCode                              String?              @unique
+  invitedById                             String?
+  checkInDate                             DateTime?
+  checkInStreak                           Int                  @default(0)
+  riskScore                               Int                  @default(0)
+  createdAt                               DateTime             @default(now())
+  updatedAt                               DateTime @updatedAt
+  CheckInLog                              CheckInLog[]
+  Favorite                                Favorite[]
+  Lead_Lead_assigneeIdToUser              Lead[]               @relation("Lead_assigneeIdToUser")
+  Lead_Lead_userIdToUser                  Lead[]               @relation("Lead_userIdToUser")
+  Order                                   Order[]
+  PointsRule                              PointsRule[]
+  Product                                 Product[]
+  Project                                 Project[]
+  RefundRequest                           RefundRequest[]
+  SocialAccount                           SocialAccount[]
+  StyleTemplate                           StyleTemplate[]
+  Transaction                             Transaction[]
+  User                                    User?                @relation("UserToUser", fields: [invitedById], references: [id])
+  other_User                              User[]               @relation("UserToUser")
+  UserMessage_UserMessage_handledByToUser UserMessage[]        @relation("UserMessage_handledByToUser")
+  UserMessage_UserMessage_userIdToUser    UserMessage[]        @relation("UserMessage_userIdToUser")
+  UserMessageSettings                     UserMessageSettings?
+  UserRefundStats                         UserRefundStats?
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([role])
+}
+
+model UserMessage {
+  id            String    @id @default(cuid())
+  userId                           String
+  type                             String
+  title                            String
+  content                          String
+  summary                          String?
+  bizType                          String?
+  bizId                            String?
+  actionUrl                        String?
+  isRead                           Boolean   @default(false)
+  readAt                           DateTime?
+  isImportant                      Boolean   @default(false)
+  isDeleted                        Boolean   @default(false)
+  isArchived                       Boolean   @default(false)
+  archivedAt                       DateTime?
+  handledBy                        String?
+  handledAt                        DateTime?
+  handleAction                     String?
+  createdAt                        DateTime  @default(now())
+  updatedAt                        DateTime @updatedAt
+  expiresAt                        DateTime?
+  User_UserMessage_handledByToUser User?     @relation("UserMessage_handledByToUser", fields: [handledBy], references: [id])
+  User_UserMessage_userIdToUser    User      @relation("UserMessage_userIdToUser", fields: [userId], references: [id])
+
+  @@index([expiresAt])
+  @@index([handledBy])
+  @@index([createdAt])
+  @@index([bizType])
+  @@index([isArchived])
+  @@index([isRead])
+  @@index([userId])
+}
+
+model UserMessageSettings {
+  userId         String   @id
+  emailEnabled   Boolean  @default(true)
+  browserEnabled Boolean  @default(true)
+  preferences    String   @default("{}")
+  updatedAt      DateTime @updatedAt
+  User           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model UserRefundStats {
@@ -433,303 +638,7 @@ model UserRefundStats {
   rejectedCount Int       @default(0)
   lastRequestAt DateTime?
   riskScore     Int       @default(0)
-  user          User      @relation(fields: [userId], references: [id])
+  User          User      @relation(fields: [userId], references: [id])
 
   @@index([riskScore])
-}
-
-model RefundRetryLog {
-  id            String        @id @default(uuid())
-  refundId      String
-  retryCount    Int
-  error         String?
-  scheduledAt   DateTime
-  executedAt    DateTime?
-  createdAt     DateTime      @default(now())
-  refundRequest RefundRequest @relation(fields: [refundId], references: [id], onDelete: Cascade)
-
-  @@index([refundId])
-  @@index([scheduledAt])
-}
-
-model BenefitRevokeLog {
-  id        String   @id @default(uuid())
-  userId    String
-  refundId  String
-  revokedAt DateTime @default(now())
-  reason    String
-
-  @@index([userId])
-  @@index([refundId])
-}
-
-model UserMessage {
-  id           String      @id @default(uuid())
-  userId       String
-  type         MessageType
-  title        String
-  content      String
-  summary      String?
-  bizType      String?
-  bizId        String?
-  actionUrl    String?
-  isRead       Boolean     @default(false)
-  readAt       DateTime?
-  isImportant  Boolean     @default(false)
-  isDeleted    Boolean     @default(false)
-  isArchived   Boolean     @default(false)
-  archivedAt   DateTime?
-  handledBy    String?
-  handledAt    DateTime?
-  handleAction String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  expiresAt    DateTime?
-  handler      User?       @relation("MessageHandler", fields: [handledBy], references: [id])
-  user         User        @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([isRead])
-  @@index([isArchived])
-  @@index([bizType])
-  @@index([createdAt])
-  @@index([handledBy])
-  @@index([expiresAt])
-}
-
-model MessageTemplate {
-  id        String      @id @default(uuid())
-  code      String      @unique
-  name      String
-  type      MessageType
-  title     String
-  content   String
-  bizType   String
-  isActive  Boolean     @default(true)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-}
-
-model UserMessageSettings {
-  userId         String   @id
-  emailEnabled   Boolean  @default(true)
-  browserEnabled Boolean  @default(true)
-  preferences    String   @default("{}")
-  updatedAt      DateTime @updatedAt
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model AgentSession {
-  id              String             @id @default(cuid())
-  projectId       String             @unique
-  status          AgentSessionStatus @default(ACTIVE)
-  mode            AgentMode          @default(GUIDED)
-  isDeleted       Boolean            @default(false)
-  deletedAt       DateTime?
-  context         String?
-  totalTasks      Int                @default(0)
-  completedTasks  Int                @default(0)
-  failedTasks     Int                @default(0)
-  totalPointsUsed Int                @default(0)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  completedAt     DateTime?
-  messages        AgentMessage[]
-  project         Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tasks           AgentTask[]
-  assets          AssetRegistry[]
-
-  @@index([projectId])
-  @@index([status])
-  @@index([createdAt])
-  @@index([status, createdAt])
-  @@index([isDeleted])
-}
-
-model AgentMessage {
-  id        String       @id @default(cuid())
-  sessionId String
-  role      String
-  content   String
-  toolCalls String?
-  metadata  String?
-  isEdited  Boolean      @default(false)
-  editedAt  DateTime?
-  isDeleted Boolean      @default(false)
-  createdAt DateTime     @default(now())
-  session   AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@index([sessionId])
-  @@index([createdAt])
-  @@index([role])
-  @@index([sessionId, createdAt])
-}
-
-model AgentTask {
-  id          String          @id @default(cuid())
-  sessionId   String
-  type        AgentTaskType
-  status      AgentTaskStatus @default(PENDING)
-  priority    Int             @default(0)
-  params      String?
-  result      String?
-  progress    Int             @default(0)
-  error       String?
-  retryCount  Int             @default(0)
-  pointsCost  Int?
-  startedAt   DateTime?
-  completedAt DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  session     AgentSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  @@index([sessionId])
-  @@index([status])
-  @@index([type])
-  @@index([priority])
-  @@index([createdAt])
-  @@index([sessionId, status])
-  @@index([status, priority])
-}
-
-model AssetRegistry {
-  id            String        @id @default(cuid())
-  projectId     String?
-  sessionId     String?
-  taskId        String?
-  templateId    String?
-  favoriteId    String?
-  isReferenced  Boolean       @default(false)
-  isOfficial    Boolean       @default(false)
-  type          AssetType
-  status        AssetStatus   @default(ACTIVE)
-  filename      String
-  url           String
-  mimeType      String?
-  sizeBytes     Int?
-  metadata      String?
-  pointsCost    Int?
-  accessedAt    DateTime      @default(now())
-  accessedCount Int           @default(0)
-  expiresAt     DateTime?
-  deletedAt     DateTime?
-  deletedBy     String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  session       AgentSession? @relation(fields: [sessionId], references: [id])
-  project       Project?      @relation(fields: [projectId], references: [id])
-
-  @@index([projectId])
-  @@index([sessionId])
-  @@index([templateId])
-  @@index([favoriteId])
-  @@index([type])
-  @@index([status])
-  @@index([isReferenced])
-  @@index([isOfficial])
-  @@index([expiresAt])
-  @@index([createdAt])
-  @@index([status, createdAt])
-  @@index([deletedAt])
-}
-
-enum UserRole {
-  USER
-  BASIC
-  PROFESSIONAL
-  PREMIUM
-  ENTERPRISE
-  ADMIN
-  SUPER_ADMIN
-}
-
-enum UserStatus {
-  ACTIVE
-  DISABLED
-  PENDING
-}
-
-enum OrderStatus {
-  PENDING
-  PAID
-  CANCELLED
-  REFUNDED
-  FAILED
-}
-
-enum RefundStatus {
-  PENDING
-  PENDING_SECOND
-  PROCESSING
-  COMPLETED
-  REJECTED
-  FAILED
-  MANUAL_REQUIRED
-}
-
-enum MessageType {
-  SYSTEM
-  ORDER
-  REFUND
-  AI
-  POINTS
-  VIP
-  ACTIVITY
-  SECURITY
-  LEAD
-}
-
-enum AgentSessionStatus {
-  ACTIVE
-  PAUSED
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum AgentMode {
-  GUIDED
-  AUTO
-}
-
-enum AgentTaskType {
-  CONFIG_CONFIRM
-  OUTLINE
-  CONTENT
-  IMAGE
-  IMAGE_BY_PAGE
-  FINAL_OVERVIEW
-  EXPORT
-  IMPORT
-  MODIFY
-  STYLE
-  SNAPSHOT
-}
-
-enum AgentTaskStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum AssetType {
-  IMAGE
-  TEMPLATE_IMAGE
-  FAVORITE_IMAGE
-  USER_UPLOAD
-  OUTLINE
-  EXPORT_ZIP
-  EXPORT_PDF
-  EXPORT_PPTX
-  DOCUMENT
-  THUMBNAIL
-}
-
-enum AssetStatus {
-  ACTIVE
-  TRASHED
-  ARCHIVED
-  DELETED
 }

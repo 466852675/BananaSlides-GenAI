@@ -1,7 +1,8 @@
 // server/src/services/order.service.ts
 // 订单服务：处理订单查询、更新和退款
 
-import { OrderStatus, Prisma } from '@prisma/client';
+import { OrderStatus, OrderStatusType } from '../types/user.types';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { notifyOrderPaid, notifyOrderFailed } from './order-notification.service';
 import { notifyAdminNewOrder } from './admin-notification.service';
@@ -10,7 +11,7 @@ type TransactionClient = Prisma.TransactionClient;
 
 export interface OrderListFilters {
     userId?: string;
-    status?: OrderStatus;
+    status?: OrderStatusType;
     type?: string;
     productName?: string;
     cycle?: string;
@@ -101,7 +102,7 @@ export async function listOrders(filters: OrderListFilters, pagination: Paginati
     const [items, total] = await Promise.all([
         prisma.order.findMany({
             where,
-            include: { user: true },
+            include: { User: true },
             orderBy: { [sortBy]: sortOrder },
             skip: (page - 1) * limit,
             take: limit,
@@ -127,8 +128,8 @@ export async function getOrderById(id: string) {
     return prisma.order.findUnique({
         where: { id },
         include: {
-            user: true,
-            refundRequests: { orderBy: { createdAt: 'desc' } }
+            User: true,
+            RefundRequest: { orderBy: { createdAt: 'desc' } }
         },
     });
 }
@@ -136,7 +137,7 @@ export async function getOrderById(id: string) {
 /**
  * 更新订单状态
  */
-export async function updateOrderStatus(id: string, status: OrderStatus) {
+export async function updateOrderStatus(id: string, status: OrderStatusType) {
     const order = await prisma.order.update({
         where: { id },
         data: { status },
@@ -153,14 +154,14 @@ export async function updateOrderStatus(id: string, status: OrderStatus) {
  * 订单履约
  */
 export async function fulfillOrder(orderId: string) {
-    const order = await prisma.order.findUnique({ 
+    const order = await prisma.order.findUnique({
         where: { id: orderId },
-        include: { user: { select: { id: true, points: true, vipLevel: true, vipExpiresAt: true, role: true } } }
+        include: { User: { select: { id: true, points: true, vipLevel: true, vipExpiresAt: true, role: true } } }
     });
     if (!order || order.fulfillmentAt) return order;
 
     const product = order.productId ? await prisma.product.findUnique({ where: { id: order.productId } }) : null;
-    const user = order.user;
+    const user = order.User;
     if (!user) return order;
 
     const pointsToAdd = product?.points ?? order.quantity;

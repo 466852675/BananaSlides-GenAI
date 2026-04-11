@@ -27,6 +27,7 @@ export interface ProjectWithSession {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  source: 'IDE' | 'AGENT'; // 项目来源标识
   agentSession: {
     id: string;
     status: AgentSessionStatus;
@@ -59,6 +60,16 @@ export const agentApi = {
    */
   async getProjectsWithSessions(): Promise<ProjectWithSession[]> {
     return client.get(`${BASE_URL}/projects-with-sessions`);
+  },
+
+  /**
+   * 获取用户最近完成的会话（用于一键复用配置）
+   */
+  async getRecentSessions(options?: { limit?: number; status?: string }): Promise<{ sessions: any[] }> {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.status) params.set('status', options.status);
+    return client.get(`${BASE_URL}/recent-sessions?${params.toString()}`);
   },
 
   /**
@@ -136,14 +147,14 @@ export const agentApi = {
   /**
    * 重置消息（删除该消息及后续所有消息）
    */
-  async resetMessage(sessionId: string, messageId: string): Promise<void> {
+  async resetMessage(sessionId: string, messageId: string): Promise<{ success: boolean; deletedCount: number; refundedPoints: number }> {
     return client.delete(`${BASE_URL}/sessions/${sessionId}/messages/${messageId}`);
   },
 
   /**
    * 清空会话的所有消息和任务
    */
-  async clearSession(sessionId: string): Promise<{ success: boolean; deletedMessagesCount: number; deletedTasksCount: number }> {
+  async clearSession(sessionId: string): Promise<{ success: boolean; deletedMessagesCount: number; deletedTasksCount: number; refundedPoints: number }> {
     return client.delete(`${BASE_URL}/sessions/${sessionId}/messages`);
   },
 

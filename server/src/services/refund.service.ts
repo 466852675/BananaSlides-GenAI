@@ -1,4 +1,5 @@
-import { OrderStatus, RefundStatus, Prisma } from '@prisma/client';
+import { OrderStatus, RefundStatus, OrderStatusType, RefundStatusType } from '../types/user.types';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { RefundProcessorService } from './refund-processor.service';
 import { notifyAdminNewRefund } from './admin-notification.service';
@@ -45,7 +46,7 @@ async function addRefundHistory(
 
 export interface RefundListFilters {
     userId?: string;
-    status?: RefundStatus;
+    status?: RefundStatusType;
     keyword?: string;
     startDate?: string;
     endDate?: string;
@@ -79,7 +80,7 @@ export interface RefundDetail {
     id: string;
     refundNo: string;
     amount: number;
-    status: RefundStatus;
+    status: RefundStatusType;
     reason: string;
     description?: string | null;
     remark?: string | null;
@@ -101,7 +102,7 @@ export async function checkRefundEligibility(
     const order = await prisma.order.findUnique({
         where: { id: orderId },
         include: {
-            user: {
+            User: {
                 select: {
                     id: true,
                     email: true,
@@ -273,7 +274,7 @@ export async function applyRefund(
         const refund = await prisma.$transaction(async (tx) => {
             const order = await tx.order.findUnique({
                 where: { id: orderId },
-                include: { refundRequests: true }
+                include: { RefundRequest: true }
             });
 
             if (!order) {
@@ -296,7 +297,7 @@ export async function applyRefund(
                 throw new Error('REFUND_PERIOD_EXPIRED');
             }
 
-            const hasActiveRefund = order.refundRequests.some(r => 
+            const hasActiveRefund = order.RefundRequest.some(r => 
                 r.status !== RefundStatus.REJECTED && r.status !== RefundStatus.FAILED
             );
             if (hasActiveRefund) {
@@ -422,7 +423,7 @@ export async function getRefundById(refundId: string, userId?: string) {
     const refund = await prisma.refundRequest.findUnique({
         where,
         include: {
-            order: {
+            Order: {
                 select: {
                     id: true,
                     orderNo: true,
@@ -432,7 +433,7 @@ export async function getRefundById(refundId: string, userId?: string) {
                     paidAt: true,
                 },
             },
-            user: {
+            User: {
                 select: {
                     id: true,
                     email: true,
@@ -466,7 +467,7 @@ export async function getAdminRefundDetailAggregated(refundId: string) {
     const refund = await prisma.refundRequest.findUnique({
         where: { id: refundId },
         include: {
-            order: {
+            Order: {
                 select: {
                     id: true,
                     orderNo: true,
@@ -479,7 +480,7 @@ export async function getAdminRefundDetailAggregated(refundId: string) {
                     quantity: true,
                 },
             },
-            user: {
+            User: {
                 select: {
                     id: true,
                     email: true,
@@ -501,7 +502,7 @@ export async function getAdminRefundDetailAggregated(refundId: string) {
 
     const userId = refund.userId;
     const orderId = refund.orderId;
-    const orderPaidAt = refund.order.paidAt || refund.order.createdAt;
+    const orderPaidAt = refund.Order.paidAt || refund.Order.createdAt;
 
     // 2. 并行获取所有聚合数据
     const [
@@ -573,7 +574,7 @@ export async function getAdminRefundDetailAggregated(refundId: string) {
 
     // 4. 计算用户账户年龄
     const accountAgeDays = Math.floor(
-        (Date.now() - refund.user.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+        (Date.now() - refund.User.createdAt.getTime()) / (1000 * 60 * 60 * 24)
     );
 
     // 5. 构建聚合响应
@@ -594,19 +595,19 @@ export async function getAdminRefundDetailAggregated(refundId: string) {
         },
 
         // 订单信息
-        order: refund.order,
+        order: refund.Order,
 
         // 用户画像
         userProfile: {
-            id: refund.user.id,
-            email: refund.user.email,
-            nickname: refund.user.nickname,
+            id: refund.User.id,
+            email: refund.User.email,
+            nickname: refund.User.nickname,
             accountAgeDays,
-            currentPoints: refund.user.points,
-            totalPointsUsed: refund.user.pointsUsed,
-            vipLevel: refund.user.vipLevel,
-            vipExpiresAt: refund.user.vipExpiresAt,
-            riskScore: refund.user.riskScore,
+            currentPoints: refund.User.points,
+            totalPointsUsed: refund.User.pointsUsed,
+            vipLevel: refund.User.vipLevel,
+            vipExpiresAt: refund.User.vipExpiresAt,
+            riskScore: refund.User.riskScore,
         },
 
         // 退款历史统计
@@ -632,9 +633,9 @@ export async function getAdminRefundDetailAggregated(refundId: string) {
 
         // 资产核销仪表盘
         equityAudit: {
-            orderAmount: refund.order.finalPrice,
+            orderAmount: refund.Order.finalPrice,
             // 积分授予量：基于订单数量计算（积分类产品数量即积分数）
-            pointsGranted: refund.order.productType === 'points' ? refund.order.quantity : 0,
+            pointsGranted: refund.Order.productType === 'points' ? refund.Order.quantity : 0,
             totalConsumedPoints,
             consumedValue,
             suggestedRefundAmount,
@@ -741,7 +742,7 @@ export async function getMyRefunds(
         prisma.refundRequest.findMany({
             where: { userId },
             include: {
-                order: {
+                Order: {
                     select: {
                         id: true,
                         orderNo: true,
@@ -762,14 +763,14 @@ export async function getMyRefunds(
             id: item.id,
             refundNo: item.refundNo,
             amount: item.amount,
-            status: item.status,
+            status: item.status as RefundStatusType,
             reason: item.reason,
             description: item.description,
             remark: item.remark,
             createdAt: item.createdAt,
             processedAt: item.processedAt,
             completedAt: item.completedAt,
-            order: item.order,
+            order: item.Order,
         })),
         pagination: {
             page,
@@ -802,9 +803,9 @@ export async function listRefunds(
             OR: [
                 { refundNo: { contains: keyword } },
                 { reason: { contains: keyword } },
-                { order: { orderNo: { contains: keyword } } },
-                { user: { email: { contains: keyword } } },
-                { user: { nickname: { contains: keyword } } },
+                { Order: { orderNo: { contains: keyword } } },
+                { User: { email: { contains: keyword } } },
+                { User: { nickname: { contains: keyword } } },
             ],
         });
     }
@@ -832,7 +833,7 @@ export async function listRefunds(
     }
 
     if (filters.paymentMethod) {
-        andConditions.push({ order: { paymentMethod: filters.paymentMethod } });
+        andConditions.push({ Order: { paymentMethod: filters.paymentMethod } });
     }
 
     if (filters.hasNote !== undefined) {
@@ -857,10 +858,10 @@ export async function listRefunds(
 
     if (filters.riskLevel) {
         if (filters.riskLevel === 'HIGH') {
-            andConditions.push({ user: { riskScore: { gte: 70 } } });
+            andConditions.push({ User: { riskScore: { gte: 70 } } });
         } else if (filters.riskLevel === 'MEDIUM') {
             andConditions.push({
-                user: {
+                User: {
                     riskScore: {
                         gte: 30,
                         lt: 70
@@ -868,7 +869,7 @@ export async function listRefunds(
                 }
             });
         } else if (filters.riskLevel === 'LOW') {
-            andConditions.push({ user: { riskScore: { lt: 30 } } });
+            andConditions.push({ User: { riskScore: { lt: 30 } } });
         }
     }
 
@@ -878,7 +879,7 @@ export async function listRefunds(
         prisma.refundRequest.findMany({
             where,
             include: {
-                order: {
+                Order: {
                     select: {
                         id: true,
                         orderNo: true,
@@ -888,7 +889,7 @@ export async function listRefunds(
                         paymentMethod: true,
                     },
                 },
-                user: {
+                User: {
                     select: {
                         id: true,
                         email: true,
@@ -906,20 +907,20 @@ export async function listRefunds(
 
     // 扁平化映射并计算风险等级
     const flattenedItems = items.map(item => {
-        const riskScore = item.user.riskScore || 0;
+        const riskScore = item.User.riskScore || 0;
         let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
         if (riskScore >= 70) riskLevel = 'HIGH';
         else if (riskScore >= 30) riskLevel = 'MEDIUM';
 
         return {
             ...item,
-            productName: item.order.productName,
-            orderNo: item.order.orderNo,
-            userNickname: item.user.nickname,
-            userEmail: item.user.email,
+            productName: item.Order.productName,
+            orderNo: item.Order.orderNo,
+            userNickname: item.User.nickname,
+            userEmail: item.User.email,
             userRiskScore: riskScore,
             riskLevel,
-            paymentMethod: item.order.paymentMethod,
+            paymentMethod: item.Order.paymentMethod,
         };
     });
 
@@ -1034,7 +1035,7 @@ export async function auditRefund(
     const refund = await prisma.refundRequest.findUnique({
         where: { id: refundId },
         include: {
-            order: {
+            Order: {
                 select: {
                     id: true,
                     orderNo: true,
@@ -1088,17 +1089,17 @@ export async function auditRefund(
             });
 
             // 异步调用支付平台处理退款
-            const paymentMethod = (refund.order?.paymentMethod as 'wechat' | 'alipay') || 'wechat';
+            const paymentMethod = (refund.Order?.paymentMethod as 'wechat' | 'alipay') || 'wechat';
             const processResult = await RefundProcessorService.processRefund({
                 refundId: refund.id,
                 userId: refund.userId,
                 orderId: refund.orderId,
-                orderNo: refund.order?.orderNo || '',
+                orderNo: refund.Order?.orderNo || '',
                 refundNo: refund.refundNo,
                 amount: refund.amount,
                 reason: refund.reason,
                 paymentMethod: paymentMethod,
-                paymentNo: refund.order?.paymentNo || undefined,
+                paymentNo: refund.Order?.paymentNo || undefined,
             });
 
             if (processResult.success) {
@@ -1110,7 +1111,7 @@ export async function auditRefund(
                     userId: refund.userId,
                     refundId: refund.id,
                     refundNo: refund.refundNo,
-                    orderNo: refund.order?.orderNo || '',
+                    orderNo: refund.Order?.orderNo || '',
                     amount: refund.amount,
                     productName: '',
                     transactionId: processResult.transactionId,
@@ -1148,7 +1149,7 @@ export async function auditRefund(
                     userId: refund.userId,
                     refundId: refund.id,
                     refundNo: refund.refundNo,
-                    orderNo: refund.order?.orderNo || '',
+                    orderNo: refund.Order?.orderNo || '',
                     amount: refund.amount,
                     productName: '',
                     remark: processResult.message,
@@ -1189,7 +1190,7 @@ export async function auditRefund(
                 userId: refund.userId,
                 refundId: refund.id,
                 refundNo: refund.refundNo,
-                orderNo: refund.order?.orderNo || '',
+                orderNo: refund.Order?.orderNo || '',
                 amount: refund.amount,
                 productName: '',
                 remark,

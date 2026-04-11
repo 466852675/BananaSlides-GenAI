@@ -1,4 +1,4 @@
-import { RefundStatus } from '@prisma/client';
+import { RefundStatus, RefundStatusType } from '../types/user.types';
 import { prisma } from '../db';
 import { WechatPayService, WechatRefundParams } from './payment/wechat.service';
 import { AlipayService, AlipayRefundParams } from './payment/alipay.service';
@@ -26,7 +26,7 @@ export interface QueryRefundResult {
     success: boolean;
     code: string;
     message: string;
-    status?: RefundStatus;
+    status?: RefundStatusType;
     transactionId?: string;
 }
 
@@ -125,7 +125,7 @@ export class RefundProcessorService {
         const refund = await prisma.refundRequest.findUnique({
             where: { id: refundId },
             include: {
-                order: {
+                Order: {
                     select: {
                         paymentMethod: true,
                     },
@@ -141,7 +141,7 @@ export class RefundProcessorService {
             };
         }
 
-        const paymentMethod = refund.order?.paymentMethod;
+        const paymentMethod = refund.Order?.paymentMethod;
         
         if (paymentMethod === 'wechat') {
             const queryResult = await WechatPayService.queryRefundStatus(refund.refundNo);
@@ -239,7 +239,7 @@ export class RefundProcessorService {
         const refund = await prisma.refundRequest.findUnique({
             where: { id: refundId },
             include: {
-                order: {
+                Order: {
                     select: {
                         orderNo: true,
                         paymentMethod: true,
@@ -258,7 +258,7 @@ export class RefundProcessorService {
             };
         }
 
-        if (!refund.order) {
+        if (!refund.Order) {
             return {
                 success: false,
                 code: 'ORDER_NOT_FOUND',
@@ -284,12 +284,12 @@ export class RefundProcessorService {
             refundId: refund.id,
             userId: refund.userId,
             orderId: refund.orderId,
-            orderNo: refund.order.orderNo,
+            orderNo: refund.Order.orderNo,
             refundNo: refund.refundNo,
             amount: refund.amount,
             reason: refund.reason,
-            paymentMethod: refund.order.paymentMethod as 'wechat' | 'alipay',
-            paymentNo: refund.order.paymentNo || undefined,
+            paymentMethod: refund.Order.paymentMethod as 'wechat' | 'alipay',
+            paymentNo: refund.Order.paymentNo || undefined,
         });
     }
 
@@ -389,8 +389,8 @@ export class RefundProcessorService {
     /**
      * 映射微信支付状态到系统状态
      */
-    private static mapWechatStatus(status?: string): RefundStatus | undefined {
-        const statusMap: Record<string, RefundStatus> = {
+    private static mapWechatStatus(status?: string): RefundStatusType | undefined {
+        const statusMap: Record<string, RefundStatusType> = {
             SUCCESS: RefundStatus.COMPLETED,
             PROCESSING: RefundStatus.PROCESSING,
             CHANGE: RefundStatus.PROCESSING,
@@ -403,8 +403,8 @@ export class RefundProcessorService {
     /**
      * 映射支付宝状态到系统状态
      */
-    private static mapAlipayStatus(status?: string): RefundStatus | undefined {
-        const statusMap: Record<string, RefundStatus> = {
+    private static mapAlipayStatus(status?: string): RefundStatusType | undefined {
+        const statusMap: Record<string, RefundStatusType> = {
             REFUND_SUCCESS: RefundStatus.COMPLETED,
             REFUND_PROCESSING: RefundStatus.PROCESSING,
             REFUND_FAILED: RefundStatus.FAILED,

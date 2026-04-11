@@ -1,4 +1,4 @@
-import { MessageType } from '@prisma/client';
+import { MessageType } from '../types/user.types';
 import { createMessage } from './message.service';
 import { renderTemplate } from './message-template.service';
 

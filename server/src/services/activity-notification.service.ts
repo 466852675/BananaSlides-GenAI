@@ -1,7 +1,7 @@
 // server/src/services/activity-notification.service.ts
 // 活动运营通知服务
 
-import { MessageType } from '@prisma/client';
+import { MessageType } from '../types/user.types';
 import { createMessage } from './message.service';
 
 interface StreakMilestoneContext {

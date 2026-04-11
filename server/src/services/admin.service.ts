@@ -1,7 +1,7 @@
 // server/src/services/admin.service.ts
 // 管理员服务：用户管理、订单管理、积分规则管理
 
-import { UserRole, UserStatus, OrderStatus } from '@prisma/client';
+import { UserRole, UserStatus, OrderStatus, UserRoleType, UserStatusType, OrderStatusType } from '../types/user.types';
 import { hashPassword } from '../utils/password.util';
 import { prisma } from '../db';
 import { notifyVipChange } from './vip-notification.service';
@@ -12,8 +12,8 @@ import { notifyVipChange } from './vip-notification.service';
 
 export interface UserListFilters {
     search?: string;
-    role?: UserRole;
-    status?: UserStatus;
+    role?: UserRoleType;
+    status?: UserStatusType;
     vipLevel?: number;
     sortBy?: 'createdAt' | 'points' | 'lastLoginAt';
     sortOrder?: 'asc' | 'desc';
@@ -142,9 +142,9 @@ export async function listUsers(filters: UserListFilters, pagination: Pagination
                 lastLoginAt: true,
                 createdAt: true,
                 _count: {
-                    select: { projects: true }
+                    select: { Project: true }
                 },
-                orders: {
+                Order: {
                     where: { status: 'PAID' },
                     select: { finalPrice: true }
                 }
@@ -164,7 +164,7 @@ export async function listUsers(filters: UserListFilters, pagination: Pagination
     let items = rawItems.map(item => {
         const { _count, ...rest } = item as any;
         const isAdminType = item.role === UserRole.SUPER_ADMIN || item.role === UserRole.ADMIN;
-        const totalSpent = (rest.orders || []).reduce((sum: number, order: any) => sum + (order.finalPrice || 0), 0);
+        const totalSpent = (rest.Order || []).reduce((sum: number, order: any) => sum + (order.finalPrice || 0), 0);
 
         return {
             ...rest,
@@ -261,8 +261,8 @@ export async function updateUser(
     id: string,
     data: {
         nickname?: string;
-        role?: UserRole;
-        status?: UserStatus;
+        role?: UserRoleType;
+        status?: UserStatusType;
         points?: number;
         vipLevel?: number;
     },
@@ -294,13 +294,13 @@ export async function updateUser(
     if (data.vipLevel !== undefined) {
         updateData.vipLevel = data.vipLevel;
         // 如果管理员只修改了 VIP 等级，且当前角色是普通商业角色 (非 ADMIN/SUPER_ADMIN)，则自动对齐角色名
-        const nonAdminRoles: UserRole[] = [UserRole.USER, UserRole.BASIC, UserRole.PROFESSIONAL, UserRole.PREMIUM, UserRole.ENTERPRISE];
-        if (data.role === undefined && (nonAdminRoles as any[]).includes(user.role)) {
-            const roleMap: Record<number, UserRole> = {
+        const nonAdminRoles: UserRoleType[] = [UserRole.USER, UserRole.VIP, UserRole.PROFESSIONAL, UserRole.ENTERPRISE];
+        if (data.role === undefined && nonAdminRoles.includes(user.role as UserRoleType)) {
+            const roleMap: Record<number, UserRoleType> = {
                 0: UserRole.USER,
-                1: UserRole.BASIC,
+                1: UserRole.VIP,
                 2: UserRole.PROFESSIONAL,
-                3: UserRole.PREMIUM,
+                3: UserRole.ENTERPRISE,
                 4: UserRole.ENTERPRISE
             };
             if (roleMap[data.vipLevel]) {
@@ -466,7 +466,7 @@ export async function listPermissions() {
 /**
  * 获取角色的权限
  */
-export async function getRolePermissions(role: UserRole) {
+export async function getRolePermissions(role: UserRoleType) {
     // [V9.0] 超级管理员特权：自动拥有系统中所有定义的权限
     if (role === UserRole.SUPER_ADMIN) {
         const allPermissions = await prisma.permission.findMany();
@@ -480,14 +480,14 @@ export async function getRolePermissions(role: UserRole) {
 
     return await prisma.rolePermission.findMany({
         where: { role },
-        include: { permission: true }
+        include: { Permission: true }
     });
 }
 
 /**
  * 更新角色的权限
  */
-export async function updateRolePermissions(role: UserRole, permissionIds: string[]) {
+export async function updateRolePermissions(role: UserRoleType, permissionIds: string[]) {
     // 1. 删除旧权限
     await prisma.rolePermission.deleteMany({
         where: { role }
@@ -617,18 +617,18 @@ export async function getVipDistribution() {
  * [V9.5] 获取用户状态统计数据
  */
 export async function getUserStats() {
-    const [total, active, disabled, pending] = await Promise.all([
+    const [total, active, disabled, locked] = await Promise.all([
         prisma.user.count(),
         prisma.user.count({ where: { status: UserStatus.ACTIVE } }),
         prisma.user.count({ where: { status: UserStatus.DISABLED } }),
-        prisma.user.count({ where: { status: UserStatus.PENDING } }),
+        prisma.user.count({ where: { status: UserStatus.LOCKED } }),
     ]);
 
     return {
         total,
         active,
         disabled,
-        pending
+        locked
     };
 }
 

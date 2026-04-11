@@ -1,10 +1,11 @@
-import { MessageType, Prisma } from '@prisma/client';
+import { MessageType, MessageTypeType } from '../types/user.types';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { shouldSendMessage } from './message-settings.service';
 
 export interface CreateMessageDTO {
     userId: string;
-    type: MessageType;
+    type: MessageTypeType;
     title: string;
     content: string;
     summary?: string;
@@ -16,7 +17,7 @@ export interface CreateMessageDTO {
 
 export interface MessageListFilters {
     userId: string;
-    type?: MessageType;
+    type?: MessageTypeType;
     isRead?: boolean;
     isImportant?: boolean;
     bizType?: string;

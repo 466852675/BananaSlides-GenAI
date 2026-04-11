@@ -5,7 +5,8 @@
  * 运行方式: npx tsx server/src/scripts/clear-mock-messages.ts
  */
 
-import { PrismaClient, MessageType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { MessageType } from '../types/user.types';
 
 const prisma = new PrismaClient();
 

@@ -1,5 +1,5 @@
 
-import { MessageType, UserRole } from '@prisma/client';
+import { MessageType, UserRole } from '../types/user.types';
 import { prisma } from '../db';
 import { createMessage } from './message.service';
 import { renderTemplate } from './message-template.service';

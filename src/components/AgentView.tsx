@@ -18,6 +18,7 @@ import agentApi, { type ProjectWithSession } from '../api/agent';
 import { client } from '../api/client';
 import { smartRefine } from '../services/geminiService';
 import { exportToZip, exportToPdf, exportToPptx } from '../services/exportService';
+import { sseManager } from '../utils/sseManager';
 import type {
   AgentSession,
   AgentMessage,
@@ -164,6 +165,15 @@ export default function AgentView({
     }
   }, [onStyleMapChange, onConfigChange, showToast]);
 
+  // 复用历史配置处理
+  const handleReuseConfig = useCallback((config: Record<string, any>) => {
+    // 应用配置到当前项目
+    if (config && Object.keys(config).length > 0) {
+      onConfigChange?.(config);
+      showToast?.('已复用历史配置', 'success');
+    }
+  }, [onConfigChange, showToast]);
+
   // 检测是否有已完成的幻灯片可以预览
   const hasCompletedSlides = useMemo(
     () => items && items.length > 0 && items.some(item => item.status === 'success'),
@@ -172,6 +182,19 @@ export default function AgentView({
 
   // 项目列表（侧边栏）- 使用 ProjectWithSession 类型
   const [projects, setProjects] = useState<ProjectWithSession[]>([]);
+
+  // 【修复】组件加载时获取项目列表
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const response = await agentApi.getProjectsWithSessions();
+        setProjects(response);
+      } catch (error) {
+        console.error('[AgentView] 获取项目列表失败:', error);
+      }
+    };
+    fetchProjects();
+  }, []);
 
   // 获取当前项目状态（用于判断显示对话还是预览）
   const currentProject = useMemo(() => {
@@ -240,77 +263,76 @@ export default function AgentView({
   }, [showError]);
 
   // WebSocket 重连后恢复状态
+  const reconnectingRef = useRef(false);
   useEffect(() => {
     // 检测从不连接到连接的状态变化（重连成功）
     if (connected && !prevWsConnectedRef.current && session) {
-      console.log('[AgentView] WebSocket 重连成功，恢复会话状态...');
-      // 重新获取会话状态
-      agentApi.getSession(session.id)
-        .then(updatedSession => {
-          setMessages(updatedSession.messages || []);
-          setTasks(updatedSession.tasks || []);
-          showToast?.('连接已恢复', 'info');
-        })
-        .catch(error => {
-          showError('恢复会话状态失败', error);
-        });
+      // 防止并发恢复请求
+      if (!reconnectingRef.current) {
+        reconnectingRef.current = true;
+        agentApi.getSession(session.id)
+          .then(updatedSession => {
+            setMessages(updatedSession.messages || []);
+            setTasks(updatedSession.tasks || []);
+            showToast?.('连接已恢复', 'info');
+          })
+          .catch(error => {
+            showError('恢复会话状态失败', error);
+          })
+          .finally(() => {
+            reconnectingRef.current = false;
+          });
+      }
     }
     prevWsConnectedRef.current = connected;
   }, [connected, session, showToast]);
 
-  // SSE 连接
-  const eventSourceRef = useRef<EventSource | null>(null);
-
-  // 初始化会话 - 使用 ref 存储最新的 projectId，避免依赖 initSession
-  const currentProjectIdRef = useRef(currentProjectId);
-  useEffect(() => {
-    currentProjectIdRef.current = currentProjectId;
-  }, [currentProjectId]);
-
-  // 获取项目列表（含 AgentSession 信息）
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const response = await agentApi.getProjectsWithSessions();
-        setProjects(response);
-      } catch (error) {
-        showErrorRef.current('获取项目列表失败', error);
-      }
-    };
-    fetchProjects();
-  }, []);
+  // SSE 连接 - 使用 sseManager 管理跨标签页去重
+  const sseConnectedRef = useRef(false);
+  const sseUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // SSE 进度监听
   useEffect(() => {
     if (session && session.status === 'ACTIVE') {
-      // 创建 SSE 连接
-      const es = agentApi.createProgressEventSource(session.id);
+      const sseUrl = `/api/agent/sessions/${session.id}/stream`;
 
-      es.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setProgress(data);
-        } catch (e) {
-          showError('解析进度数据失败', e);
-        }
-      };
+      // 使用 sseManager 连接，自动处理跨标签页去重
+      const isPrimary = sseManager.connect(session.id, sseUrl);
+      sseConnectedRef.current = true;
 
-      es.onerror = (error) => {
-        showError('进度连接中断，正在重连...', error);
-        es.close();
-      };
+      console.log(`[AgentView] SSE 连接模式: ${isPrimary ? '主连接' : '监听模式'}`);
 
-      eventSourceRef.current = es;
+      // 订阅消息
+      const unsubscribe = sseManager.onMessage((data) => {
+        setProgress(data);
+      });
+
+      sseUnsubscribeRef.current = unsubscribe;
 
       return () => {
-        es.close();
+        // 组件卸载时取消订阅
+        if (unsubscribe) {
+          unsubscribe();
+        }
+        sseConnectedRef.current = false;
       };
+    } else {
+      // session 不是 ACTIVE，断开 SSE
+      if (sseUnsubscribeRef.current) {
+        sseUnsubscribeRef.current();
+        sseUnsubscribeRef.current = null;
+      }
     }
   }, [session?.id, session?.status]);
 
   // WebSocket 消息处理
   useEffect(() => {
     if (!wsMessage) return;
+
+    // 校验消息所属的 session，防止切换项目时收到旧消息
+    if (wsMessage.payload?.sessionId && session && wsMessage.payload.sessionId !== session.id) {
+      return;
+    }
 
     switch (wsMessage.type) {
       case 'agent_progress':
@@ -351,6 +373,13 @@ export default function AgentView({
             }
             return [...prev, completedTask];
           });
+
+          // 流式输出完成信号
+          if (completedTask.type === 'OUTLINE') {
+            setStreamingOutline({ slides: [], isGenerating: false });
+          } else if (completedTask.type === 'CONTENT') {
+            setStreamingContent({ slides: [], isGenerating: false });
+          }
         }
         break;
 
@@ -358,7 +387,6 @@ export default function AgentView({
         // 任务预览更新（引导模式下预生成结果）
         if (wsMessage.payload?.task) {
           const previewTask = wsMessage.payload.task;
-          console.log('[AgentView] 收到预览更新:', previewTask.id, previewTask.result);
           setTasks(prev => {
             const existingIndex = prev.findIndex(t => t.id === previewTask.id);
             if (existingIndex >= 0) {
@@ -472,7 +500,8 @@ export default function AgentView({
 
     if (
       lastInitializedProjectRef.current === projectId &&
-      sessionProjectIdRef.current === projectId
+      sessionProjectIdRef.current === projectId &&
+      session?.projectId === projectId  // 【新增】确保会话已关联当前项目
     ) {
       return;
     }
@@ -553,11 +582,15 @@ export default function AgentView({
     try {
       // 如果没有项目，先创建项目
       let projectId = currentProjectId;
+      let shouldInitSession = false;  // 【新增】标记是否需要初始化会话
       if (!projectId && onCreateProject) {
         try {
           // 使用用户输入的前 50 个字符作为项目标题
           const title = content.slice(0, 50) + (content.length > 50 ? '...' : '');
           projectId = await onCreateProject(title);
+          shouldInitSession = true;  // 新创建的项目需要初始化会话
+          // 【修复】标记当前项目已处理，避免 initSession 被重复触发
+          lastInitializedProjectRef.current = projectId;
         } catch (createProjectError) {
           showError('创建项目失败', createProjectError);
           setInputValue(content);
@@ -575,7 +608,7 @@ export default function AgentView({
 
       // 如果没有 session，先创建
       let currentSession = session;
-      if (!currentSession) {
+      if (!currentSession || shouldInitSession) {  // 【修复】新项目需要创建会话
         try {
           currentSession = await agentApi.createSession(projectId, autoMode ? 'AUTO' : 'GUIDED');
           setSession(currentSession);
@@ -609,6 +642,14 @@ export default function AgentView({
       if (response.progress) {
         setProgress(response.progress);
       }
+
+      // 【修复】发送消息后刷新项目列表（新创建的项目需要显示在侧边栏）
+      try {
+        const updatedProjects = await agentApi.getProjectsWithSessions();
+        setProjects(updatedProjects);
+      } catch (refreshError) {
+        console.error('[AgentView] 刷新项目列表失败:', refreshError);
+      }
     } catch (error) {
       showError('发送消息失败', error);
       // 恢复输入
@@ -617,6 +658,38 @@ export default function AgentView({
       setIsLoading(false);
     }
   }, [inputValue, session, isLoading, currentProjectId, autoMode, onCreateProject]);
+
+  // AI 重写指令：直接发送自然语言修改指令
+  const handleSendAiModify = useCallback(async (instruction: string) => {
+    if (isLoading || !instruction.trim() || !session?.id) return;
+
+    // 添加用户消息到对话列表
+    const tempUserMessage: AgentMessage = {
+      id: `temp-ai-${Date.now()}`,
+      sessionId: session.id,
+      role: 'user',
+      content: instruction,
+      createdAt: new Date().toISOString(),
+      isEdited: false,
+      isDeleted: false
+    };
+    setMessages(prev => [...prev, tempUserMessage]);
+    setIsLoading(true);
+
+    try {
+      const result = await agentApi.sendMessage(session.id, instruction);
+      if (result.message) {
+        setMessages(prev => [...prev.filter(m => !m.id.startsWith('temp-ai-')), result.message]);
+      }
+      if (result.tasks) {
+        setTasks(result.tasks);
+      }
+    } catch (error: any) {
+      console.error('[AgentView] AI 重写指令发送失败:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [session, isLoading]);
 
   // 切换自动模式
   const handleToggleAutoMode = useCallback(async () => {
@@ -761,6 +834,14 @@ export default function AgentView({
         task.id === taskId ? { ...task, status: 'RUNNING' as any } : task
       ));
       showToast?.('任务开始执行', 'info');
+
+      // 【修复】配置确认后刷新项目列表，确保新创建的项目显示在侧边栏
+      try {
+        const updatedProjects = await agentApi.getProjectsWithSessions();
+        setProjects(updatedProjects);
+      } catch (refreshError) {
+        console.error('[AgentView] 刷新项目列表失败:', refreshError);
+      }
     } catch (error) {
       showError('确认任务失败', error);
     } finally {
@@ -776,14 +857,39 @@ export default function AgentView({
       setIsLoading(true);
       // 如果提供了修改数据，直接调用 API 更新任务参数
       if (modifiedData) {
-        await agentApi.modifyTask(session.id, taskId, { params: modifiedData });
-        // 更新本地任务的 result（将修改后的数据更新到显示中）
-        setTasks(prev => prev.map(task =>
-          task.id === taskId
-            ? { ...task, result: JSON.stringify({ topic: modifiedData.topic, config: modifiedData }) }
-            : task
-        ));
-        showToast?.('配置已修改', 'success');
+        const task = tasks.find(t => t.id === taskId);
+
+        // 根据任务类型处理不同的修改数据
+        if (task?.type === 'OUTLINE') {
+          // 大纲修改：更新任务的 result
+          await agentApi.modifyTask(session.id, taskId, { params: modifiedData });
+          // 更新本地任务状态
+          setTasks(prev => prev.map(t =>
+            t.id === taskId
+              ? { ...t, result: JSON.stringify({ title: modifiedData.title, slides: modifiedData.slides }) }
+              : t
+          ));
+          showToast?.('大纲已修改', 'success');
+        } else if (task?.type === 'CONTENT') {
+          // 内容修改：更新任务的 result
+          await agentApi.modifyTask(session.id, taskId, { params: modifiedData });
+          // 更新本地任务状态
+          setTasks(prev => prev.map(t =>
+            t.id === taskId
+              ? { ...t, result: JSON.stringify({ slides: modifiedData.slides }) }
+              : t
+          ));
+          showToast?.('内容已修改', 'success');
+        } else {
+          // 配置修改（原有逻辑）
+          await agentApi.modifyTask(session.id, taskId, { params: modifiedData });
+          setTasks(prev => prev.map(task =>
+            task.id === taskId
+              ? { ...task, result: JSON.stringify({ topic: modifiedData.topic, config: modifiedData }) }
+              : task
+          ));
+          showToast?.('配置已修改', 'success');
+        }
       } else {
         // 原有逻辑：设置输入框提示用户输入修改要求
         const task = tasks.find(t => t.id === taskId);
@@ -882,7 +988,7 @@ export default function AgentView({
     try {
       setIsLoading(true);
       // 调用 API 重置消息
-      await agentApi.resetMessage(session.id, messageId);
+      const result = await agentApi.resetMessage(session.id, messageId);
       // 删除该消息及其后续所有消息
       const messageIndex = messages.findIndex(msg => msg.id === messageId);
       if (messageIndex >= 0) {
@@ -896,12 +1002,16 @@ export default function AgentView({
           return taskTime < targetTime;
         }));
       }
+      // 显示退还积分提示
+      if (result.refundedPoints > 0) {
+        showToast?.(`已退还 ${result.refundedPoints} 积分`, 'success');
+      }
     } catch (error) {
       showError('重置消息失败', error);
     } finally {
       setIsLoading(false);
     }
-  }, [session, messages]);
+  }, [session, messages, showToast]);
 
   // 清空会话（删除所有消息和任务）
   const handleClearSession = useCallback(() => {
@@ -916,14 +1026,19 @@ export default function AgentView({
     try {
       setIsLoading(true);
       // 调用 API 清空会话
-      await agentApi.clearSession(session.id);
+      const result = await agentApi.clearSession(session.id);
       // 清空本地消息和任务状态
       setMessages([]);
       setTasks([]);
       // 重置流式输出状态
       setStreamingOutline({ slides: [], isGenerating: false });
       setStreamingContent({ slides: [], isGenerating: false });
+      // 显示提示
       showToast?.('对话历史已清空', 'success');
+      // 显示退还积分提示
+      if (result.refundedPoints > 0) {
+        showToast?.(`已退还 ${result.refundedPoints} 积分`, 'success');
+      }
     } catch (error) {
       showError('清空对话失败', error);
     } finally {
@@ -1008,7 +1123,6 @@ export default function AgentView({
 
   // 文件上传处理
   const handleFileUpload = useCallback(async (type: 'outline' | 'document', file: File) => {
-    console.log('File upload:', type, file.name);
     setIsLoading(true);
 
     try {
@@ -1022,8 +1136,6 @@ export default function AgentView({
           'Content-Type': 'multipart/form-data'
         }
       }) as { url: string; filename: string; mimetype: string };
-
-      console.log('Upload success:', response);
 
       // 根据上传类型处理
       if (type === 'outline') {
@@ -1235,6 +1347,7 @@ export default function AgentView({
                   onCreateProject={onCreateProject}
                   onStyleSelect={handleStyleSelect}
                   selectedStyleId={selectedStyleId}
+                  onReuseConfig={handleReuseConfig}
                 />
               ) : (
                 <ChatArea
@@ -1252,6 +1365,7 @@ export default function AgentView({
                   onExportZip={handleExportZip}
                   onExportPdf={handleExportPdf}
                   onExportPptx={handleExportPptx}
+                  onSendAiModify={handleSendAiModify}
                   streamingOutline={streamingOutline}
                   streamingContent={streamingContent}
                   isVip={isVip}

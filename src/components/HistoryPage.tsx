@@ -25,11 +25,39 @@ import {
   ZoomIn,
   Calendar,
   CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 import { STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from '../constants';
 import { exportToZip, exportToPdf, exportToPptx } from '../services/exportService';
 import { consumeAction, getActionCost } from '../api/points';
 import type { ProjectSession } from '../types';
+
+// ============================================================
+// ProjectSourceBadge 组件
+// ============================================================
+
+const ProjectSourceBadge = React.memo(function ProjectSourceBadge({ source }: { source: 'IDE' | 'AGENT' }) {
+  const isAgent = source === 'AGENT';
+  return (
+    <span
+      className={`
+        inline-flex items-center justify-center
+        w-4 h-4 rounded
+        ${isAgent
+          ? 'bg-gradient-to-br from-purple-500 to-pink-500'
+          : 'bg-gray-300'
+        }
+      `}
+      title={isAgent ? 'AI 生成' : '手动创建'}
+    >
+      {isAgent ? (
+        <Sparkles className="w-2.5 h-2.5 text-white" />
+      ) : (
+        <Presentation className="w-2.5 h-2.5 text-gray-600" />
+      )}
+    </span>
+  );
+});
 
 // ============================================================
 // CascadingFilter 子组件
@@ -324,7 +352,8 @@ const HistoryProjectCard: React.FC<{
             <h3 className="font-black text-slate-800 text-xl mb-2 truncate group-hover:text-indigo-600 transition-colors">
               {session.title}
             </h3>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
+              <ProjectSourceBadge source={session.source || 'IDE'} />
               <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md border border-slate-200/50 uppercase">
                 {session.globalConfig?.styleName || "默认风格"}
               </span>

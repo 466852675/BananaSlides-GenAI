@@ -3,15 +3,18 @@ import { prisma } from '../db';
 
 export class TemplateService {
 
-    // Get all (system + user)
     // Get all (system + user) - 支持管理员全局视图
     async findAll(userId: string, isAdmin: boolean = false) {
-        const whereClause = isAdmin ? {} : {
-            OR: [
+        const whereClause: any = {
+            isDeleted: false  // 只返回未删除的模板
+        };
+
+        if (!isAdmin) {
+            whereClause.OR = [
                 { isOfficial: true },
                 { userId }
-            ]
-        };
+            ];
+        }
 
         console.log(`[TemplateService] findAll - isAdmin: ${isAdmin}, where:`, JSON.stringify(whereClause));
 
@@ -82,6 +85,41 @@ export class TemplateService {
         if (!existing) return null;
         if (existing.isOfficial) return null;
         if (existing.userId !== userId) return null;
+
+        // 软删除：标记为已删除，而非物理删除
+        return prisma.styleTemplate.update({
+            where: { id },
+            data: {
+                isDeleted: true,
+                deletedAt: new Date(),
+                deletedBy: 'user'
+            }
+        });
+    }
+
+    // 恢复模板
+    async restore(id: string, userId: string) {
+        const existing = await prisma.styleTemplate.findUnique({ where: { id } });
+        if (!existing) return null;
+        if (existing.userId !== userId) return null;
+
+        return prisma.styleTemplate.update({
+            where: { id },
+            data: {
+                isDeleted: false,
+                deletedAt: null,
+                deletedBy: null
+            }
+        });
+    }
+
+    // 永久删除
+    async permanentDelete(id: string, userId: string) {
+        const existing = await prisma.styleTemplate.findUnique({ where: { id } });
+        if (!existing) return null;
+        if (existing.isOfficial) return null;
+        if (existing.userId !== userId) return null;
+
         return prisma.styleTemplate.delete({ where: { id } });
     }
 

@@ -1,29 +1,39 @@
 import jwt from 'jsonwebtoken';
-import { UserRole } from '@prisma/client';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+// 延迟获取 JWT_SECRET，确保 dotenv 已加载
+let _JWT_SECRET: string | undefined;
+let _checked = false;
+
+function getJwtSecret(): string {
+  if (!_checked) {
+    _JWT_SECRET = process.env.JWT_SECRET;
+    _checked = true;
+
+    if (!_JWT_SECRET) {
+      console.error('[JWT] JWT_SECRET environment variable is required');
+      console.error('[JWT] Generate a strong secret: openssl rand -base64 32');
+      throw new Error('JWT_SECRET environment variable is required for security');
+    }
+
+    if (_JWT_SECRET.length < 32) {
+      console.warn('[JWT] Warning: JWT_SECRET should be at least 32 characters for security');
+    }
+  }
+  return _JWT_SECRET!;
+}
+
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
-
-if (!JWT_SECRET) {
-  console.error('[JWT] JWT_SECRET environment variable is required');
-  console.error('[JWT] Generate a strong secret: openssl rand -base64 32');
-  throw new Error('JWT_SECRET environment variable is required for security');
-}
-
-if (JWT_SECRET.length < 32) {
-  console.warn('[JWT] Warning: JWT_SECRET should be at least 32 characters for security');
-}
 
 export interface JwtPayload {
   userId: string;
-  role: UserRole;
+  role: string;
   iat?: number;
   exp?: number;
 }
 
 export function signToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
   const expiresInSeconds = getTokenExpiresIn();
-  return jwt.sign(payload, JWT_SECRET!, {
+  return jwt.sign(payload, getJwtSecret(), {
     expiresIn: expiresInSeconds,
     issuer: 'yh-ai-ppt',
     audience: 'yh-ai-ppt-users',
@@ -32,7 +42,7 @@ export function signToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
 
 export function verifyToken(token: string): JwtPayload | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET!, {
+    const decoded = jwt.verify(token, getJwtSecret(), {
       issuer: 'yh-ai-ppt',
       audience: 'yh-ai-ppt-users',
     }) as JwtPayload;

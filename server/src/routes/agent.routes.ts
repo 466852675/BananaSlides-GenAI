@@ -9,7 +9,7 @@ import { authenticate, requirePermission } from '../middlewares/auth.middleware'
 import { agentSessionLimiter, agentMessageLimiter, agentTaskLimiter } from '../middleware/rateLimitMiddleware';
 import { agentService } from '../services/agent.service';
 import { logger } from '../utils/logger';
-import { AgentMode, AgentTaskType } from '@prisma/client';
+import { AgentMode, AgentTaskType, AgentModeType, AgentTaskTypeType } from '../types/user.types';
 import { prisma } from '../db';
 
 const router = Router();
@@ -26,7 +26,7 @@ async function verifySessionOwnership(sessionId: string, userId: string): Promis
   const session = await prisma.agentSession.findUnique({
     where: { id: sessionId },
     include: {
-      project: {
+      Project: {
         select: { userId: true }
       }
     }
@@ -37,7 +37,7 @@ async function verifySessionOwnership(sessionId: string, userId: string): Promis
   }
 
   // 通过项目的 userId 判断会话归属
-  if (session.project?.userId !== userId) {
+  if (session.Project?.userId !== userId) {
     logger.warn(`[Agent] 用户 ${userId} 尝试访问非本人的会话 ${sessionId}`);
     return { valid: false, error: '无权访问此会话' };
   }
@@ -118,7 +118,7 @@ router.post('/sessions',
       // 创建会话
       const session = await agentService.createSession({
         projectId,
-        mode: mode as AgentMode
+        mode: mode as AgentModeType
       });
 
       if (!session) {
@@ -152,6 +152,28 @@ router.get('/projects-with-sessions', authenticate, async (req: Request, res: Re
     res.json(projects);
   } catch (error: any) {
     logger.error('[Agent] 获取项目列表失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/agent/recent-sessions
+ * 获取用户最近完成的会话（用于一键复用配置）
+ */
+router.get('/recent-sessions', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: '未授权' });
+    }
+
+    const limit = parseInt(req.query.limit as string) || 5;
+    const status = req.query.status as string || 'COMPLETED';
+
+    const sessions = await agentService.getRecentSessions(userId, limit, status);
+    res.json({ sessions });
+  } catch (error: any) {
+    logger.error('[Agent] 获取最近会话失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -482,7 +504,7 @@ router.patch('/sessions/:id/mode', authenticate, async (req: Request, res: Respo
       }
     }
 
-    const session = await agentService.updateSessionMode(id, mode as AgentMode, userId);
+    const session = await agentService.updateSessionMode(id, mode as AgentModeType, userId);
     logger.info(`[Agent] 用户 ${userId} 更新会话模式: ${id} -> ${mode}`);
     res.json(session);
   } catch (error: any) {
@@ -665,7 +687,7 @@ router.post('/sessions/:id/tasks', authenticate, async (req: Request, res: Respo
       return res.status(400).json({ error: '缺少任务类型' });
     }
 
-    const task = await agentService.createTask(id, type as AgentTaskType, params);
+    const task = await agentService.createTask(id, type as AgentTaskTypeType, params);
 
     logger.info(`[Agent] 手动创建任务: ${task.id}`);
 
@@ -748,6 +770,43 @@ router.delete('/sessions/:id/messages', authenticate, async (req: Request, res: 
       return res.status(403).json({ error: ownership.error });
     }
 
+    // 【修复】先获取会话信息，用于退还积分
+    const session = await prisma.agentSession.findUnique({
+      where: { id: sessionId },
+      select: { projectId: true, totalPointsUsed: true }
+    });
+
+    // 【修复】退还已消耗的积分
+    if (session && session.totalPointsUsed > 0) {
+      // 先获取用户当前积分
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { points: true }
+      });
+      const newBalance = (user?.points || 0) + session.totalPointsUsed;
+
+      await prisma.$transaction([
+        // 创建退款交易记录
+        prisma.transaction.create({
+          data: {
+            userId,
+            projectId: session.projectId,
+            type: 'refund',
+            amount: session.totalPointsUsed, // 正数表示增加积分
+            balance: newBalance,
+            description: '清空会话退还积分',
+            completedAt: new Date()
+          }
+        }),
+        // 增加用户积分
+        prisma.user.update({
+          where: { id: userId },
+          data: { points: { increment: session.totalPointsUsed } }
+        })
+      ]);
+      logger.info(`[Agent] 清空会话退还积分: ${session.totalPointsUsed}, 用户: ${userId}`);
+    }
+
     // 删除该会话的所有消息
     const messagesDeleteResult = await prisma.agentMessage.deleteMany({
       where: { sessionId }
@@ -775,7 +834,8 @@ router.delete('/sessions/:id/messages', authenticate, async (req: Request, res: 
     res.json({
       success: true,
       deletedMessagesCount: messagesDeleteResult.count,
-      deletedTasksCount: tasksDeleteResult.count
+      deletedTasksCount: tasksDeleteResult.count,
+      refundedPoints: session?.totalPointsUsed || 0
     });
   } catch (error: any) {
     logger.error('[Agent] 清空会话失败:', error);
@@ -812,6 +872,59 @@ router.delete('/sessions/:id/messages/:messageId', authenticate, async (req: Req
       return res.status(404).json({ error: '消息不存在' });
     }
 
+    // 【修复】获取要删除的任务及其消耗的积分
+    const tasksToDelete = await prisma.agentTask.findMany({
+      where: {
+        sessionId,
+        createdAt: { gte: targetMessage.createdAt }
+      },
+      select: { id: true, pointsCost: true }
+    });
+
+    // 【修复】计算需要退还的总积分
+    const totalPointsToRefund = tasksToDelete.reduce((sum, task) => sum + (task.pointsCost || 0), 0);
+
+    // 【修复】退还积分
+    if (totalPointsToRefund > 0) {
+      const session = await prisma.agentSession.findUnique({
+        where: { id: sessionId },
+        select: { projectId: true }
+      });
+
+      // 先获取用户当前积分
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { points: true }
+      });
+      const newBalance = (user?.points || 0) + totalPointsToRefund;
+
+      await prisma.$transaction([
+        // 创建退款交易记录
+        prisma.transaction.create({
+          data: {
+            userId,
+            projectId: session?.projectId,
+            type: 'refund',
+            amount: totalPointsToRefund, // 正数表示增加积分
+            balance: newBalance,
+            description: '重置消息退还积分',
+            completedAt: new Date()
+          }
+        }),
+        // 增加用户积分
+        prisma.user.update({
+          where: { id: userId },
+          data: { points: { increment: totalPointsToRefund } }
+        }),
+        // 更新会话的积分统计
+        prisma.agentSession.update({
+          where: { id: sessionId },
+          data: { totalPointsUsed: { decrement: totalPointsToRefund } }
+        })
+      ]);
+      logger.info(`[Agent] 重置消息退还积分: ${totalPointsToRefund}, 用户: ${userId}`);
+    }
+
     // 删除该消息及之后的所有消息
     const deleteResult = await prisma.agentMessage.deleteMany({
       where: {
@@ -830,7 +943,7 @@ router.delete('/sessions/:id/messages/:messageId', authenticate, async (req: Req
 
     logger.info(`[Agent] 用户 ${userId} 重置消息: ${messageId}，删除了 ${deleteResult.count} 条消息`);
 
-    res.json({ success: true, deletedCount: deleteResult.count });
+    res.json({ success: true, deletedCount: deleteResult.count, refundedPoints: totalPointsToRefund });
   } catch (error: any) {
     logger.error('[Agent] 重置消息失败:', error);
     res.status(500).json({ error: error.message });

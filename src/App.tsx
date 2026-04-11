@@ -509,7 +509,7 @@ const App: React.FC = () => {
   const [dashboardStartDate, setDashboardStartDate] = useState<string>("");
   const [dashboardEndDate, setDashboardEndDate] = useState<string>("");
   const [dashboardSortOrder, setDashboardSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [dashboardSortBy, setDashboardSortBy] = useState<'createdAt' | 'lastModified' | 'progress'>('lastModified');
+  const [dashboardSortBy, setDashboardSortBy] = useState<'createdAt' | 'lastModified' | 'progress'>('createdAt');
 
   // Settings with Persistence
   const [isGlobalSettingsOpen, setIsGlobalSettingsOpen] = useState(false);
@@ -683,6 +683,67 @@ const App: React.FC = () => {
       }
     }
   }, [wsMessage, viewMode]);
+
+  // 【新增】监听 Agent 确认完成事件（大纲/内容/配图）
+  useEffect(() => {
+    if (!wsMessage || !currentProjectId) return;
+
+    const payload = wsMessage.payload;
+    if (payload?.projectId !== currentProjectId) return;
+
+    switch (wsMessage.type) {
+      case 'outline_confirmed':
+        // 大纲确认完成，刷新项目数据
+        queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
+        queryClient.invalidateQueries({ queryKey: ['slides', currentProjectId] });
+        setToast({
+          id: `outline-confirmed-${Date.now()}`,
+          message: '大纲已确认，正在生成内容...',
+          type: 'info'
+        });
+        console.log('[App] 收到大纲确认完成事件');
+        break;
+
+      case 'content_confirmed':
+        // 内容确认完成，更新幻灯片内容
+        if (payload?.slides && Array.isArray(payload.slides)) {
+          // 刷新幻灯片数据
+          queryClient.invalidateQueries({ queryKey: ['slides', currentProjectId] });
+          setToast({
+            id: `content-confirmed-${Date.now()}`,
+            message: `已生成 ${payload.slides.length} 页内容`,
+            type: 'success'
+          });
+          console.log('[App] 收到内容确认完成事件:', payload.slides.length, '页');
+        }
+        break;
+
+      case 'image_confirmed':
+        // 配图确认完成，更新幻灯片图片
+        if (payload?.images && Array.isArray(payload.images)) {
+          queryClient.invalidateQueries({ queryKey: ['slides', currentProjectId] });
+          setToast({
+            id: `image-confirmed-${Date.now()}`,
+            message: `已生成 ${payload.images.length} 张配图`,
+            type: 'success'
+          });
+          console.log('[App] 收到配图确认完成事件:', payload.images.length, '张');
+        }
+        break;
+
+      case 'project_completed':
+        // 项目完成，刷新项目列表并移动到历史库
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+        queryClient.invalidateQueries({ queryKey: ['agent-projects'] });
+        setToast({
+          id: `project-completed-${Date.now()}`,
+          message: '项目已完成，已移入历史库',
+          type: 'success'
+        });
+        console.log('[App] 收到项目完成事件:', payload.projectId);
+        break;
+    }
+  }, [wsMessage, currentProjectId, queryClient]);
 
   // One-Time Migration Logic (LocalStorage -> SQLite)
   useEffect(() => {

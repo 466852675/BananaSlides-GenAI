@@ -5,9 +5,10 @@
  */
 
 import { motion } from 'framer-motion';
-import { Sparkles, Lightbulb, Target, Calendar, Rocket, Palette, Check, ChevronLeft, ChevronRight, Star, Heart } from 'lucide-react';
+import { Sparkles, Lightbulb, Target, Calendar, Rocket, Palette, Check, ChevronLeft, ChevronRight, Star, Heart, History, Copy } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { client } from '../api/client';
+import { agentApi, type ProjectWithSession } from '../api/agent';
 
 interface StyleTemplate {
   id: string;
@@ -30,6 +31,16 @@ interface AgentWelcomeProps {
   onCreateProject?: (title: string) => Promise<string>;
   onStyleSelect?: (styleId: string | null, styleMap?: Record<string, any>, config?: Record<string, any>) => void;
   selectedStyleId?: string | null;
+  onReuseConfig?: (config: Record<string, any>) => void;
+}
+
+interface RecentSession {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  config: Record<string, any>;
+  createdAt: string;
+  status: string;
 }
 
 // 示例场景
@@ -64,7 +75,8 @@ export default function AgentWelcome({
   onExampleClick,
   onCreateProject,
   onStyleSelect,
-  selectedStyleId
+  selectedStyleId,
+  onReuseConfig
 }: AgentWelcomeProps) {
   // 热门推荐模板
   const [hotTemplates, setHotTemplates] = useState<StyleTemplate[]>([]);
@@ -73,6 +85,10 @@ export default function AgentWelcome({
   // 我的收藏
   const [favoriteTemplates, setFavoriteTemplates] = useState<StyleTemplate[]>([]);
   const [loadingFavorites, setLoadingFavorites] = useState(false);
+
+  // 最近成功的会话配置
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  const [loadingRecent, setLoadingRecent] = useState(false);
 
   // 轮播索引
   const [carouselIndex, setCarouselIndex] = useState(0);
@@ -134,6 +150,34 @@ export default function AgentWelcome({
     };
 
     fetchFavorites();
+  }, []);
+
+  // 获取最近成功的会话配置（用于一键复用）
+  useEffect(() => {
+    const fetchRecentSessions = async () => {
+      setLoadingRecent(true);
+      try {
+        // 获取用户最近完成的 Agent 会话（状态为 COMPLETED 且有配置）
+        const response = await agentApi.getRecentSessions({ limit: 3, status: 'COMPLETED' });
+        if (response.sessions && response.sessions.length > 0) {
+          const recent: RecentSession[] = response.sessions.map((s: any) => ({
+            id: s.id,
+            projectId: s.projectId,
+            projectTitle: s.project?.title || '未命名项目',
+            config: s.config || {},
+            createdAt: s.createdAt,
+            status: s.status
+          }));
+          setRecentSessions(recent);
+        }
+      } catch (error) {
+        console.log('Failed to fetch recent sessions:', error);
+      } finally {
+        setLoadingRecent(false);
+      }
+    };
+
+    fetchRecentSessions();
   }, []);
 
   // 选择热门推荐模板
@@ -217,15 +261,10 @@ export default function AgentWelcome({
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.1 + index * 0.05 }}
-                onClick={async () => {
+                onClick={() => {
+                  // 只填充输入框，不自动创建项目
+                  // 让用户自行决定何时发送
                   onExampleClick(example.prompt);
-                  if (onCreateProject) {
-                    try {
-                      await onCreateProject(example.title);
-                    } catch (error) {
-                      console.error('Failed to create project:', error);
-                    }
-                  }
                 }}
                 className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-3 text-left transition-all hover:border-gray-300 hover:shadow-md"
               >
@@ -434,6 +473,53 @@ export default function AgentWelcome({
                   </button>
                 );
               })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* 最近使用的配置（一键复用） */}
+        {recentSessions.length > 0 && onReuseConfig && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <History className="h-4 w-4 text-gray-500" />
+              <h2 className="text-sm font-semibold text-gray-600">
+                最近使用
+              </h2>
+              <span className="text-xs text-gray-400">一键复用配置</span>
+            </div>
+
+            <div className="space-y-2">
+              {recentSessions.map((session) => (
+                <button
+                  key={session.id}
+                  onClick={() => onReuseConfig?.(session.config)}
+                  className="w-full flex items-center gap-3 p-2.5 rounded-lg border border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50/30 transition-all group"
+                >
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                    <Copy className="h-4 w-4 text-gray-400 group-hover:text-blue-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-800 truncate">
+                      {session.projectTitle}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {new Date(session.createdAt).toLocaleDateString('zh-CN', {
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    点击复用
+                  </div>
+                </button>
+              ))}
             </div>
           </motion.div>
         )}

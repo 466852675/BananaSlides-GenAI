@@ -14,13 +14,45 @@ export default defineConfig(({ mode }) => {
         // - AGENTS.md: AI 代理配置文档
         // - CLAUDE.md: Claude 指令文档
         // - docs/: 文档目录
+        // - server/: 后端代码目录
+        // - AI实用化应用大赛/: 大赛相关文件
         watch: {
           ignored: [
+            // IDE/编辑器配置
+            '**/.vscode/**',
+            '**/.idea/**',
+            '**/.obsidian/**',
+            // AI 工具配置和状态
+            '**/.claude/**',
+            '**/.claudian/**',
             '**/.omc/**',
+            '**/.opencode/**',
+            '**/.sisyphus/**',
+            '**/.trae/**',
+            // 测试和自动化工具
+            '**/.playwright-mcp/**',
+            '**/playwright-report/**',
+            '**/test-results/**',
+            // 文档和配置
             '**/AGENTS.md',
             '**/CLAUDE.md',
             '**/docs/**',
-            '**/.workbuddy/**'
+            '**/.workbuddy/**',
+            '**/server/**',
+            '**/AI实用化应用大赛/**',
+            // 图片和静态资源
+            '**/*.png',
+            '**/*.jpg',
+            '**/*.jpeg',
+            '**/*.gif',
+            '**/*.webp',
+            '**/*.svg',
+            '**/*.ico',
+            // 临时文件和配置
+            'config.json',
+            'config.local.json',
+            '**/*.log',
+            '**/*.tmp'
           ]
         },
         proxy: {

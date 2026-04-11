@@ -10,6 +10,7 @@ export interface ProjectDTO {
     title: string;
     displayId?: string;
     scenarioType?: ScenarioType | string;
+    source?: 'IDE' | 'AGENT'; // Project creation source
     status: ProjectStatus;
     globalConfig?: string; // JSON string
     styleMap?: string;     // JSON string
@@ -227,6 +228,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
         title: dto.title,
         displayId: dto.displayId,
         scenarioType: coerceScenarioType((dto as any).scenarioType),
+        source: dto.source || 'IDE', // Project creation source
         status: effectiveStatus,
         createdAt: new Date(dto.createdAt).getTime(),
         lastModified: new Date(dto.updatedAt).getTime(),

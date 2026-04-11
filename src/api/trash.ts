@@ -22,6 +22,9 @@ export interface TrashItem {
   userId: string | null;
   status: string;
   scenarioType?: string; // 项目类型：BUSINESS/TEMPLATE/等
+  source?: 'IDE' | 'AGENT'; // 项目来源
+  completedAt?: string | null; // 完成时间,用于判断是否在历史库
+  itemType?: 'project' | 'template'; // 区分项目还是模板
 }
 
 export interface TrashListResult {
@@ -130,6 +133,22 @@ export async function batchDelete(projectIds: string[]): Promise<{
  */
 export async function clearTrash(): Promise<{ success: boolean; message: string }> {
   const result = await client.delete('/trash/clear') as any;
+  return result;
+}
+
+/**
+ * 恢复模板
+ */
+export async function restoreTemplate(templateId: string): Promise<{ success: boolean; message: string }> {
+  const result = await client.post(`/trash/template/${templateId}/restore`) as any;
+  return result;
+}
+
+/**
+ * 彻底删除模板
+ */
+export async function permanentDeleteTemplate(templateId: string): Promise<{ success: boolean; message: string }> {
+  const result = await client.delete(`/trash/template/${templateId}`) as any;
   return result;
 }
 

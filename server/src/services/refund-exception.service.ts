@@ -1,4 +1,4 @@
-import { RefundStatus } from '@prisma/client';
+import { RefundStatus } from '../types/user.types';
 import { prisma } from '../db';
 import { RefundNotificationService } from './refund-notification.service';
 
@@ -384,8 +384,8 @@ export class RefundExceptionService {
             const refund = await prisma.refundRequest.findUnique({
                 where: { id: refundId },
                 include: {
-                    user: { select: { nickname: true, email: true } },
-                    order: { select: { orderNo: true, finalPrice: true } }
+                    User: { select: { nickname: true, email: true } },
+                    Order: { select: { orderNo: true, finalPrice: true } }
                 }
             });
 
@@ -398,9 +398,9 @@ export class RefundExceptionService {
             await RefundNotificationService.sendRefundExceptionAlert({
                 refundId,
                 refundNo: refund.refundNo,
-                orderNo: refund.order?.orderNo || '',
+                orderNo: refund.Order?.orderNo || '',
                 amount: refund.amount,
-                userName: refund.user?.nickname || '未知用户',
+                userName: refund.User?.nickname || '未知用户',
                 exceptionType,
                 exceptionMessage: message,
                 createdAt: refund.createdAt

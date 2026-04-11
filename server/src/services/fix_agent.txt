@@ -1,0 +1,10 @@
+需要修复的模式：
+1. AgentSessionStatusType -> AgentSessionStatus (作为值使用时)
+2. AgentTaskStatusType -> AgentTaskStatus (作为值使用时)
+3. AgentModeType -> AgentMode (作为值使用时)
+4. AgentTaskTypeType -> AgentTaskType (作为值使用时)
+5. project -> Project (relation字段)
+6. items -> Slide (relation字段)
+7. tasks -> AgentTask (relation字段)
+8. session -> AgentSession (relation字段)
+9. agentSession -> AgentSession (relation字段)

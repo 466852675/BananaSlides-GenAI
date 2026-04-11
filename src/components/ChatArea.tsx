@@ -1,12 +1,15 @@
 /**
  * ChatArea 对话区域组件
+ * 支持虚拟滚动优化大规模消息场景
  */
 
 import React, { useRef, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { User, Bot, Loader2, CheckCircle, Sparkles } from 'lucide-react';
 import ConfirmationCard from './ConfirmationCard';
+import HistoryConfirmCard from './HistoryConfirmCard';
 import MessageBubble from './MessageBubble';
+import { VirtualMessageList } from './VirtualMessageList';
 import type { AgentMessage, AgentTask, AgentProgressResponse } from '../types/agent';
 
 // 积分预估规则（标准价格，VIP折扣由后端计算）
@@ -34,6 +37,7 @@ interface ChatAreaProps {
   onExportZip?: () => void;
   onExportPdf?: () => void;
   onExportPptx?: () => void;
+  onSendAiModify?: (instruction: string) => void;
   streamingOutline?: { slides: any[]; isGenerating: boolean };
   streamingContent?: { slides: any[]; isGenerating: boolean };
   isVip?: boolean;
@@ -76,6 +80,7 @@ export default function ChatArea({
   onExportZip,
   onExportPdf,
   onExportPptx,
+  onSendAiModify,
   streamingOutline,
   streamingContent,
   isVip = false
@@ -89,41 +94,112 @@ export default function ChatArea({
     }
   }, [messages, tasks]);
 
-  // 获取需要确认的任务（PENDING、RUNNING、COMPLETED 状态的所有确认卡片类型）
+  // 获取需要确认的任务（PENDING 和 RUNNING 状态）
   const confirmationTasks = useMemo(() =>
     tasks.filter(
-      task => ['PENDING', 'RUNNING', 'COMPLETED'].includes(task.status) &&
+      task => ['PENDING', 'RUNNING'].includes(task.status) &&
         ['CONFIG_CONFIRM', 'OUTLINE', 'CONTENT', 'IMAGE', 'IMAGE_BY_PAGE', 'FINAL_OVERVIEW'].includes(task.type)
     ),
     [tasks]
   );
 
+  // 获取已完成的任务（用于历史展示）
+  const completedTasks = useMemo(() =>
+    tasks.filter(
+      task => task.status === 'COMPLETED' &&
+        ['CONFIG_CONFIRM', 'OUTLINE', 'CONTENT', 'IMAGE'].includes(task.type) &&
+        task.result // 必须有结果才显示
+    ).sort((a, b) => {
+      // 按完成时间排序
+      const timeA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+      const timeB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+      return timeA - timeB;
+    }),
+    [tasks]
+  );
+
   // 过滤重复的消息（基于 id）
+  // 同时过滤掉任务完成消息（这些信息由 HistoryConfirmCard 展示）
   const uniqueMessages = useMemo(() => {
     const seen = new Set<string>();
     return messages.filter(message => {
       if (!message.id || seen.has(message.id)) {
         return false;
       }
+      // 过滤掉任务完成消息（metadata 中包含 taskType 的消息）
+      // 这些信息将由 HistoryConfirmCard 更详细地展示
+      try {
+        if (message.metadata) {
+          const metadata = typeof message.metadata === 'string'
+            ? JSON.parse(message.metadata)
+            : message.metadata;
+          if (metadata.taskType) {
+            return false;
+          }
+        }
+      } catch {
+        // 解析失败则保留消息
+      }
       seen.add(message.id);
       return true;
     });
   }, [messages]);
 
+  // 合并消息和已完成任务，按时间排序
+  const timelineItems = useMemo(() => {
+    type TimelineItem =
+      | { type: 'message'; data: AgentMessage; timestamp: number }
+      | { type: 'task'; data: AgentTask; timestamp: number };
+
+    const items: TimelineItem[] = [];
+
+    // 添加消息
+    uniqueMessages.forEach(msg => {
+      items.push({
+        type: 'message',
+        data: msg,
+        timestamp: msg.createdAt ? new Date(msg.createdAt).getTime() : 0
+      });
+    });
+
+    // 添加已完成的任务
+    completedTasks.forEach(task => {
+      items.push({
+        type: 'task',
+        data: task,
+        timestamp: task.completedAt ? new Date(task.completedAt).getTime() : 0
+      });
+    });
+
+    // 按时间排序
+    return items.sort((a, b) => a.timestamp - b.timestamp);
+  }, [uniqueMessages, completedTasks]);
+
   return (
     <div ref={scrollRef} className="h-full overflow-y-auto p-4">
       <div className="mx-auto max-w-2xl space-y-4">
-        {uniqueMessages.map((message, index) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            onEdit={onEditMessage || (() => {})}
-            onReset={onResetMessage || (() => {})}
-            isLoading={isLoading}
-          />
-        ))}
+        {/* 使用虚拟消息列表渲染消息和已完成任务 */}
+        <VirtualMessageList
+          messages={uniqueMessages}
+          tasks={completedTasks}
+          renderMessage={(message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              onEdit={onEditMessage || (() => {})}
+              onReset={onResetMessage || (() => {})}
+              isLoading={isLoading}
+            />
+          )}
+          renderTask={(task) => (
+            <HistoryConfirmCard
+              key={task.id}
+              task={task}
+            />
+          )}
+        />
 
-        {/* 确认卡片 */}
+        {/* 确认卡片（待处理任务） */}
         {confirmationTasks.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -145,6 +221,7 @@ export default function ChatArea({
                 onExportZip={onExportZip}
                 onExportPdf={onExportPdf}
                 onExportPptx={onExportPptx}
+                onSendAiModify={onSendAiModify}
                 streamingOutline={streamingOutline}
                 streamingContent={streamingContent}
                 isLoading={isLoading}

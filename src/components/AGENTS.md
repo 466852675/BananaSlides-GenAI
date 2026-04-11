@@ -1,63 +1,63 @@
-# UI COMPONENTS - YH-AI PPT
+# UI 组件 - YH-AI PPT
 
-**Scope:** `/src/components` — React functional components with Tailwind CSS
+**作用域：** `/src/components` — React 函数式组件 + Tailwind CSS
 
 ---
 
-## OVERVIEW
+## 概述
 
-34 React components implementing PPT generation UI. Organized by domain: admin, auth, user, and root-level workspace components.
+34 个 React 组件实现 PPT 生成界面。按领域组织：admin、auth、user 及根级工作区组件。
 
-## STRUCTURE
+## 结构
 
 ```
 components/
-├── admin/           # RBAC, orders, points, user management (20 files)
-├── auth/            # Login modal/page (4 files)
-├── user/            # User profile/settings (3 files)
-├── sections/        # Landing page sections
-└── *.tsx            # Root workspace components (Dashboard, etc.)
+├── admin/           # RBAC、订单、积分、用户管理（20 文件）
+├── auth/            # 登录弹窗/页面（4 文件）
+├── user/            # 用户资料/设置（3 文件）
+├── sections/        # 落地页区块
+└── *.tsx            # 根级工作区组件（Dashboard 等）
 ```
 
-## WHERE TO LOOK
+## 快速定位
 
-| Task | Location | Notes |
-|------|----------|-------|
-| Project workspace | `Dashboard.tsx` | Main UI (52K lines) - cards, timelines, exports |
-| Admin panel | `admin/*.tsx` | User/Order/Points management |
-| Auth flow | `auth/LoginModal.tsx` | JWT-based login modal |
-| Landing page | `LandingPageComp.tsx` | Marketing site (67KB) |
-| Outline editor | `OutlineGenerator.tsx` | AI outline generation (75KB) |
-| Style templates | `StyleTemplateManager.tsx` | Visual theme system (78KB) |
-| Result display | `ResultCard.tsx` | Slide preview/variants (31KB) |
+| 需求 | 位置 | 说明 |
+|------|------|------|
+| 项目工作区 | `Dashboard.tsx` | 主界面 — 卡片、时间线、导出 |
+| 管理面板 | `admin/*.tsx` | 用户/订单/积分管理 |
+| 认证流程 | `auth/LoginModal.tsx` | JWT 登录弹窗 |
+| 落地页 | `LandingPageComp.tsx` | 营销页面 |
+| 大纲编辑器 | `OutlineGenerator.tsx` | AI 大纲生成 |
+| 风格模板 | `StyleTemplateManager.tsx` | 视觉主题系统 |
+| 结果展示 | `ResultCard.tsx` | 幻灯片预览/变体 |
 
-## CONVENTIONS
+## 约定
 
-### Component Structure
-- **PascalCase** naming (`Dashboard.tsx`, `LoginModal.tsx`)
-- Functional components with hooks, no class components
-- Props interfaces defined inline or in `types.ts`
+### 组件结构
+- **PascalCase** 命名（`Dashboard.tsx`、`LoginModal.tsx`）
+- 函数式组件 + Hooks，禁止类组件
+- Props 接口内联定义或放在 `types.ts`
 
-### Styling
-- **Tailwind CSS v4.1** utility classes
-- **Framer Motion** for AI "breathing" feedback animations
-- **Lucide React** for icons
-- Glassmorphism effects: `backdrop-blur-md bg-white/80`
+### 样式
+- **Tailwind CSS v4.1** 原子化类
+- **Framer Motion** 用于 AI 操作的"呼吸式"反馈动画
+- **Lucide React** 图标库
+- 毛玻璃效果：`backdrop-blur-md bg-white/80`
 
-### State Management
-- Local state: `useState`, `useReducer`
-- Server state: TanStack Query (React Query) hooks
-- Auth context: `AuthContext.tsx` for user session
+### 状态管理
+- 本地状态：`useState`、`useReducer`
+- 服务端状态：TanStack Query（React Query）hooks
+- 认证上下文：`AuthContext.tsx` 管理用户会话
 
-### Key Patterns
-- Modal components accept `isOpen/onClose` props
-- Toast notifications via `react-hot-toast`
-- Image handling: always use URL strings, never File objects
+### 关键模式
+- 弹窗组件接受 `isOpen`/`onClose` props
+- Toast 通知通过 `react-hot-toast`
+- 图片处理：始终使用 URL 字符串，禁止 File 对象
 
-## ANTI-PATTERNS
+## 反模式
 
-- **Never use `variants[0]` directly** — use dedicated preview fields
-- **Never store File objects** — always convert to URLs immediately
-- **Never use Chinese punctuation** (。！？) in PPT titles/lists
-- **Never clear project ID** when inside project context
-- **Always use `syncSlidesMutation`** for slide updates, not generic project mutation
+- **禁止**直接使用 `variants[0]` — 使用专用预览字段
+- **禁止**存储 File 对象 — 立即转为 URL
+- **禁止**在 PPT 标题/列表中使用中文标点（。！？）
+- **禁止**在项目上下文中清空项目 ID
+- **始终**使用 `syncSlidesMutation` 更新幻灯片，而非通用项目 mutation

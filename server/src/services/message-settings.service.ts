@@ -1,4 +1,4 @@
-import { MessageType } from '@prisma/client';
+import { MessageType, MessageTypeType } from '../types/user.types';
 import { prisma } from '../db';
 
 export interface UpdateMessageSettingsDTO {
@@ -66,7 +66,7 @@ export async function updateMessageSettings(userId: string, data: UpdateMessageS
  */
 export async function shouldSendMessage(
     userId: string,
-    type: MessageType,
+    type: MessageTypeType,
     channel: 'browser' | 'email'
 ): Promise<boolean> {
     try {

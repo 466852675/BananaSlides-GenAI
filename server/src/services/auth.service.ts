@@ -1,7 +1,7 @@
 // server/src/services/auth.service.ts
 // 认证服务：注册、登录、密码重置
 
-import { UserRole, UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '../types/user.types';
 import {
     hashPassword,
     comparePassword,

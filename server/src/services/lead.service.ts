@@ -1,5 +1,5 @@
 import { prisma } from '../db';
-import { UserRole, UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '../types/user.types';
 import { hashPassword } from '../utils/password.util';
 import { notifyAdminNewLead } from './admin-notification.service';
 
@@ -66,7 +66,7 @@ export async function listLeads(page: number, limit: number, search?: string, st
             take: limit,
             orderBy: { createdAt: 'desc' },
             include: {
-                assignee: {
+                User_Lead_assigneeIdToUser: {
                     select: { nickname: true, avatar: true }
                 }
             }
@@ -92,10 +92,10 @@ export async function getLeadById(id: string) {
     return await prisma.lead.findUnique({
         where: { id },
         include: {
-            assignee: {
+            User_Lead_assigneeIdToUser: {
                 select: { id: true, nickname: true, avatar: true }
             },
-            activities: {
+            LeadActivity: {
                 orderBy: { createdAt: 'desc' }
             }
         }
@@ -201,7 +201,7 @@ export async function assignLead(id: string, assigneeId: string | null, operator
         where: { id },
         data: { assigneeId },
         include: {
-            assignee: {
+            User_Lead_assigneeIdToUser: {
                 select: { nickname: true }
             }
         }
@@ -211,7 +211,7 @@ export async function assignLead(id: string, assigneeId: string | null, operator
         leadId: id,
         type: 'SYSTEM',
         content: assigneeId
-            ? `指派负责人: ${lead.assignee?.nickname || '未知用户'}`
+            ? `指派负责人: ${lead.User_Lead_assigneeIdToUser?.nickname || '未知用户'}`
             : '取消指派负责人',
         operatorId
     });

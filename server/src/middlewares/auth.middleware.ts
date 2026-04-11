@@ -1,7 +1,27 @@
 import { Request, Response, NextFunction } from 'express';
-import { UserRole, UserStatus } from '@prisma/client';
 import { verifyToken, JwtPayload } from '../utils/jwt.util';
 import { prisma } from '../db';
+
+// 用户角色常量
+export const UserRole = {
+    USER: 'USER',
+    VIP: 'VIP',
+    PROFESSIONAL: 'PROFESSIONAL',
+    ENTERPRISE: 'ENTERPRISE',
+    ADMIN: 'ADMIN',
+    SUPER_ADMIN: 'SUPER_ADMIN'
+} as const;
+
+// 用户状态常量
+export const UserStatus = {
+    ACTIVE: 'ACTIVE',
+    DISABLED: 'DISABLED',
+    LOCKED: 'LOCKED'
+} as const;
+
+// 类型定义
+export type UserRoleType = typeof UserRole[keyof typeof UserRole];
+export type UserStatusType = typeof UserStatus[keyof typeof UserStatus];
 
 /**
  * JWT 认证中间件
@@ -128,7 +148,7 @@ export const optionalAuth = async (
  * 角色检查中间件工厂
  * @param roles 允许的角色列表
  */
-export const requireRole = (...roles: UserRole[]) => {
+export const requireRole = (...roles: string[]) => {
     return (req: Request, res: Response, next: NextFunction): void => {
         if (!req.user) {
             res.status(401).json({
@@ -207,12 +227,12 @@ export const requirePermission = (permissionCode: string) => {
             // 3. 查询用户角色的所有权限
             const userPermissions = await prisma.rolePermission.findMany({
                 where: { role: req.user.role },
-                include: { permission: true }
+                include: { Permission: true }
             });
 
             // 4. 检查是否有所需权限
             const hasPermission = userPermissions.some(
-                rp => rp.permission.code === permissionCode
+                rp => rp.Permission.code === permissionCode
             );
 
             if (!hasPermission) {
@@ -268,12 +288,12 @@ export const requireAnyPermission = (...permissionCodes: string[]) => {
 
             const userPermissions = await prisma.rolePermission.findMany({
                 where: { role: req.user.role },
-                include: { permission: true }
+                include: { Permission: true }
             });
 
             // 检查是否有任一权限
             const hasAnyPermission = permissionCodes.some(code =>
-                userPermissions.some(rp => rp.permission.code === code)
+                userPermissions.some(rp => rp.Permission.code === code)
             );
 
             if (!hasAnyPermission) {
@@ -325,8 +345,8 @@ declare global {
                 email: string | null;
                 username: string | null;
                 nickname: string | null;
-                role: UserRole;
-                status: UserStatus;
+                role: string;
+                status: string;
                 points: number;
             };
             dataScope?: 'own' | 'all';

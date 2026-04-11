@@ -146,7 +146,7 @@ export class SnapshotService {
         const latest = await prisma.projectSnapshot.findFirst({
             where: {
                 projectId,
-                project: { userId }
+                Project: { userId }
             },
             orderBy: { version: 'desc' }
         });
@@ -245,7 +245,7 @@ export class SnapshotService {
         return prisma.projectSnapshot.findMany({
             where: isAdmin ? { projectId } : {
                 projectId,
-                project: { userId }
+                Project: { userId }
             },
             orderBy: { version: 'desc' },
             select: {
@@ -261,9 +261,9 @@ export class SnapshotService {
     async findById(id: string, userId: string) {
         const snapshot = await prisma.projectSnapshot.findUnique({
             where: { id },
-            include: { project: { select: { userId: true } } }
+            include: { Project: { select: { userId: true } } }
         });
-        if (!snapshot || snapshot.project.userId !== userId) return null;
+        if (!snapshot || snapshot.Project.userId !== userId) return null;
 
         const { dataString, changed } = await this.sanitizeSnapshotDataString(snapshot.data);
         if (changed) {
@@ -281,9 +281,9 @@ export class SnapshotService {
         // 1. Get Snapshot
         const snapshot = await prisma.projectSnapshot.findUnique({
             where: { id: snapshotId },
-            include: { project: { select: { userId: true } } }
+            include: { Project: { select: { userId: true } } }
         });
-        if (!snapshot || snapshot.project.userId !== userId) throw new Error("Snapshot not found");
+        if (!snapshot || snapshot.Project.userId !== userId) throw new Error("Snapshot not found");
 
         const { dataString, changed } = await this.sanitizeSnapshotDataString(snapshot.data);
         if (changed) {
@@ -349,9 +349,9 @@ export class SnapshotService {
     async delete(id: string, userId: string) {
         const snapshot = await prisma.projectSnapshot.findUnique({
             where: { id },
-            include: { project: { select: { userId: true } } }
+            include: { Project: { select: { userId: true } } }
         });
-        if (!snapshot || snapshot.project.userId !== userId) return null;
+        if (!snapshot || snapshot.Project.userId !== userId) return null;
         return prisma.projectSnapshot.delete({ where: { id } });
     }
 
@@ -360,14 +360,14 @@ export class SnapshotService {
         // 1. Get Snapshot
         const snapshot = await prisma.projectSnapshot.findUnique({
             where: { id: snapshotId },
-            include: { project: { select: { userId: true, title: true } } }
+            include: { Project: { select: { userId: true, title: true } } }
         });
-        if (!snapshot || snapshot.project.userId !== userId) {
+        if (!snapshot || snapshot.Project.userId !== userId) {
             throw new Error("Snapshot not found or access denied");
         }
 
         const data = JSON.parse(snapshot.data);
-        const originalProject = snapshot.project;
+        const originalProject = snapshot.Project;
 
         // 2. Generate new display ID
         const date = new Date();

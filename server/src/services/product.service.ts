@@ -80,14 +80,23 @@ export const productService = {
      * Get all products including inactive ones
      */
     async listAllProducts() {
-        return (await prisma.product.findMany({
+        const products = await prisma.product.findMany({
             orderBy: { sortOrder: 'asc' },
             include: {
-                createdBy: {
+                User: {
                     select: { nickname: true, avatar: true }
                 }
             }
-        } as any));
+        });
+
+        // Map User -> createdBy for frontend compatibility
+        return products.map(p => {
+            const { User, ...rest } = p;
+            return {
+                ...rest,
+                createdBy: User
+            };
+        });
     },
 
     /**

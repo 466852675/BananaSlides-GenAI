@@ -1,7 +1,7 @@
 // server/src/services/vip-notification.service.ts
 // VIP 等级变动通知服务
 
-import { MessageType } from '@prisma/client';
+import { MessageType } from '../types/user.types';
 import { createMessage } from './message.service';
 
 const VIP_NAMES: Record<number, string> = {

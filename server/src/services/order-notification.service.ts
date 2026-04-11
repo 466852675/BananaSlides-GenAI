@@ -1,7 +1,7 @@
 // server/src/services/order-notification.service.ts
 // 订单相关通知服务
 
-import { MessageType } from '@prisma/client';
+import { MessageType } from '../types/user.types';
 import { createMessage } from './message.service';
 import { renderTemplate } from './message-template.service';
 

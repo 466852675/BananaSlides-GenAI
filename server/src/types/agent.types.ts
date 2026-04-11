@@ -7,12 +7,18 @@
 import {
   AgentSession,
   AgentMessage,
-  AgentTask,
+  AgentTask
+} from '@prisma/client';
+import {
   AgentSessionStatus,
   AgentMode,
   AgentTaskType,
-  AgentTaskStatus
-} from '@prisma/client';
+  AgentTaskStatus,
+  AgentSessionStatusType,
+  AgentModeType,
+  AgentTaskTypeType,
+  AgentTaskStatusType
+} from './user.types';
 
 // ============================================================
 // 枚举重导出
@@ -22,7 +28,11 @@ export {
   AgentSessionStatus,
   AgentMode,
   AgentTaskType,
-  AgentTaskStatus
+  AgentTaskStatus,
+  AgentSessionStatusType,
+  AgentModeType,
+  AgentTaskTypeType,
+  AgentTaskStatusType
 };
 
 // ============================================================
@@ -116,9 +126,12 @@ export const AGENT_TOOLS: AgentTool[] = [
 
 // 任务类型到工具的映射（确保类型安全）
 export const TASK_TYPE_TOOL_MAP: Record<string, AgentTool | undefined> = {
+  CONFIG_CONFIRM: undefined,
   OUTLINE: AGENT_TOOLS.find(t => t.name === 'OUTLINE'),
   CONTENT: AGENT_TOOLS.find(t => t.name === 'CONTENT'),
   IMAGE: AGENT_TOOLS.find(t => t.name === 'IMAGE'),
+  IMAGE_BY_PAGE: AGENT_TOOLS.find(t => t.name === 'IMAGE'),
+  FINAL_OVERVIEW: undefined,
   MODIFY: AGENT_TOOLS.find(t => t.name === 'MODIFY'),
   STYLE: AGENT_TOOLS.find(t => t.name === 'STYLE'),
   EXPORT: AGENT_TOOLS.find(t => t.name === 'EXPORT'),
@@ -335,14 +348,14 @@ export interface AgentMessageMetadata {
 
 export interface AgentTaskCreateInput {
   sessionId: string;
-  type: AgentTaskType;
+  type: AgentTaskTypeType;
   params?: Record<string, unknown>;
   priority?: number;
 }
 
 export interface AgentTaskProgress {
   taskId: string;
-  status: AgentTaskStatus;
+  status: AgentTaskStatusType;
   progress: number;
   message?: string;
 }
@@ -353,7 +366,7 @@ export interface AgentTaskProgress {
 
 export interface AgentSessionCreateInput {
   projectId: string;
-  mode?: AgentMode;
+  mode?: AgentModeType;
 }
 
 export interface AgentSessionWithDetails extends AgentSession {
@@ -372,13 +385,13 @@ export interface AgentSessionWithDetails extends AgentSession {
 
 export interface AgentProgressResponse {
   sessionId: string;
-  status: AgentSessionStatus;
+  status: AgentSessionStatusType;
   totalTasks: number;
   completedTasks: number;
   failedTasks: number;
   currentTask?: {
     id: string;
-    type: AgentTaskType;
+    type: AgentTaskTypeType;
     progress: number;
   };
   totalPointsUsed: number;

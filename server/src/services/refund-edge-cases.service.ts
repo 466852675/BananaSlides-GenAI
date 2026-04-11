@@ -1,4 +1,4 @@
-import { RefundStatus } from '@prisma/client';
+import { RefundStatus, RefundStatusType } from '../types/user.types';
 import { prisma } from '../db';
 import { RefundExceptionService, ExceptionType } from './refund-exception.service';
 
@@ -343,7 +343,7 @@ export class RefundEdgeCasesService {
         requireAction: 'block' | 'second_review' | 'manual_review' | 'warn'
     ): Promise<{
         handled: boolean;
-        newStatus?: RefundStatus;
+        newStatus?: RefundStatusType;
         message: string;
     }> {
         switch (requireAction) {

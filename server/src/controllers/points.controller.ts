@@ -98,7 +98,7 @@ export async function getRules(req: Request, res: Response): Promise<void> {
                 sortOrder: true,
                 effectiveAt: true,
                 createdAt: true,
-                createdBy: {
+                User: {
                     select: {
                         nickname: true,
                         avatar: true,

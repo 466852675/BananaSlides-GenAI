@@ -7,7 +7,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, RefreshCw, Edit2, Palette, Layout, Hash, FileText, X, Save, Coins, Sparkles, Layers } from 'lucide-react';
+import { Check, RefreshCw, Edit2, Palette, Layout, Hash, FileText, X, Save, Coins, Sparkles, Layers, HelpCircle } from 'lucide-react';
 import type { AgentTask } from '../types/agent';
 
 interface AgentConfigConfirmCardProps {
@@ -39,6 +39,32 @@ export default function AgentConfigConfirmCard({
 }: AgentConfigConfirmCardProps) {
   const [expanded, setExpanded] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [showStyleReason, setShowStyleReason] = useState(false);
+
+  // 基于 AI 推荐规则生成本地推荐理由（仅 AI 生成配置时显示）
+  const getStyleRecommendationReason = (styleName?: string, topic?: string): string => {
+    if (!styleName) return 'AI 根据您的主题自动匹配了最佳风格。';
+    const name = styleName.toLowerCase();
+    const t = (topic || '').toLowerCase();
+    const isTech = t.includes('技术') || t.includes('ai') || t.includes('科技') || t.includes('互联网') || t.includes('数字化');
+    const isBusiness = t.includes('商业') || t.includes('汇报') || t.includes('报告') || t.includes('年度') || t.includes('财务');
+    const isEducation = t.includes('教学') || t.includes('课件') || t.includes('培训') || t.includes('课程');
+
+    if (name.includes('科技') || name.includes('简约') || name.includes('现代'))
+      return isTech ? '您的主题具有科技属性，简洁现代的风格能更好传递专业感和前沿感。'
+        : '简洁的风格设计让内容更聚焦，适合信息密度较高的演示场景。';
+    if (name.includes('商务') || name.includes('专业') || name.includes('正式'))
+      return isBusiness ? '商务正式风格适合汇报类演示，增强内容的权威性和可信度。'
+        : '专业商务风格适用于正式场合，给观众留下严谨可靠的印象。';
+    if (name.includes('创意') || name.includes('活力') || name.includes('趣味'))
+      return '创意活力的风格能提升观众注意力，适合创意展示和互动场景。';
+    if (name.includes('教育') || name.includes('学术') || name.includes('清新'))
+      return isEducation ? '清新学术风格适合教育培训场景，排版清晰便于理解。'
+        : '简洁清晰的排版有助于信息传达，降低阅读疲劳。';
+    if (name.includes('奢华') || name.includes('高端') || name.includes('黑金'))
+      return '高端奢华风格适合品牌发布、重要提案等场合，彰显品质和格调。';
+    return 'AI 根据您的主题内容和演示目标，匹配了最合适的视觉风格。';
+  };
 
   // 安全解析配置结果
   const parseTaskResult = (result: string | null): any => {
@@ -235,7 +261,25 @@ export default function AgentConfigConfirmCard({
                   placeholder="请输入风格名称"
                 />
               ) : (
-                <div className="text-sm font-medium text-gray-800">{config.styleName}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-800">{config.styleName}</span>
+                  {!isUserSelected && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowStyleReason(!showStyleReason); }}
+                      className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5 transition-colors"
+                      title="查看 AI 推荐理由"
+                    >
+                      <HelpCircle className="h-3 w-3" />
+                      为什么推荐这个？
+                    </button>
+                  )}
+                </div>
+              )}
+              {showStyleReason && !isEditing && !isUserSelected && (
+                <div className="mt-1.5 bg-blue-50 rounded-lg p-2 text-xs text-gray-600 leading-relaxed flex items-start gap-1.5">
+                  <Sparkles className="h-3 w-3 text-blue-500 mt-0.5 shrink-0" />
+                  <span>{getStyleRecommendationReason(config.styleName, resultData?.topic)}</span>
+                </div>
               )}
             </div>
           </div>

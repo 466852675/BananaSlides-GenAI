@@ -9,7 +9,16 @@
  * - 支持引导模式和自动模式
  */
 
-import { PrismaClient, AgentSessionStatus, AgentTaskStatus, AgentTaskType, AgentMode } from '@prisma/client';
+import { prisma } from '../db';
+import {
+  AgentSessionStatus,
+  AgentTaskStatus,
+  AgentTaskType,
+  AgentMode,
+  AgentSessionStatusType,
+  AgentTaskTypeType,
+  AgentModeType
+} from '../types/user.types';
 import { AIService } from './ai.service';
 import * as pointsService from './points.service';
 import { snapshotService } from './snapshot.service';
@@ -25,8 +34,6 @@ import {
   TASK_TYPE_TOOL_MAP
 } from '../types/agent.types';
 import { logger } from '../utils/logger';
-
-const prisma = new PrismaClient();
 
 export class AgentService {
 
@@ -62,7 +69,7 @@ export class AgentService {
           status: AgentSessionStatus.ACTIVE
         },
         include: {
-          project: {
+          Project: {
             select: { id: true, title: true, thumbnailUrl: true }
           }
         }
@@ -78,7 +85,7 @@ export class AgentService {
         return prisma.agentSession.findUnique({
           where: { projectId: input.projectId },
           include: {
-            project: { select: { id: true, title: true, thumbnailUrl: true } }
+            Project: { select: { id: true, title: true, thumbnailUrl: true } }
           }
         });
       }
@@ -93,12 +100,12 @@ export class AgentService {
     return prisma.agentSession.findUnique({
       where: { id: sessionId },
       include: {
-        project: { select: { id: true, title: true, thumbnailUrl: true } },
-        messages: {
+        Project: { select: { id: true, title: true, thumbnailUrl: true } },
+        AgentMessage: {
           where: { isDeleted: false },
           orderBy: { createdAt: 'asc' }
         },
-        tasks: {
+        AgentTask: {
           orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
         }
       }
@@ -112,14 +119,13 @@ export class AgentService {
     return prisma.agentSession.findUnique({
       where: { projectId },
       include: {
-        project: { select: { id: true, title: true, thumbnailUrl: true } },
-        messages: {
+        Project: { select: { id: true, title: true, thumbnailUrl: true } },
+        AgentMessage: {
           where: { isDeleted: false },
           orderBy: { createdAt: 'asc' },
           take: 50
         },
-        tasks: {
-          where: { status: { not: AgentTaskStatus.COMPLETED } },
+        AgentTask: {
           orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
         }
       }
@@ -149,7 +155,7 @@ export class AgentService {
         updatedAt: true,
         completedAt: true,
         styleMap: true, // 用于缩略图回退
-        items: {
+        Slide: {
           select: {
             id: true,
             status: true,
@@ -159,7 +165,7 @@ export class AgentService {
           },
           orderBy: { index: 'asc' }
         },
-        agentSession: {
+        AgentSession: {
           select: {
             id: true,
             status: true,
@@ -201,7 +207,7 @@ export class AgentService {
 
     return projects.map(p => {
       // 动态计算项目状态（与 IDE 模式 transformProject 保持一致）
-      const itemStatuses = p.items.map(i => i.status);
+      const itemStatuses = p.Slide.map(i => i.status);
       let effectiveStatus = p.status;
 
       // 1. 如果没有 items，状态为 'idle'
@@ -226,12 +232,12 @@ export class AgentService {
       }
 
       // 动态计算缩略图（与 IDE 模式 calculateThumbnail 保持一致）
-      const thumbnailUrl = this.calculateThumbnail(p.items, p.styleMap);
+      const thumbnailUrl = this.calculateThumbnail(p.Slide, p.styleMap);
 
       // 动态计算统计数据（如果 session 数据为 0 或不存在）
-      const session = p.agentSession;
-      const totalItems = p.items.length;
-      const completedItems = p.items.filter(i => i.status === 'success').length;
+      const session = p.AgentSession;
+      const totalItems = p.Slide.length;
+      const completedItems = p.Slide.filter(i => i.status === 'success').length;
       const totalPointsUsed = pointsMap.get(p.id) || 0;
 
       // 如果 session 存在但统计数据为 0，使用动态计算的值
@@ -344,9 +350,38 @@ export class AgentService {
   }
 
   /**
+   * 获取用户最近完成的会话（用于一键复用配置）
+   */
+  async getRecentSessions(userId: string, limit: number = 5, status: string = 'COMPLETED') {
+    const sessions = await prisma.agentSession.findMany({
+      where: {
+        status,
+        Project: { userId, isDeleted: false, source: 'AGENT' },
+      },
+      select: {
+        id: true,
+        projectId: true,
+        context: true,
+        totalPointsUsed: true,
+        createdAt: true,
+        completedAt: true,
+        Project: {
+          select: { id: true, title: true, thumbnailUrl: true },
+        },
+      },
+      orderBy: { completedAt: 'desc' },
+      take: limit,
+    });
+    return sessions.map(s => ({
+      ...s,
+      context: typeof s.context === 'string' ? JSON.parse(s.context || '{}') : s.context,
+    }));
+  }
+
+  /**
    * 重置会话
    */
-  private async resetSession(sessionId: string, mode?: AgentMode) {
+  private async resetSession(sessionId: string, mode?: AgentModeType) {
     await prisma.$transaction([
       // 清除旧消息
       prisma.agentMessage.deleteMany({ where: { sessionId } }),
@@ -511,7 +546,7 @@ export class AgentService {
       if (this.hasEnoughConfig(context)) {
         // 创建配置确认任务，让用户确认配置
         return {
-          tasks: ['CONFIG_CONFIRM' as AgentTaskType],
+          tasks: ['CONFIG_CONFIRM' as AgentTaskTypeType],
           params: {
             topic: context.topic,
             pageCount: context.pageCount,
@@ -681,12 +716,12 @@ ${contextInfo}
    * 解析 AI 意图响应
    */
   private parseIntentResponse(aiResponse: string, originalContent: string, context: any): {
-    tasks: AgentTaskType[];
+    tasks: AgentTaskTypeType[];
     params: Record<string, unknown>;
     response: string;
     needsMoreInfo?: boolean;
     missingInfo?: string[];
-    plannedTasks?: AgentTaskType[]; // 新增：存储完整的任务链计划
+    plannedTasks?: AgentTaskTypeType[]; // 新增：存储完整的任务链计划
   } {
     try {
       // 提取 JSON
@@ -706,7 +741,7 @@ ${contextInfo}
       const parsed = JSON.parse(jsonStr);
 
       // 转换任务类型
-      const taskMapping: Record<string, AgentTaskType> = {
+      const taskMapping: Record<string, AgentTaskTypeType> = {
         'config_confirm': AgentTaskType.CONFIG_CONFIRM,
         'outline': AgentTaskType.OUTLINE,
         'content': AgentTaskType.CONTENT,
@@ -813,7 +848,7 @@ ${contextInfo}
    * 关键词回退意图检测
    */
   private fallbackIntentDetection(content: string, context: any): {
-    tasks: AgentTaskType[];
+    tasks: AgentTaskTypeType[];
     params: Record<string, unknown>;
     response: string;
     needsMoreInfo?: boolean;
@@ -822,7 +857,7 @@ ${contextInfo}
     const lowerContent = content.toLowerCase().trim();
 
     const result: {
-      tasks: AgentTaskType[];
+      tasks: AgentTaskTypeType[];
       params: Record<string, unknown>;
       response: string;
       needsMoreInfo?: boolean;
@@ -1050,7 +1085,7 @@ ${contextInfo}
       return questions.join('\n');
     }
 
-    const taskDescriptions: Record<AgentTaskType, string> = {
+    const taskDescriptions: Partial<Record<AgentTaskTypeType, string>> = {
       [AgentTaskType.CONFIG_CONFIRM]: '确认配置',
       [AgentTaskType.OUTLINE]: '生成大纲结构',
       [AgentTaskType.CONTENT]: '生成页面内容',
@@ -1069,7 +1104,7 @@ ${contextInfo}
     }
 
     const taskList = intent.tasks
-      .map((t: AgentTaskType) => taskDescriptions[t])
+      .map((t: AgentTaskTypeType) => taskDescriptions[t])
       .join('、');
 
     // 根据任务类型生成更智能的响应
@@ -1136,7 +1171,7 @@ ${contextInfo}
    */
   async createTask(
     sessionId: string,
-    type: AgentTaskType,
+    type: AgentTaskTypeType,
     params?: Record<string, unknown>
   ) {
     // 计算积分消耗 - 使用映射表获取正确的工具定义
@@ -1158,7 +1193,7 @@ ${contextInfo}
    * 创建下一个任务（任务链）
    * 在当前任务完成后自动创建下一个任务
    */
-  private async createNextTask(sessionId: string, completedTaskType: AgentTaskType, userId: string) {
+  private async createNextTask(sessionId: string, completedTaskType: AgentTaskTypeType, userId: string) {
     // 获取会话模式
     const session = await prisma.agentSession.findUnique({
       where: { id: sessionId },
@@ -1168,11 +1203,11 @@ ${contextInfo}
     if (!session) return;
 
     // 确定下一个任务类型
-    let nextTaskType: AgentTaskType | null = null;
+    let nextTaskType: AgentTaskTypeType | null = null;
     let nextTaskParams: Record<string, unknown> = {};
 
     switch (completedTaskType) {
-      case 'CONFIG_CONFIRM' as AgentTaskType:
+      case 'CONFIG_CONFIRM' as AgentTaskTypeType:
         // 配置确认完成后，标记配置已确认并创建大纲任务
         await this.markConfigConfirmed(sessionId);
         nextTaskType = AgentTaskType.OUTLINE;
@@ -1247,8 +1282,8 @@ ${contextInfo}
   /**
    * 获取任务优先级
    */
-  private getTaskPriority(type: AgentTaskType): number {
-    const priorities: Record<AgentTaskType, number> = {
+  private getTaskPriority(type: AgentTaskTypeType): number {
+    const priorities: Partial<Record<AgentTaskTypeType, number>> = {
       [AgentTaskType.CONFIG_CONFIRM]: 110,
       [AgentTaskType.OUTLINE]: 100,
       [AgentTaskType.CONTENT]: 80,
@@ -1291,15 +1326,15 @@ ${contextInfo}
         status: progress >= 100 ? AgentTaskStatus.COMPLETED : AgentTaskStatus.RUNNING
       },
       include: {
-        session: {
+        AgentSession: {
           select: { projectId: true }
         }
       }
     });
 
     // 广播进度更新
-    if (task.session?.projectId) {
-      websocketService.broadcastAgentProgress(task.sessionId, task.session.projectId, {
+    if (task.AgentSession?.projectId) {
+      websocketService.broadcastAgentProgress(task.sessionId, task.AgentSession.projectId, {
         taskId: task.id,
         type: task.type,
         progress: task.progress,
@@ -1431,7 +1466,7 @@ ${contextInfo}
       } else {
         // 没有预生成结果，正常执行任务
         switch (task.type) {
-          case 'CONFIG_CONFIRM' as AgentTaskType:
+          case 'CONFIG_CONFIRM' as AgentTaskTypeType:
             result = await this.executeConfigConfirm(task.id, task.sessionId, params, userId);
             break;
           case AgentTaskType.OUTLINE:
@@ -2832,7 +2867,7 @@ ${contextInfo}
     const session = await prisma.agentSession.findUnique({
       where: { id: sessionId },
       include: {
-        tasks: {
+        AgentTask: {
           where: { status: AgentTaskStatus.RUNNING },
           take: 1
         }
@@ -2845,14 +2880,14 @@ ${contextInfo}
 
     return {
       sessionId: session.id,
-      status: session.status,
+      status: session.status as AgentSessionStatusType,
       totalTasks: session.totalTasks,
       completedTasks: session.completedTasks,
       failedTasks: session.failedTasks,
-      currentTask: session.tasks[0] ? {
-        id: session.tasks[0].id,
-        type: session.tasks[0].type,
-        progress: session.tasks[0].progress
+      currentTask: session.AgentTask[0] ? {
+        id: session.AgentTask[0].id,
+        type: session.AgentTask[0].type as AgentTaskTypeType,
+        progress: session.AgentTask[0].progress
       } : undefined,
       totalPointsUsed: session.totalPointsUsed
     };
@@ -2910,7 +2945,7 @@ ${contextInfo}
   /**
    * 更新会话模式（引导/自动）
    */
-  async updateSessionMode(sessionId: string, mode: AgentMode, userId: string) {
+  async updateSessionMode(sessionId: string, mode: AgentModeType, userId: string) {
     const session = await prisma.agentSession.findUnique({
       where: { id: sessionId },
       select: { mode: true, status: true }

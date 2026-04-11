@@ -20,7 +20,9 @@ import {
   Check,
   Loader2,
   LayoutTemplate,
-  FolderKanban
+  FolderKanban,
+  Sparkles,
+  Presentation
 } from 'lucide-react';
 import * as trashApi from '../api/trash';
 import { formatTimeAgo } from '../utils/time-format';
@@ -35,7 +37,35 @@ interface TrashPageProps {
   onCloseConfirm?: () => void;
 }
 
-type SourceFilter = 'all' | 'studio' | 'history' | 'template';
+type SourceFilter = 'all' | 'IDE' | 'AGENT';
+type LocationFilter = 'all' | 'studio' | 'history' | 'template';
+
+// ============================================================
+// ProjectSourceBadge 组件
+// ============================================================
+
+const ProjectSourceBadge = React.memo(function ProjectSourceBadge({ source }: { source: 'IDE' | 'AGENT' }) {
+  const isAgent = source === 'AGENT';
+  return (
+    <span
+      className={`
+        inline-flex items-center justify-center
+        w-4 h-4 rounded
+        ${isAgent
+          ? 'bg-gradient-to-br from-purple-500 to-pink-500'
+          : 'bg-gray-300'
+        }
+      `}
+      title={isAgent ? 'AI 生成' : '手动创建'}
+    >
+      {isAgent ? (
+        <Sparkles className="w-2.5 h-2.5 text-white" />
+      ) : (
+        <Presentation className="w-2.5 h-2.5 text-gray-600" />
+      )}
+    </span>
+  );
+});
 
 // ============================================================
 // 回收箱页面组件
@@ -55,6 +85,7 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const [locationFilter, setLocationFilter] = useState<LocationFilter>('all');
 
   // 加载数据
   const loadData = useCallback(async () => {
@@ -78,18 +109,25 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
     loadData();
   }, [loadData]);
 
-  // 恢复项目
-  const handleRestore = async (projectId: string, projectTitle: string) => {
+  // 恢复项目/模板
+  const handleRestore = async (itemId: string, itemTitle: string, itemType?: 'project' | 'template') => {
     const doRestore = async () => {
       try {
-        setActionLoading(projectId);
-        await trashApi.restoreProject(projectId);
-        // 刷新项目列表缓存，使恢复的项目立即显示在创作室/历史库
-        await queryClient.invalidateQueries({ queryKey: ['projects'] });
+        setActionLoading(itemId);
+        // 根据 itemType 调用不同的 API
+        if (itemType === 'template') {
+          await trashApi.restoreTemplate(itemId);
+          // 刷新模板列表缓存，使恢复的模板立即显示在模板间
+          await queryClient.invalidateQueries({ queryKey: ['templates'] });
+        } else {
+          await trashApi.restoreProject(itemId);
+          // 刷新项目列表缓存，使恢复的项目立即显示在创作室/历史库
+          await queryClient.invalidateQueries({ queryKey: ['projects'] });
+        }
         await loadData();
         setSelectedIds(prev => {
           const next = new Set(prev);
-          next.delete(projectId);
+          next.delete(itemId);
           return next;
         });
         onCloseConfirm?.(); // 关闭确认对话框
@@ -100,10 +138,13 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
       }
     };
 
+    const restoreLabel = itemType === 'template' ? '模板' : '项目';
+    const restoreLocation = itemType === 'template' ? '模板间' : '历史库中';
+
     if (onShowConfirm) {
       onShowConfirm(
-        '恢复项目',
-        `确定要恢复《${projectTitle}》吗？恢复后项目将回到历史库中。`,
+        `恢复${restoreLabel}`,
+        `确定要恢复《${itemTitle}》吗？恢复后${restoreLabel}将回到${restoreLocation}。`,
         doRestore,
         'info'
       );
@@ -112,12 +153,17 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
     }
   };
 
-  // 彻底删除
-  const handleDelete = async (projectId: string, projectTitle: string) => {
+  // 彻底删除项目/模板
+  const handleDelete = async (itemId: string, itemTitle: string, itemType?: 'project' | 'template') => {
     const doDelete = async () => {
       try {
-        setActionLoading(projectId);
-        await trashApi.permanentDeleteProject(projectId);
+        setActionLoading(itemId);
+        // 根据 itemType 调用不同的 API
+        if (itemType === 'template') {
+          await trashApi.permanentDeleteTemplate(itemId);
+        } else {
+          await trashApi.permanentDeleteProject(itemId);
+        }
         await loadData();
         onCloseConfirm?.(); // 关闭确认对话框
       } catch (error: any) {
@@ -127,14 +173,16 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
       }
     };
 
+    const deleteLabel = itemType === 'template' ? '模板' : '项目';
+
     if (onShowConfirm) {
       onShowConfirm(
         '彻底删除',
-        `确定要彻底删除《${projectTitle}》吗？此操作不可撤销，项目及相关资源将被永久删除。`,
+        `确定要彻底删除《${itemTitle}》吗？此操作不可撤销，${deleteLabel}及相关资源将被永久删除。`,
         doDelete,
         'danger'
       );
-    } else if (confirm('确定要彻底删除这个项目吗？此操作不可撤销。')) {
+    } else if (confirm('确定要彻底删除吗？此操作不可撤销。')) {
       doDelete();
     }
   };
@@ -350,9 +398,48 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
                 全部
               </button>
               <button
-                onClick={() => { setSourceFilter('studio'); setPage(1); }}
+                onClick={() => { setSourceFilter('IDE'); setPage(1); }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
-                  sourceFilter === 'studio'
+                  sourceFilter === 'IDE'
+                    ? 'bg-gray-300 text-gray-700'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Presentation size={12} />
+                IDE 模式
+              </button>
+              <button
+                onClick={() => { setSourceFilter('AGENT'); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+                  sourceFilter === 'AGENT'
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+                    : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
+                }`}
+              >
+                <Sparkles size={12} />
+                Agent 模式
+              </button>
+            </div>
+          </div>
+
+          {/* 位置分类筛选 */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-medium">位置：</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setLocationFilter('all'); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  locationFilter === 'all'
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                全部
+              </button>
+              <button
+                onClick={() => { setLocationFilter('studio'); setPage(1); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+                  locationFilter === 'studio'
                     ? 'bg-violet-600 text-white'
                     : 'bg-violet-50 text-violet-600 hover:bg-violet-100'
                 }`}
@@ -361,9 +448,9 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
                 创作室
               </button>
               <button
-                onClick={() => { setSourceFilter('history'); setPage(1); }}
+                onClick={() => { setLocationFilter('history'); setPage(1); }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
-                  sourceFilter === 'history'
+                  locationFilter === 'history'
                     ? 'bg-indigo-600 text-white'
                     : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
                 }`}
@@ -372,9 +459,9 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
                 历史库
               </button>
               <button
-                onClick={() => { setSourceFilter('template'); setPage(1); }}
+                onClick={() => { setLocationFilter('template'); setPage(1); }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
-                  sourceFilter === 'template'
+                  locationFilter === 'template'
                     ? 'bg-emerald-600 text-white'
                     : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
                 }`}
@@ -453,10 +540,28 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
               <AnimatePresence mode="popLayout">
                 {items
                   .filter(item => {
-                    if (sourceFilter === 'all') return true;
-                    if (sourceFilter === 'studio') return item.scenarioType !== 'TEMPLATE' && item.status !== 'completed';
-                    if (sourceFilter === 'history') return item.scenarioType !== 'TEMPLATE' && item.status === 'completed';
-                    if (sourceFilter === 'template') return item.scenarioType === 'TEMPLATE';
+                    // 来源筛选
+                    if (sourceFilter !== 'all') {
+                      if (sourceFilter === 'IDE' && item.source !== 'IDE') return false;
+                      if (sourceFilter === 'AGENT' && item.source !== 'AGENT') return false;
+                    }
+                    // 位置筛选：基于completedAt判断删除前的位置
+                    if (locationFilter !== 'all') {
+                      if (locationFilter === 'template') {
+                        return item.scenarioType === 'TEMPLATE';
+                      }
+                      // 非模板项目
+                      if (item.scenarioType === 'TEMPLATE') return false;
+
+                      if (locationFilter === 'history') {
+                        // 历史库：已完成（有completedAt）
+                        return item.completedAt != null;
+                      }
+                      if (locationFilter === 'studio') {
+                        // 创作室：未完成（无completedAt）
+                        return item.completedAt == null;
+                      }
+                    }
                     return true;
                   })
                   .map((item) => (
@@ -480,7 +585,11 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <FileText className="text-slate-300" size={40} />
+                          {item.itemType === 'template' ? (
+                            <LayoutTemplate className="text-slate-300" size={40} />
+                          ) : (
+                            <FileText className="text-slate-300" size={40} />
+                          )}
                         </div>
                       )}
 
@@ -509,21 +618,24 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
                     <div className="p-3">
                       {/* 项目ID + 来源标签 */}
                       <div className="flex items-center gap-2 mb-1">
+                        {/* 来源徽章 */}
+                        <ProjectSourceBadge source={item.source || 'IDE'} />
                         {item.displayId && (
                           <span className="text-[9px] font-mono text-slate-400 bg-slate-100 px-1 rounded border border-slate-200">
                             {item.displayId}
                           </span>
                         )}
+                        {/* 位置标签：基于删除前的位置判断 */}
                         <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${
                           item.scenarioType === 'TEMPLATE'
                             ? 'bg-emerald-50 text-emerald-600'
-                            : item.status === 'completed'
+                            : item.completedAt
                               ? 'bg-indigo-50 text-indigo-600'
                               : 'bg-violet-50 text-violet-600'
                         }`}>
                           {item.scenarioType === 'TEMPLATE' ? (
-                            <><LayoutTemplate size={10} /> 模板</>
-                          ) : item.status === 'completed' ? (
+                            <><LayoutTemplate size={10} /> 模板间</>
+                          ) : item.completedAt ? (
                             <><Clock size={10} /> 历史库</>
                           ) : (
                             <><FolderKanban size={10} /> 创作室</>
@@ -566,7 +678,7 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
                       {/* 操作按钮 */}
                       <div className="flex gap-2 mt-3">
                         <button
-                          onClick={() => handleRestore(item.id, item.title)}
+                          onClick={() => handleRestore(item.id, item.title, item.itemType)}
                           disabled={actionLoading !== null}
                           className="flex-1 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                         >
@@ -578,7 +690,7 @@ export const TrashPage: React.FC<TrashPageProps> = ({ onBack, onShowConfirm, onC
                           恢复
                         </button>
                         <button
-                          onClick={() => handleDelete(item.id, item.title)}
+                          onClick={() => handleDelete(item.id, item.title, item.itemType)}
                           disabled={actionLoading !== null}
                           className="px-3 py-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50"
                         >

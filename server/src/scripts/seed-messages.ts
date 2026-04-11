@@ -1,5 +1,6 @@
 
-import { PrismaClient, MessageType, UserRole } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { MessageType, UserRole } from '../types/user.types';
 
 const prisma = new PrismaClient();
 
@@ -14,9 +15,9 @@ async function main() {
     const users = await prisma.user.findMany({
         take: 50,
         include: {
-            orders: { take: 5, orderBy: { createdAt: 'desc' } },
-            refundRequests: { take: 5, orderBy: { createdAt: 'desc' } },
-            projects: { take: 5, orderBy: { createdAt: 'desc' } },
+            Order: { take: 5, orderBy: { createdAt: 'desc' } },
+            RefundRequest: { take: 5, orderBy: { createdAt: 'desc' } },
+            Project: { take: 5, orderBy: { createdAt: 'desc' } },
         }
     });
 
@@ -38,7 +39,7 @@ async function main() {
     console.log('👉 生成普通用户消息...');
     for (const user of normalUsers) {
         // 1. 订单消息
-        for (const order of user.orders) {
+        for (const order of user.Order) {
             if (order.status === 'PAID') {
                 messages.push({
                     userId: user.id,
@@ -71,7 +72,7 @@ async function main() {
         }
 
         // 2. 退款消息
-        for (const refund of user.refundRequests) {
+        for (const refund of user.RefundRequest) {
             if (refund.status === 'COMPLETED') {
                 messages.push({
                     userId: user.id,
@@ -118,7 +119,7 @@ async function main() {
         }
 
         // 3. AI 生成消息
-        for (const project of user.projects) {
+        for (const project of user.Project) {
             // 模拟 70% 的项目生成成功通知
             if (Math.random() > 0.3) {
                 messages.push({

@@ -43,7 +43,7 @@ export class ProjectService {
             where: isAdmin ? { isDeleted: false } : { userId, isDeleted: false },  // 排除回收箱项目
             orderBy: { updatedAt: 'desc' },
             include: {
-                items: {
+                Slide: {
                     orderBy: { index: 'asc' }
                 }
             }
@@ -81,7 +81,8 @@ export class ProjectService {
             await prisma.$transaction(migrations);
         }
 
-        return sanitizedProjects;
+        // Map Slide field to items for frontend compatibility
+        return sanitizedProjects.map(p => this.mapSlideToItems(p));
     }
 
     async countActive(ownerId: string) {
@@ -97,13 +98,13 @@ export class ProjectService {
         const project = await prisma.project.findUnique({
             where: { id },
             include: {
-                items: {
+                Slide: {
                     orderBy: { index: 'asc' }
                 }
             }
         });
 
-        // 管理员可以访问所有项目，普通用户只能访问自己的
+        // 管理员可以访问所有项目,普通用户只能访问自己的
         if (!isAdmin && project && project.userId !== userId) return null;
 
         if (project) {
@@ -112,7 +113,17 @@ export class ProjectService {
             await this.migrateProjectImages(project);
         }
 
-        return project;
+        // Map Slide field to items for frontend compatibility
+        return project ? this.mapSlideToItems(project) : null;
+    }
+
+    // Helper: Map Slide field to items for frontend compatibility
+    private mapSlideToItems<T extends { Slide?: any[] }>(project: T): any {
+        const { Slide, ...rest } = project;
+        return {
+            ...rest,
+            items: Slide || []
+        };
     }
 
     // Helper: Migrate Base64 to File (Lazy)
@@ -174,16 +185,18 @@ export class ProjectService {
 
     // Create
     async create(ownerId: string, data: any) {
-        return prisma.project.create({
+        const project = await prisma.project.create({
             data: {
                 ...data,
                 userId: ownerId,
                 displayId: this.generateDisplayId()
             },
             include: {
-                items: true
+                Slide: true
             }
         });
+        // Map Slide field to items for frontend compatibility
+        return this.mapSlideToItems(project);
     }
 
     // Update
@@ -251,8 +264,8 @@ export class ProjectService {
     async syncSlides(projectId: string, userId: string, slides: any[], isAdmin: boolean = false) {
         // Use transaction to upsert slides
         return prisma.$transaction(async (tx) => {
-            const project = await tx.project.findUnique({ where: { id: projectId } });
-            if (!isAdmin && (!project || project.userId !== userId)) return null;
+            const currentProject = await tx.project.findUnique({ where: { id: projectId } });
+            if (!isAdmin && (!currentProject || currentProject.userId !== userId)) return null;
 
             // Get existing slides to determine which to delete
             const existingSlides = await tx.slide.findMany({
@@ -342,10 +355,12 @@ export class ProjectService {
             }
 
             // Return updated project with slides
-            return tx.project.findUnique({
+            const updatedProject = await tx.project.findUnique({
                 where: { id: projectId },
-                include: { items: { orderBy: { index: 'asc' } } }
+                include: { Slide: { orderBy: { index: 'asc' } } }
             });
+            // Map Slide field to items for frontend compatibility
+            return updatedProject ? this.mapSlideToItems(updatedProject) : null;
         });
     }
 
@@ -404,19 +419,19 @@ export class ProjectService {
     }
 
     async restore(id: string, userId: string, isAdmin: boolean = false) {
-        const project = await prisma.project.findUnique({ where: { id } });
+        const existingProject = await prisma.project.findUnique({ where: { id } });
 
         // Ownership / Permission Check
-        if (!project) return null;
-        if (!isAdmin && project.userId !== userId) return null;
+        if (!existingProject) return null;
+        if (!isAdmin && existingProject.userId !== userId) return null;
 
         // 必须在回收箱中才能恢复
-        if (!project.isDeleted) return null;
+        if (!existingProject.isDeleted) return null;
 
         // 检查是否过期（30天）
         const TRASH_RETENTION_DAYS = 30;
-        if (project.deletedAt) {
-            const expiresAt = new Date(project.deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        if (existingProject.deletedAt) {
+            const expiresAt = new Date(existingProject.deletedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
             if (expiresAt < new Date()) {
                 return null; // 已过期，无法恢复
             }
@@ -463,15 +478,17 @@ export class ProjectService {
         });
 
         // 返回恢复后的项目
-        return prisma.project.findUnique({
+        const project = await prisma.project.findUnique({
             where: { id },
-            include: { items: { orderBy: { index: 'asc' } } }
+            include: { Slide: { orderBy: { index: 'asc' } } }
         });
+        // Map Slide field to items for frontend compatibility
+        return project ? this.mapSlideToItems(project) : null;
     }
 
     async listTrash(ownerId: string) {
         const TRASH_RETENTION_DAYS = 30;
-        const projects = await prisma.project.findMany({
+        const trashProjects = await prisma.project.findMany({
             where: {
                 userId: ownerId,
                 isDeleted: true,
@@ -479,18 +496,22 @@ export class ProjectService {
             },
             orderBy: { deletedAt: 'desc' },
             include: {
-                items: {
+                Slide: {
                     orderBy: { index: 'asc' }
                 }
             }
         });
 
         // 计算剩余天数和过期时间
-        return projects.map(p => ({
-            ...p,
-            expiresAt: new Date(p.deletedAt!.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000),
-            remainingDays: Math.max(0, Math.ceil((p.deletedAt!.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)))
-        }));
+        // Map Slide field to items for frontend compatibility
+        return trashProjects.map(p => {
+            const mapped = this.mapSlideToItems(p);
+            return {
+                ...mapped,
+                expiresAt: new Date(p.deletedAt!.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000),
+                remainingDays: Math.max(0, Math.ceil((p.deletedAt!.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)))
+            };
+        });
     }
 
     // 彻底删除项目（管理员或系统调用）

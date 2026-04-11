@@ -1,7 +1,7 @@
 // server/src/services/security-notification.service.ts
 // 安全相关通知服务
 
-import { MessageType } from '@prisma/client';
+import { MessageType } from '../types/user.types';
 import { createMessage } from './message.service';
 
 interface LoginNotifyContext {

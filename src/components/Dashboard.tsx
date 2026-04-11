@@ -18,10 +18,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock3,
+  Sparkles,
+  Presentation,
   History,
   ChevronLeft,
   Check,
-  Sparkles,
   ChevronRight,
   ChevronDown,
   Calendar,
@@ -251,7 +252,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   setEndDateFilter,
   timeFilter,
   setTimeFilter,
-  sortBy = 'lastModified',
+  sortBy = 'createdAt',
   setSortBy,
   sortOrder = 'desc',
   setSortOrder,
@@ -768,8 +769,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {/* Sort By Tags */}
                 <div className="flex items-center gap-1 bg-slate-50/50 p-1 rounded-lg border border-slate-100">
                   {[
-                    { label: '按活跃', value: 'lastModified' },
                     { label: '按创建', value: 'createdAt' },
+                    { label: '按活跃', value: 'lastModified' },
                     { label: '按进度', value: 'progress' }
                   ].map(s => (
                     <button
@@ -890,6 +891,31 @@ const FilterChip: React.FC<{ active: boolean; onClick: () => void; children: Rea
   </button>
 );
 
+// 项目来源徽章组件（IDE 模式专用）
+const ProjectSourceBadge: React.FC<{ source?: 'IDE' | 'AGENT' }> = ({ source }) => {
+  const isAgent = source === 'AGENT';
+
+  return (
+    <span
+      className={`
+        inline-flex items-center justify-center
+        w-4 h-4 rounded
+        ${isAgent
+          ? 'bg-gradient-to-br from-purple-500 to-pink-500'
+          : 'bg-gray-300'
+        }
+      `}
+      title={isAgent ? 'AI 生成' : '手动创建'}
+    >
+      {isAgent ? (
+        <Sparkles className="w-2.5 h-2.5 text-white" />
+      ) : (
+        <Presentation className="w-2.5 h-2.5 text-gray-600" />
+      )}
+    </span>
+  );
+};
+
 const ProjectCard: React.FC<{
   project: ProjectSession;
   onOpen: () => void;
@@ -923,7 +949,7 @@ const ProjectCard: React.FC<{
       {/* Main Content Area */}
       <div className="p-5 flex-1" onClick={onOpen}>
         <div className="flex gap-4 mb-4">
-          <div className="w-16 h-12 bg-slate-100 rounded-xl overflow-hidden shrink-0 flex items-center justify-center border border-slate-50">
+          <div className="w-16 h-12 bg-slate-100 rounded-xl overflow-hidden shrink-0 flex items-center justify-center border border-slate-50 relative">
             {project.thumbnailUrl ? (
               <img src={project.thumbnailUrl} className="w-full h-full object-cover" alt="style" />
             ) : (
@@ -937,6 +963,7 @@ const ProjectCard: React.FC<{
                   {project.displayId}
                 </span>
               )}
+              <ProjectSourceBadge source={project.source} />
             </div>
             <h5 className="font-bold text-slate-800 truncate mb-1">{project.title}</h5>
             <div className="flex items-center gap-2">

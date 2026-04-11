@@ -86,6 +86,115 @@ router.get('/stats', authenticate, async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================
+// 模板相关路由（必须在 /:id 路由之前定义）
+// ============================================================
+
+/**
+ * POST /api/trash/template/:id/restore
+ * 恢复模板
+ */
+router.post('/template/:id/restore', authenticate, async (req: Request, res: Response) => {
+  try {
+    const templateId = String(req.params.id);
+    const userId = (req as any).user?.id;
+
+    // 验证模板所有权
+    const template = await require('../db').prisma.styleTemplate.findUnique({
+      where: { id: templateId },
+      select: { userId: true }
+    });
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: '模板不存在'
+      });
+    }
+
+    if (template.userId !== userId) {
+      const userRole = (req as any).user?.role;
+      if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+        return res.status(403).json({
+          success: false,
+          message: '无权恢复此模板'
+        });
+      }
+    }
+
+    const result = await trashService.restoreTemplate(templateId, userId);
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error: any) {
+    console.error('[Trash] 恢复模板失败:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || '恢复模板失败'
+    });
+  }
+});
+
+/**
+ * DELETE /api/trash/template/:id
+ * 彻底删除模板
+ */
+router.delete('/template/:id', authenticate, async (req: Request, res: Response) => {
+  try {
+    const templateId = String(req.params.id);
+    const userId = (req as any).user?.id;
+
+    // 验证模板所有权
+    const template = await require('../db').prisma.styleTemplate.findUnique({
+      where: { id: templateId },
+      select: { userId: true, isDeleted: true }
+    });
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: '模板不存在'
+      });
+    }
+
+    if (!template.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: '模板不在回收箱中，请先移至回收箱'
+      });
+    }
+
+    if (template.userId !== userId) {
+      const userRole = (req as any).user?.role;
+      if (!['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+        return res.status(403).json({
+          success: false,
+          message: '无权删除此模板'
+        });
+      }
+    }
+
+    const result = await trashService.permanentDeleteTemplate(templateId, userId);
+
+    res.json({
+      success: true,
+      message: result.message
+    });
+  } catch (error: any) {
+    console.error('[Trash] 彻底删除模板失败:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || '删除模板失败'
+    });
+  }
+});
+
+// ============================================================
+// 项目相关路由
+// ============================================================
+
 /**
  * POST /api/trash/:id/restore
  * 恢复项目
@@ -266,7 +375,7 @@ router.post('/batch-delete', authenticate, async (req: Request, res: Response) =
 });
 
 /**
- * DELETE /api/trash/clear
+ * POST /api/trash/clear
  * 清空回收箱
  */
 router.delete('/clear', authenticate, async (req: Request, res: Response) => {

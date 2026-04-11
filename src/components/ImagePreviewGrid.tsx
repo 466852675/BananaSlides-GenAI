@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, RefreshCw, CheckCircle, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import { Check, RefreshCw, CheckCircle, Image as ImageIcon, AlertCircle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ImagePreview {
   slideIndex: number;
@@ -31,6 +31,22 @@ export default function ImagePreviewGrid({
 }: ImagePreviewGridProps) {
   // 选中的图片索引
   const [selectedIndexes, setSelectedIndexes] = useState<Set<number>>(new Set());
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  const openLightbox = useCallback((index: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLightboxIndex(index);
+  }, []);
+
+  const closeLightbox = useCallback(() => setLightboxIndex(null), []);
+
+  const navigateLightbox = useCallback((delta: number) => {
+    setLightboxIndex(prev => {
+      if (prev === null) return null;
+      const next = prev + delta;
+      return next >= 0 && next < images.length ? next : prev;
+    });
+  }, [images.length]);
 
   // 切换选中状态
   const toggleSelect = useCallback((index: number) => {
@@ -104,6 +120,7 @@ export default function ImagePreviewGrid({
             <motion.button
               key={index}
               onClick={() => toggleSelect(index)}
+              onDoubleClick={(e) => openLightbox(index, e)}
               className={`relative aspect-[16/9] rounded-lg overflow-hidden border-2 transition-all ${
                 isSelected
                   ? 'border-indigo-500 shadow-md'
@@ -116,7 +133,7 @@ export default function ImagePreviewGrid({
               <img
                 src={image.imageUrl}
                 alt={image.slideTitle || `第${index + 1}页`}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain bg-gray-100"
                 loading="lazy"
               />
 
@@ -188,6 +205,36 @@ export default function ImagePreviewGrid({
           </button>
         </div>
       </div>
+
+      {/* Lightbox 放大预览 */}
+      <AnimatePresence>
+        {lightboxIndex !== null && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+            onClick={closeLightbox}
+          >
+            <img
+              src={images[lightboxIndex]?.imageUrl}
+              alt={images[lightboxIndex]?.slideTitle || ''}
+              className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button onClick={closeLightbox} className="absolute top-4 right-4 p-2 text-white/80 hover:text-white bg-white/10 rounded-full hover:bg-white/20 transition-colors">
+              <X className="h-6 w-6" />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); navigateLightbox(-1); }} disabled={lightboxIndex === 0} className="absolute left-4 p-2 text-white/80 hover:text-white bg-white/10 rounded-full hover:bg-white/20 transition-colors disabled:opacity-30">
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); navigateLightbox(1); }} disabled={lightboxIndex === images.length - 1} className="absolute right-4 p-2 text-white/80 hover:text-white bg-white/10 rounded-full hover:bg-white/20 transition-colors disabled:opacity-30">
+              <ChevronRight className="h-6 w-6" />
+            </button>
+            <div className="absolute bottom-4 text-white/60 text-sm">{lightboxIndex + 1} / {images.length}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

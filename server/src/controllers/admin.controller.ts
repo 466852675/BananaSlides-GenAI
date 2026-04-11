@@ -6,7 +6,7 @@ import * as AdminService from '../services/admin.service';
 import * as OrderService from '../services/order.service';
 import * as PointsService from '../services/points.service';
 import { productService } from '../services/product.service';
-import { UserRole, UserStatus, OrderStatus } from '@prisma/client';
+import { UserRole, UserStatus, OrderStatus, UserRoleType, UserStatusType, OrderStatusType } from '../types/user.types';
 
 // ============================================================
 // 用户管理
@@ -62,14 +62,14 @@ export async function listUsers(req: Request, res: Response): Promise<void> {
 
         // 校验 status 是否为合法的 UserStatus 枚举值，避免 Prisma 查询报错
         const validUserStatuses = Object.values(UserStatus);
-        const safeStatus = (status && validUserStatuses.includes(status as UserStatus))
-            ? status as UserStatus
+        const safeStatus = (status && validUserStatuses.includes(status as UserStatusType))
+            ? status as UserStatusType
             : undefined;
 
         const result = await AdminService.listUsers(
             {
                 search: search as string,
-                role: role as UserRole,
+                role: role as UserRoleType,
                 status: safeStatus,
                 vipLevel: vip ? parseInt(vip as string, 10) : undefined,
                 sortBy: sortBy as 'createdAt' | 'points' | 'lastLoginAt',
@@ -280,8 +280,8 @@ export async function listOrders(req: Request, res: Response): Promise<void> {
 
         // 校验 status 是否为合法的 OrderStatus 枚举值，避免 Prisma 查询报错
         const validOrderStatuses = Object.values(OrderStatus);
-        const safeOrderStatus = (status && validOrderStatuses.includes(status as OrderStatus))
-            ? status as OrderStatus
+        const safeOrderStatus = (status && validOrderStatuses.includes(status as OrderStatusType))
+            ? status as OrderStatusType
             : undefined;
 
         const result = await OrderService.listOrders(
@@ -548,7 +548,7 @@ export async function listPermissions(req: Request, res: Response): Promise<void
  */
 export async function getRolePermissions(req: Request, res: Response): Promise<void> {
     try {
-        const role = req.params.role as UserRole;
+        const role = req.params.role as UserRoleType;
         const permissions = await AdminService.getRolePermissions(role);
         res.json({ success: true, data: permissions });
     } catch (error) {
@@ -566,7 +566,7 @@ export async function getRolePermissions(req: Request, res: Response): Promise<v
  */
 export async function getMyPermissions(req: Request, res: Response): Promise<void> {
     try {
-        const userRole = req.user!.role;
+        const userRole = req.user!.role as UserRoleType;
         const permissions = await AdminService.getRolePermissions(userRole);
         res.json({ success: true, data: permissions });
     } catch (error) {
@@ -584,7 +584,7 @@ export async function getMyPermissions(req: Request, res: Response): Promise<voi
  */
 export async function updateRolePermissions(req: Request, res: Response): Promise<void> {
     try {
-        const role = req.params.role as UserRole;
+        const role = req.params.role as UserRoleType;
         const { permissionIds } = req.body;
 
         await AdminService.updateRolePermissions(role, permissionIds);
