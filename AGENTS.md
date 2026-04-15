@@ -47,6 +47,17 @@ cd server && npm test
 # 始终对修改过的文件运行 lsp_diagnostics
 ```
 
+## Vite 代理配置（重要）
+
+代理定义在 `vite.config.ts`：
+- `/api` → `http://127.0.0.1:1111`（后端 API，含 SSE 长连接）
+- `/uploads` → 同后端（静态文件）
+- `/ws` → WebSocket 升级代理
+- `/mineru-proxy` → `https://mineru.net`（文档解析）
+- `/mineru-oss-proxy` → `https://mineru.oss-cn-shanghai.aliyuncs.com`
+
+Token 存储 key：`bananaslides_token`
+
 ## 代码风格
 
 ### TypeScript
@@ -61,7 +72,7 @@ cd server && npm test
 - 导入顺序：React → 第三方库 → 组件 → 工具/上下文/API
 
 ### 样式
-- Tailwind CSS v4.1（原子化，通过 `@tailwindcss/vite`）
+- Tailwind CSS v4.1（通过 `@tailwindcss/vite` 插件引入）
 - Framer Motion 用于 AI 操作动画
 - Lucide React 图标：`import { IconName } from 'lucide-react'`
 - 毛玻璃效果：`backdrop-blur-md bg-white/80`
@@ -88,7 +99,7 @@ cd server && npm test
 - 认证：`AuthContext.tsx`（JWT 通过 `Authorization: Bearer <token>`）
 - 弹窗组件：接受 `isOpen` + `onClose` props
 
-## 关键反模式
+## 关键反模式（禁止）
 
 1. **禁止**直接使用 `variants[0]` — 使用专用预览字段
 2. **禁止**存储 File 对象 — 立即通过 `asset.service.ts` 转为 URL
@@ -117,7 +128,8 @@ YH-AI PPT/
 │   ├── src/
 │   │   ├── routes/         # API 端点
 │   │   ├── services/       # 业务逻辑（ai, agent, points）
-│   │   ├── middlewares/    # 认证、RBAC、限流
+│   │   ├── middleware/    # 单数：rateLimit, validate
+│   │   ├── middlewares/   # 复数：auth, requirePermission, upload
 │   │   └── utils/          # 内容过滤、提示词安全
 │   ├── prisma/             # 数据库结构 + 迁移 + 种子
 │   └── uploads/            # 本地文件存储
@@ -133,11 +145,97 @@ YH-AI PPT/
 - **WebSocket**：基于 `projectId` 的项目房间广播，JWT 认证，30 秒心跳
 - **Vite 代理**：`/api` → `http://127.0.0.1:1111`，支持 SSE 长连接
 
-## 非标准偏差
+## 关键机制
 
-1. Tailwind v4 通过 Vite 插件引入（非构建集成）
-2. 后端同时存在 `middleware/` 和 `middlewares/` 目录
-3. 两个独立的 `package.json`（非 monorepo workspaces）
-4. 混合测试运行器：Vitest + Playwright（前端），Bun（后端）
-5. Prisma 单例通过 `globalThis.prisma` 防止热重载泄漏
-6. `.env` 热重载：`fs.watch` → `SettingService.reloadEnv()`
+### .env 热重载
+后端通过 `fs.watch` 监听 `.env` 文件变化，自动调用 `SettingService.reloadEnv()` — 修改配置无需重启服务。
+
+### Token 自动刷新
+前端 API 客户端（`src/api/client.ts`）内置 401 拦截 + 自动刷新流程：
+1. 捕获 401 响应 → 尝试调用 `/api/auth/refresh`
+2. 并发失败请求自动入队，刷新完成后批量重试
+3. 刷新失败 → 派发 `window.dispatchEvent(new CustomEvent('auth:logout'))`
+超时配置：10 分钟（适配 4K AI 图片生成）
+
+### 速率限制系统
+`server/src/middleware/rateLimitMiddleware.ts` 实现 7 层分级限速：
+- `generalLimiter`: 通用请求（开发 10000/min, 生产 300/min）
+- `aiLimiter`: AI 生成调用（开发 500/min, 生产 30/min）
+- `adminLimiter`: 管理员请求
+- `uploadLimiter`: 文件上传
+- Agent 专用 limiter（session/message/task）
+
+**开发环境自动绕过**：`NODE_ENV !== 'production'` 或 `origin` 含 `localhost`/`127.0.0.1` 时跳过所有限流。
+
+### 后端启动序列
+`server/src/app.ts` 按顺序执行：
+1. 加载 `.env` (dotenv)
+2. 配置 CORS (`ALLOWED_ORIGINS`)
+3. 应用 7 层分级限速
+4. 挂载路由、静态文件
+5. 启动 `.env` 热重载监听
+6. 监听端口（默认 1111）
+7. 同步设置到数据库
+8. Bootstrap（管理员/权限/积分初始化）
+9. 初始化 WebSocket
+10. 启动定时任务（资源清理）
+
+### Bootstrap 启动引导
+`server/src/bootstrap/admin.bootstrap.ts` 自动执行：
+- 管理员账号（`BOOTSTRAP_ADMIN_EMAIL`/`USERNAME`/`PASSWORD` 环境变量）
+- 12 条默认权限记录
+- 5 条默认积分规则
+
+### 平滑关闭
+处理 `SIGTERM`/`SIGINT`/`uncaughtException`/`unhandledRejection`：
+1. 停止接收新请求
+2. 关闭 WebSocket 服务
+3. 断开 Prisma 连接
+4. 10 秒超时后强制退出
+
+### 快照系统
+`server/src/services/snapshot.service.ts` + `snapshot.routes.ts`:
+- 基于项目的快照版本控制，支持创建/回滚/删除
+- 与 Agent 对话深度绑定，每个对话节点可创建快照
+- 前端通过 `src/api/agent.ts` 的 snapshot 相关 mutation 交互
+
+### 回收站（软删除）
+`server/src/services/trash.service.ts` + `trash.routes.ts`:
+- 项目/模板软删除，支持恢复和彻底清除
+- 前端入口: `src/components/TrashPage.tsx`（已懒加载）
+
+### 消息与通知系统
+- **消息**: `message.service.ts` + `message-archive.service.ts` + `message-template.service.ts`
+- **通知集群**: `ai-notification` | `admin-notification` | `vip-notification` | `order-notification` | `security-notification`
+- **通知路由**: `notification.routes.ts` — 轮询新通知、标记已读
+- 前端入口: `src/components/MessagesPage.tsx`（已懒加载）
+
+### MinerU 文档解析
+环境变量 `DOC_PARSER_PROVIDER`/`DOC_PARSER_KEY`/`DOC_PARSER_BASE` 控制 MinerU 文档解析服务。
+Vite 开发代理转发到 MinerU 的 Web 端和 OSS 端。
+
+## 关键文件
+
+| 功能 | 文件 |
+|------|------|
+| 主入口 | `src/App.tsx`（~4700 行，包含路由和状态编排）|
+| 认证上下文 | `src/contexts/AuthContext.tsx` |
+| API 客户端 | `src/api/client.ts`（含 Token 自动刷新）|
+| API hooks | `src/api/`（TanStack Query hooks）|
+| 后端入口 | `server/src/app.ts` |
+| AI 路由 | `server/src/services/ai.service.ts` |
+| Agent 服务 | `server/src/services/agent.service.ts` |
+| WebSocket | `server/src/services/websocket.service.ts` |
+| 积分服务 | `server/src/services/points.service.ts` |
+| 退款引擎 | `server/src/services/refund.service.ts` |
+| 数据库 | `server/prisma/dev.db` |
+| RBAC 中间件 | `server/src/middlewares/requirePermission.ts` |
+
+## 非标准偏差（已知问题）
+
+1. **Tailwind v4** 通过 Vite 插件引入（非 PostCSS 集成）
+2. **中间件目录不一致**：存在 `middleware/`（单数）和 `middlewares/`（复数）两个目录
+3. **两个独立 package.json**（非 monorepo workspaces）
+4. **混合测试运行器**：Vitest + Playwright（前端），Bun（后端）
+5. **Prisma 单例** 通过 `globalThis.prisma` 防止热重载泄漏
+6. **Cron 调度** 使用 `setTimeout` 而非 node-cron
