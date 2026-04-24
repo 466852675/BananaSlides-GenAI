@@ -24,6 +24,8 @@ describe('Refund Service - Unit Tests', () => {
                 passwordHash: 'hashedpassword',
                 nickname: 'Test User',
                 role: 'USER',
+                points: 100,
+                vipLevel: 0,
             },
         });
         testUserId = testUser.id;
@@ -34,6 +36,8 @@ describe('Refund Service - Unit Tests', () => {
                 passwordHash: 'hashedpassword',
                 nickname: 'Test Admin',
                 role: 'ADMIN',
+                points: 999999,
+                vipLevel: 0,
             },
         });
         testAdminId = testAdmin.id;
@@ -105,7 +109,8 @@ describe('Refund Service - Unit Tests', () => {
                 data: {
                     userId: testUserId,
                     title: 'Test Project',
-                    status: 'ACTIVE',
+                    status: 'idle',
+                    globalConfig: '{}',
                 },
             });
 

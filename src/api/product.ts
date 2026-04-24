@@ -18,9 +18,10 @@ export interface Product {
  * 获取公开上架的商品列表
  */
 export async function getProducts(): Promise<Product[]> {
-    const res = await client.get('/products') as any;
+    const res: any = await client.get('/products');
     // Server returns tags/features as JSON strings usually, but frontend wants arrays
-    return res.data.map((p: any) => ({
+    const products = Array.isArray(res) ? res : [];
+    return products.map((p: any) => ({
         ...p,
         tags: typeof p.tags === 'string' ? JSON.parse(p.tags) : p.tags,
         features: typeof p.features === 'string' ? JSON.parse(p.features) : p.features,
@@ -31,8 +32,9 @@ export async function getProducts(): Promise<Product[]> {
  * 获取特定商品详情
  */
 export async function getProduct(id: string): Promise<Product> {
-    const res = await client.get(`/products/${id}`) as any;
-    const p = res.data;
+    const res: any = await client.get(`/products/${id}`);
+    const p = res;
+    if (!p) throw new Error('Product not found');
     return {
         ...p,
         tags: typeof p.tags === 'string' ? JSON.parse(p.tags) : p.tags,

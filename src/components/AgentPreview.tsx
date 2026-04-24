@@ -28,12 +28,14 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { exportToZip, exportToPdf, exportToPptx } from '../services/exportService';
+import { getActionCost, consumeAction, getBalance } from '../api/points';
 import type { GeneratedSlide } from '../types';
 import type { ToastType } from './Toast';
 
 interface AgentPreviewProps {
   items: GeneratedSlide[];
   projectTitle?: string;
+  projectId?: string;
   onModifySlide?: (index: number, data: { title?: string; content?: string; requirements?: string }) => void;
   onRegenerateSlide?: (index: number) => void;
   onClose?: () => void;
@@ -46,6 +48,7 @@ type ExportType = 'zip' | 'pdf' | 'pptx';
 export default function AgentPreview({
   items,
   projectTitle = '演示文稿',
+  projectId,
   onModifySlide,
   onRegenerateSlide,
   onClose,
@@ -108,7 +111,7 @@ export default function AgentPreview({
     showToast?.(message, 'error');
   }, [showToast]);
 
-  // 导出处理（带重试机制）
+  // 导出处理（带积分扣费和重试机制）
   const handleExport = async (type: ExportType, isRetry = false) => {
     setIsExportMenuOpen(false);
     setExporting(true);
@@ -117,17 +120,53 @@ export default function AgentPreview({
 
     const exportName = exportTypeNames[type];
 
+    const performExport = async () => {
+      if (type === 'zip') {
+        await exportToZip(completedSlides, projectTitle);
+      } else if (type === 'pdf') {
+        await exportToPdf(completedSlides, projectTitle);
+      } else {
+        await exportToPptx(completedSlides, projectTitle);
+      }
+    };
+
     try {
       if (isRetry) {
         showToast?.(`正在重试导出 ${exportName}...`, 'info');
       }
 
-      if (type === 'zip') {
-        await exportToZip(items, projectTitle);
-      } else if (type === 'pdf') {
-        await exportToPdf(items, projectTitle);
-      } else {
-        await exportToPptx(items, projectTitle);
+      // 先检查积分是否足够（仅 PPTX，避免导出成功后扣费失败）
+      if (type === 'pptx') {
+        const cost = await getActionCost('export_pptx');
+        if (cost > 0) {
+          const balance = await getBalance();
+          if (balance.points < cost) {
+            showError(`积分不足，需要 ${cost} 积分，当前 ${balance.points} 积分`);
+            setExporting(false);
+            return;
+          }
+        }
+      }
+
+      // 先执行导出
+      await performExport();
+
+      // 导出成功后扣费（仅 PPTX）
+      if (type === 'pptx') {
+        const cost = await getActionCost('export_pptx');
+        if (cost > 0) {
+          await consumeAction(
+            'export_pptx',
+            projectId || 'agent-preview',
+            `导出项目: ${projectTitle}`,
+            {
+              module: 'Agent模式',
+              category: '导出',
+              subcategory: 'PPTX',
+              triggerTime: new Date().toISOString()
+            }
+          );
+        }
       }
 
       showToast?.(`${exportName} 导出成功`, 'success');
@@ -145,6 +184,8 @@ export default function AgentPreview({
         specificMessage = `权限不足，无法保存 ${exportName}`;
       } else if (errorMessage.includes('format') || errorMessage.includes('invalid')) {
         specificMessage = `格式转换错误，${exportName} 导出失败`;
+      } else if (errorMessage.includes('积分') || errorMessage.includes('points')) {
+        specificMessage = errorMessage;
       }
 
       showError(specificMessage);

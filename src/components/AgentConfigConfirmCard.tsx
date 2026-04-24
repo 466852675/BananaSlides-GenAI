@@ -344,7 +344,11 @@ export default function AgentConfigConfirmCard({
                     <input
                       type="number"
                       value={editData.pageCount}
-                      onChange={(e) => updateEditField('pageCount', parseInt(e.target.value) || 10)}
+                      onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (isNaN(val)) return;
+                      updateEditField('pageCount', Math.min(50, Math.max(5, val)));
+                    }}
                       min={5}
                       max={50}
                       className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-[#2563eb]"

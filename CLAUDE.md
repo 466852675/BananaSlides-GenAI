@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-YH-AI PPT（内部代号 BananaSlides）是 AI 驱动的智能演示文稿设计平台，支持多模型路由、商业化 SaaS 基础设施（支付、积分、会员、退款）。
+YH-AI PPT（内部代号 BananaSlides）是 AI 驱动的智能演示文稿设计平台，支持多模型路由、Agent 对话模式、商业化 SaaS 基础设施（支付、积分、会员、退款）。
 
 **技术栈**: React 19.2 + Vite 6.2 + Tailwind CSS 4.1 (前端) | Express 5.2 + Prisma 6.19 + SQLite (后端)
 
@@ -24,12 +24,16 @@ npm run test:e2e     # Playwright E2E 端到端测试
 ```bash
 cd server
 npm run dev          # 启动 API 服务器 (localhost:1111)
-npm run build        # 编译 TypeScript
+npm run build        # 编译 TypeScript → dist/
+npm start            # 运行编译产物 node dist/app.js
 npx prisma db push   # 同步数据库 schema (开发环境)
 npx prisma migrate dev --name <name>  # 创建迁移 (生产环境)
 npx prisma migrate deploy            # 应用迁移 (生产环境)
 npx prisma studio    # 打开 Prisma DB GUI
 npm run db:seed      # 数据库种子数据
+npm test             # Bun 单元测试
+npm test:watch       # Bun 监听模式
+npm test:coverage    # Bun 覆盖率
 ```
 
 ### 快捷启动
@@ -45,7 +49,6 @@ start_app.bat        # Windows 一键启动前后端
 备份数据库.bat        # SQLite dump
 强制重置数据库(慎用).bat  # 删除 dev.db 后重建
 ```
-详见 `scripts/脚本使用说明.md`
 
 ### 运行单个测试
 ```bash
@@ -54,9 +57,8 @@ npx vitest -t "具体测试名称"               # Vitest 按名称
 npx playwright test tests/e2e/sanity.spec.ts  # Playwright 单文件
 npx playwright test -g "测试名称"          # Playwright 按名称
 npx playwright test --headed              # 显示浏览器窗口
-cd server && bun test                    # 后端单元测试 (Bun)
-cd server && bun test --watch            # 后端监听模式
-cd server && bun test --coverage         # 后端覆盖率
+cd server && bun test                     # 后端 Bun 测试
+cd server && bun test --watch             # 后端监听模式
 ```
 
 测试配置要点:
@@ -82,7 +84,7 @@ node compile.js      # 编译PPT，输出到 04-输出产物/
 ### 双端独立架构
 - **非 monorepo**: 前后端各有独立的 `package.json` 和构建流程
 - **Vite Proxy**: `/api` → `http://127.0.0.1:1111`, `/uploads` → 同后端, `/ws` → WebSocket 代理
-- **MinerU 代理**: `/mineru-proxy` → `https://mineru.net`, `/mineru-oss-proxy` → `https://mineru.oss-cn-shanghai.aliyuncs.com`
+- **MinerU 代理**: `/mineru-proxy` → `https://mineru.net`, `/mineru-oss-proxy` → MinerU OSS
 - **路径别名**: 前端 `@/*` → `./src/*`
 - **SSE 支持**: Vite 代理配置了 SSE 长连接（禁用缓冲），用于 Agent 任务进度推送
 
@@ -102,8 +104,40 @@ Routes → Controllers → Services → Prisma ORM
 ```
 **严格分层**: Controller 绝不直接调用 Prisma，必须通过 Service 层。
 
-### 后端启动与运行机制
-详见 `AGENTS.md` → 关键机制（启动序列、.env 热重载、速率限制、Bootstrap、平滑关闭）。
+### 后端启动序列
+`server/src/app.ts` 按顺序执行:
+1. 加载 `.env` (dotenv)
+2. 配置 CORS (`ALLOWED_ORIGINS`)
+3. 应用 7 层分级限速
+4. 挂载路由、静态文件
+5. 启动 `.env` 热重载监听
+6. 监听端口（默认 1111）
+7. 同步设置到数据库
+8. Bootstrap（管理员/权限/积分初始化）
+9. 初始化 WebSocket
+10. 启动定时任务（资源清理）
+
+### .env 热重载
+后端通过 `fs.watch` 监听 `.env` 变化，自动调用 `SettingService.reloadEnv()` — 修改配置无需重启服务。
+
+### Bootstrap 启动引导
+`server/src/bootstrap/admin.bootstrap.ts` 自动执行:
+- 管理员账号（`BOOTSTRAP_ADMIN_EMAIL`/`USERNAME`/`PASSWORD` 环境变量）
+- 12 条默认权限记录
+- 5 条默认积分规则
+
+### 平滑关闭
+处理 `SIGTERM`/`SIGINT`/`uncaughtException`/`unhandledRejection`: 停止接收新请求 → 关闭 WebSocket → 断开 Prisma → 10s 超时强制退出。
+
+### 速率限制系统
+`server/src/middleware/rateLimitMiddleware.ts` 实现 7 层分级限速:
+- `generalLimiter`: 通用请求（开发 10000/min, 生产 300/min）
+- `aiLimiter`: AI 生成调用（开发 500/min, 生产 30/min）
+- `adminLimiter`: 管理员请求
+- `uploadLimiter`: 文件上传
+- Agent 专用 limiter (session/message/task)
+
+**开发环境自动绕过**: `NODE_ENV !== 'production'` 或 `origin` 含 `localhost`/`127.0.0.1` 时跳过所有限流。
 
 ### 中间件目录不一致 (已知问题)
 后端存在两个中间件目录:
@@ -114,26 +148,20 @@ Routes → Controllers → Services → Prisma ORM
 
 ### Token 自动刷新机制
 前端 API 客户端 (`src/api/client.ts`) 内置 401 拦截 + 自动刷新流程:
-1. 捕获 401 响应 → 尝试调用 `/api/auth/refresh`
+1. 捏获 401 响应 → 尝试调用 `/api/auth/refresh`
 2. 并发失败请求自动入队，刷新完成后批量重试
 3. 刷新失败 → 派发 `window.dispatchEvent(new CustomEvent('auth:logout'))`
 
 超时配置: 10 分钟 (适配 4K AI 图片生成)
 
 ### AI 模型路由系统
-核心服务: `server/src/services/ai.service.ts` — 支持 6+ 提供商（Gemini 原生 SDK、OpenAI-compatible、Volcengine 等），配置缓存 1 分钟。详见 `AGENTS.md`。
+核心服务: `server/src/services/ai.service.ts` — 支持 6+ 提供商（Gemini 原生 SDK、OpenAI-compatible、Volcengine 等），配置缓存 1 分钟。
 
 ### WebSocket 实时通信
 核心服务: `server/src/services/websocket.service.ts`
-
 - **项目房间机制**: 基于 `projectId` 广播，支持多标签页/多设备同步
 - **认证**: JWT 鉴权，连接时验证 token（URL 参数传递）
 - **心跳检测**: 30s 间隔，60s 超时自动断开
-- **消息类型**:
-  - `connected` / `joined_project` / `left_project` - 连接管理
-  - `agent_progress` / `agent_task_complete` / `agent_task_preview` - Agent 进度
-  - `outline_streaming_chunk` / `content_streaming_chunk` - 流式输出
-  - `image_progress` / `slides_update` - 图片生成进度
 - **平滑关闭**: 服务关闭时主动通知所有客户端 (`code: 1001`)
 
 ### Agent 对话模式
@@ -142,10 +170,7 @@ Routes → Controllers → Services → Prisma ORM
 ### 积分与计费系统
 核心服务: `server/src/services/points.service.ts`
 
-交易生命周期:
-1. **Pending**: 扣除积分，`completedAt: null`
-2. **Completed**: AI 生成成功，记录完成时间
-3. **Refunded**: 失败时创建负金额交易退款
+交易生命周期: Pending (扣除积分) → Completed (记录完成时间) → Refunded (失败时负金额退款)
 
 VIP 用户支付 `rule.vipCostPoints`（通常折扣或免费），Admin 永久 VIP 身份。
 
@@ -154,6 +179,12 @@ VIP 用户支付 `rule.vipCostPoints`（通常折扣或免费），Admin 永久 
 - Prisma Client 单例: `server/src/db.ts` — 使用 `globalThis.prisma` 防止热重载泄漏
 - 所有事务使用 `prisma.$transaction()`
 
+### 快照系统
+`server/src/services/snapshot.service.ts` — 基于项目的版本控制，支持创建/回滚/删除，与 Agent 对话深度绑定。
+
+### 回收站（软删除）
+`server/src/services/trash.service.ts` — 项目/模板软删除，支持恢复和彻底清除。
+
 ### 构建代码分割策略
 `vite.config.ts` 配置了 12 个手动 vendor chunk:
 ```
@@ -161,21 +192,11 @@ react | react-dom | recharts | jspdf | pptxgenjs | html2canvas | jszip | framer-
 ```
 
 ### 组件懒加载模式
-大组件使用 `React.lazy()` + `Suspense` 实现代码分割:
-```typescript
-const Dashboard = lazy(() =>
-  import('./components/Dashboard').then(m => ({ default: m.Dashboard }))
-);
-```
-已懒加载组件: Dashboard, AgentView, TrashPage, StyleTemplateManager, ProfileCenter, PointsHistory, AdminLayout, MessagesPage, HistoryPage
+大组件使用 `lazy()` + `Suspense` 实现代码分割（定义在 `src/App.tsx` 顶部）:
+Dashboard, HistoryPage, AgentView, TrashPage, StyleTemplateManager, ProfileCenter, PointsHistory, AdminLayout, MessagesPage
 
 ### Vite 开发服务器监控优化
-`vite.config.ts` 配置了大量文件忽略规则，确保只有前端相关文件变化触发 HMR:
-- `.claude/**`, `.omc/**` (AI工具配置)
-- `server/**` (后端独立开发)
-- `docs/**`, `AGENTS.md`, `CLAUDE.md` (文档)
-- `AI实用化应用大赛/**` (大赛文件)
-- `*.png`, `*.jpg`, `*.svg` 等 (静态资源)
+`vite.config.ts` 配置了大量文件忽略规则（`.claude/**`, `.omc/**`, `server/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`, 静态资源等），确保只有前端相关文件变化触发 HMR。
 
 ## 关键文件
 
@@ -185,7 +206,7 @@ const Dashboard = lazy(() =>
 | 主入口 | `src/App.tsx` (~4700行，包含路由和状态编排) |
 | 认证上下文 | `src/contexts/AuthContext.tsx` |
 | API 客户端 | `src/api/client.ts` (含Token自动刷新) |
-| API hooks | `src/api/` (20个模块，TanStack Query hooks) |
+| API hooks | `src/api/` (16个模块，TanStack Query hooks) |
 | 类型定义 | `src/types.ts` |
 | Agent 前端组件 | `src/components/AgentView.tsx` |
 | Gemini 前端服务 | `src/services/geminiService.ts` |
@@ -204,6 +225,8 @@ const Dashboard = lazy(() =>
 | WebSocket 服务 | `server/src/services/websocket.service.ts` |
 | 积分服务 | `server/src/services/points.service.ts` |
 | 退款引擎 | `server/src/services/refund.service.ts` (风控+权益回收) |
+| 快照服务 | `server/src/services/snapshot.service.ts` |
+| 回收站服务 | `server/src/services/trash.service.ts` |
 | 数据库 Schema | `server/prisma/schema.prisma` (20+模型) |
 | Zod 验证器 | `server/src/validators/index.ts` |
 | 速率限制 | `server/src/middleware/rateLimitMiddleware.ts` |
@@ -220,7 +243,7 @@ const Dashboard = lazy(() =>
 - 函数参数和返回值需要显式类型
 
 ### React 组件
-- 仅使用函数组件 + Hooks
+- 仅使用函数组件 + Hooks，禁止类组件
 - Props 接口定义在 `src/types.ts` 或组件内联
 - 导入顺序: React → 库 → 组件 → Utils/Contexts
 - 弹窗组件接受 `isOpen` + `onClose` props
@@ -241,21 +264,26 @@ const Dashboard = lazy(() =>
 - 服务端状态: TanStack Query
 - 认证: `AuthContext.tsx` (JWT, `Authorization: Bearer <token>`)
 
+### 命名约定
+| 类型 | 约定 | 示例 |
+|------|------|------|
+| 组件 | PascalCase | `Dashboard.tsx` |
+| Hooks | camelCase + use 前缀 | `useAuth` |
+| 变量 | camelCase | `isScrolled` |
+| 常量 | UPPER_SNAKE_CASE | `STYLE_PRESETS` |
+| 接口 | PascalCase | `ProjectSession` |
+| 路径别名 | `@/*` → `./src/*` | |
+
 ## 关键反模式 (禁止)
 
-### 数据操作
 1. **禁止** 直接使用 `variants[0]` → 使用专用预览字段
 2. **禁止** 存储 File 对象 → 立即通过 `asset.service.ts` 转换为 URL
 3. **禁止** 在项目上下文中清空项目 ID (可能导致数据不一致)
 4. **禁止** 使用通用 project mutation 更新幻灯片 → 必须使用 `syncSlidesMutation`
-
-### 业务逻辑
 5. **禁止** 空 catch 块 → 必须通过 Winston logger 记录错误
 6. **禁止** 跳过 rate limiter → AI 调用前必须检查 `checkRateLimit()`
 7. **禁止** 绕过 Zod 验证 → 所有 API 输入必须校验
 8. **禁止** 在 Controller 中直接调用 Prisma → 遵循 Service → Controller → Prisma 分层
-
-### 安全与合规
 9. **禁止** 使用敏感词 → 内容过滤器检测后拒绝
 10. **禁止** Prompt 注入攻击 → `prompt-security.ts` 阻止系统提示覆盖
 11. **禁止** 在 PPT 标题/列表中使用中文标点（。！？）→ 保持英文标点统一性
@@ -290,5 +318,7 @@ hasPermission('admin.orders.refund'); // → boolean
 4. **Prisma 单例**通过 `globalThis.prisma` 防止热重载泄漏
 5. **Cron 调度**使用 `setTimeout` 而非 node-cron
 6. **`src/App.tsx`** 约 4700 行，包含所有路由和状态编排（单体组件）
+7. **中间件目录不一致**: `middleware/`（单数）和 `middlewares/`（复数）两个目录并存
+8. **.env 热重载**: 后端通过 `fs.watch` 监听 `.env`，修改配置无需重启
 
 详细文档见 `AGENTS.md` 和 `docs/` 目录。

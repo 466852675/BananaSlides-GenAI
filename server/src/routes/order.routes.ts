@@ -40,7 +40,9 @@ router.post('/:id/pay', async (req, res) => {
         const { id } = req.params;
         const { simulate = 'success', paymentMethod } = req.body;
 
-        const result = await OrderService.simulatePay(id, simulate, paymentMethod);
+        const userId = req.user!.id;
+
+	const result = await OrderService.simulatePay(id, userId, simulate, paymentMethod);
         res.json(result);
     } catch (error: any) {
         console.error('[Order] 支付失败:', error);

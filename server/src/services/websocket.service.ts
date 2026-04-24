@@ -8,9 +8,9 @@ import { WebSocketServer, WebSocket, RawData } from 'ws';
 import { IncomingMessage, Server } from 'http';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db';
 import { logger } from '../utils/logger';
 
-const prisma = new PrismaClient();
 
 interface WebSocketMessage {
   type: string;

@@ -47,8 +47,8 @@ export interface OrderListResponse {
  * @param paymentMethod 支付方式 (可选)
  */
 export async function createOrder(productId: string, paymentMethod?: string): Promise<CreateOrderResponse> {
-    const res = await client.post('/orders', { productId, paymentMethod }) as any;
-    return res.data;
+    const res: any = await client.post('/orders', { productId, paymentMethod });
+    return res;
 }
 
 /**
@@ -58,8 +58,8 @@ export async function createOrder(productId: string, paymentMethod?: string): Pr
  * @param paymentMethod 支付方式 (可选)
  */
 export async function payOrder(orderId: string, simulate: 'success' | 'fail' = 'success', paymentMethod?: string): Promise<PayOrderResponse> {
-    const res = await client.post(`/orders/${orderId}/pay`, { simulate, paymentMethod }) as any;
-    return res.data;
+    const res: any = await client.post(`/orders/${orderId}/pay`, { simulate, paymentMethod });
+    return res;
 }
 
 /**
@@ -67,14 +67,14 @@ export async function payOrder(orderId: string, simulate: 'success' | 'fail' = '
  * @param orderId 订单 ID
  */
 export async function cancelOrder(orderId: string): Promise<{ success: boolean; message: string }> {
-    const res = await client.post(`/orders/${orderId}/cancel`) as any;
-    return res.data;
+    const res: any = await client.post(`/orders/${orderId}/cancel`);
+    return res;
 }
 
 /**
  * 获取我的订单列表
  */
 export async function getMyOrders(page = 1, limit = 10): Promise<OrderListResponse> {
-    const res = await client.get('/orders/my', { params: { page, limit } }) as any;
-    return res.data;
+    const res: any = await client.get('/orders/my', { params: { page, limit } });
+    return res;
 }

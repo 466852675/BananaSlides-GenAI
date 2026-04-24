@@ -15,7 +15,7 @@ import AgentWelcome from './AgentWelcome';
 import AgentPreview from './AgentPreview';
 import { ConfirmDialog } from './ConfirmDialog';
 import agentApi, { type ProjectWithSession } from '../api/agent';
-import { client } from '../api/client';
+import { client, getSseBaseUrl, TOKEN_KEY } from '../api/client';
 import { smartRefine } from '../services/geminiService';
 import { exportToZip, exportToPdf, exportToPptx } from '../services/exportService';
 import { sseManager } from '../utils/sseManager';
@@ -58,12 +58,15 @@ export default function AgentView({
     typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT : false
   );
 
+  // sidebarCollapsedRef 必须在 sidebarCollapsed useState 之后声明
+  // (移到约117行sidebarCollapsed声明之后)
+
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < MOBILE_BREAKPOINT;
       setIsMobile(mobile);
       // 移动端默认折叠侧边栏
-      if (mobile && !sidebarCollapsed) {
+      if (mobile && !sidebarCollapsedRef.current) {
         setSidebarCollapsed(true);
       }
     };
@@ -114,6 +117,12 @@ export default function AgentView({
   const [userHasSelectedMode, setUserHasSelectedMode] = useState(false); // 用户是否主动选择了模式
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
   const [clearDialogOpen, setClearDialogOpen] = useState(false); // 清空确认对话框状态
+
+  // sidebarCollapsedRef 防止resize handler闭包过期
+  const sidebarCollapsedRef = useRef(sidebarCollapsed);
+  useEffect(() => {
+    sidebarCollapsedRef.current = sidebarCollapsed;
+  }, [sidebarCollapsed]);
 
   // 监听外部清除风格选中状态
   useEffect(() => {
@@ -289,12 +298,14 @@ export default function AgentView({
 
   // SSE 连接 - 使用 sseManager 管理跨标签页去重
   const sseConnectedRef = useRef(false);
+  const wsConnectedRef = useRef(connected);
+  useEffect(() => { wsConnectedRef.current = connected; }, [connected]);
   const sseUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // SSE 进度监听
   useEffect(() => {
     if (session && session.status === 'ACTIVE') {
-      const sseUrl = `/api/agent/sessions/${session.id}/stream`;
+      const sseUrl = `${getSseBaseUrl()}/api/agent/sessions/${session.id}/progress?token=${encodeURIComponent(localStorage.getItem(TOKEN_KEY) || '')}`;
 
       // 使用 sseManager 连接，自动处理跨标签页去重
       const isPrimary = sseManager.connect(session.id, sseUrl);
@@ -305,23 +316,34 @@ export default function AgentView({
       // 订阅消息
       const unsubscribe = sseManager.onMessage((data) => {
         setProgress(data);
+        // WS 未连接时，SSE 也处理 task 状态更新（去重：WS 连接时由 WS 负责）
+        if (!wsConnectedRef.current && data.taskId) {
+          setTasks(prev => prev.map(task =>
+            task.id === data.taskId
+              ? { ...task, progress: data.progress, status: data.status ?? task.status }
+              : task
+          ));
+        }
       });
 
       sseUnsubscribeRef.current = unsubscribe;
 
       return () => {
-        // 组件卸载时取消订阅
+        // 组件卸载时取消订阅并释放SSE连接和锁
         if (unsubscribe) {
           unsubscribe();
         }
+        sseManager.releaseLock();
         sseConnectedRef.current = false;
       };
     } else {
-      // session 不是 ACTIVE，断开 SSE
+      // session 不是 ACTIVE，断开 SSE 并释放连接和锁
       if (sseUnsubscribeRef.current) {
         sseUnsubscribeRef.current();
         sseUnsubscribeRef.current = null;
       }
+      sseManager.releaseLock();
+      sseConnectedRef.current = false;
     }
   }, [session?.id, session?.status]);
 
@@ -364,6 +386,10 @@ export default function AgentView({
         // 任务完成，更新任务列表
         if (wsMessage.payload?.task) {
           const completedTask = wsMessage.payload.task;
+          // completedTask.result归一化为字符串
+          if (completedTask.result && typeof completedTask.result !== 'string') {
+            completedTask.result = JSON.stringify(completedTask.result);
+          }
           setTasks(prev => {
             const existingIndex = prev.findIndex(t => t.id === completedTask.id);
             if (existingIndex >= 0) {
@@ -433,7 +459,11 @@ export default function AgentView({
                 content: chunk.content
               };
             } else {
-              slides[chunk.slideIndex].content += chunk.content;
+              // 不可变更新：创建新对象而非变异旧对象
+              slides[chunk.slideIndex] = {
+                ...slides[chunk.slideIndex],
+                content: slides[chunk.slideIndex].content + chunk.content
+              };
             }
             return { isGenerating: true, slides };
           });
@@ -550,14 +580,22 @@ export default function AgentView({
     }
   }, []);
 
-  // 当 currentProjectId 变化时初始化会话
+  // 当 currentProjectId 变化时初始化会话并通知 WebSocket
+  const prevProjectIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (currentProjectId) {
-      initSession(currentProjectId);
-      return;
+    // 通知 WebSocket 加入/离开项目房间
+    if (prevProjectIdRef.current && prevProjectIdRef.current !== currentProjectId) {
+      onWsLeaveProject?.(prevProjectIdRef.current);
     }
-    lastInitializedProjectRef.current = null;
-  }, [currentProjectId, initSession]);
+    if (currentProjectId) {
+      onWsJoinProject?.(currentProjectId);
+      initSession(currentProjectId);
+    }
+    prevProjectIdRef.current = currentProjectId || null;
+    if (!currentProjectId) {
+      lastInitializedProjectRef.current = null;
+    }
+  }, [currentProjectId, initSession, onWsJoinProject, onWsLeaveProject]);
 
   // 发送消息
   const handleSend = useCallback(async () => {
@@ -654,6 +692,8 @@ export default function AgentView({
       showError('发送消息失败', error);
       // 恢复输入
       setInputValue(content);
+      // 移除乐观更新的幽灵消息
+      setMessages(prev => prev.filter(m => m.id !== tempUserMessage.id));
     } finally {
       setIsLoading(false);
     }
@@ -987,22 +1027,27 @@ export default function AgentView({
 
     try {
       setIsLoading(true);
-      // 调用 API 重置消息
       const result = await agentApi.resetMessage(session.id, messageId);
-      // 删除该消息及其后续所有消息
-      const messageIndex = messages.findIndex(msg => msg.id === messageId);
-      if (messageIndex >= 0) {
-        const targetMessage = messages[messageIndex];
-        setMessages(prev => prev.slice(0, messageIndex));
-        // 同时清除在该消息之后创建的任务
-        // 按任务创建时间判断，删除在目标消息之后创建的任务
-        const targetTime = new Date(targetMessage.createdAt).getTime();
+
+      // 使用 prev 避免闭包过期
+      let targetCreatedAt: string | null = null;
+      setMessages(prev => {
+        const messageIndex = prev.findIndex(msg => msg.id === messageId);
+        if (messageIndex >= 0) {
+          targetCreatedAt = prev[messageIndex].createdAt;
+          return prev.slice(0, messageIndex);
+        }
+        return prev;
+      });
+
+      if (targetCreatedAt) {
+        const targetTime = new Date(targetCreatedAt).getTime();
         setTasks(prev => prev.filter(task => {
           const taskTime = new Date(task.createdAt).getTime();
           return taskTime < targetTime;
         }));
       }
-      // 显示退还积分提示
+
       if (result.refundedPoints > 0) {
         showToast?.(`已退还 ${result.refundedPoints} 积分`, 'success');
       }
@@ -1011,7 +1056,7 @@ export default function AgentView({
     } finally {
       setIsLoading(false);
     }
-  }, [session, messages, showToast]);
+  }, [session, showToast]);
 
   // 清空会话（删除所有消息和任务）
   const handleClearSession = useCallback(() => {
@@ -1236,7 +1281,7 @@ export default function AgentView({
         className={`absolute top-1/2 z-10 flex h-8 w-4 items-center justify-center rounded-r bg-white shadow hover:bg-gray-50 transition-all ${
           isMobile ? 'left-0' : ''
         }`}
-        style={{ left: sidebarCollapsed ? 0 : (isMobile ? 280 : 280) }}
+        style={{ left: sidebarCollapsed ? 0 : 280 }}
         aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
         aria-expanded={!sidebarCollapsed}
       >
@@ -1369,6 +1414,7 @@ export default function AgentView({
                   streamingOutline={streamingOutline}
                   streamingContent={streamingContent}
                   isVip={isVip}
+                  autoMode={autoMode}
                 />
               )}
             </div>

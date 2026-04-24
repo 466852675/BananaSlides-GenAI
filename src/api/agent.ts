@@ -2,7 +2,7 @@
  * Agent API 客户端
  */
 
-import { client, TOKEN_KEY } from './client';
+import { client, TOKEN_KEY, getSseBaseUrl } from './client';
 import type {
   AgentSession,
   AgentMessage,
@@ -65,7 +65,7 @@ export const agentApi = {
   /**
    * 获取用户最近完成的会话（用于一键复用配置）
    */
-  async getRecentSessions(options?: { limit?: number; status?: string }): Promise<{ sessions: any[] }> {
+  async getRecentSessions(options?: { limit?: number; status?: string }): Promise<{ sessions: AgentSession[] }> {
     const params = new URLSearchParams();
     if (options?.limit) params.set('limit', String(options.limit));
     if (options?.status) params.set('status', options.status);
@@ -218,21 +218,6 @@ export const agentApi = {
    */
   async getProgress(sessionId: string): Promise<AgentProgressResponse> {
     return client.get(`${BASE_URL}/sessions/${sessionId}/progress`);
-  },
-
-  // ============================================================
-  // SSE 进度
-  // ============================================================
-
-  /**
-   * 创建进度 EventSource
-   */
-  createProgressEventSource(sessionId: string): EventSource {
-    const token = localStorage.getItem(TOKEN_KEY);
-    // 通过 Vite 代理路径，避免直连后端导致 CORS 和认证问题
-    const encodedToken = token ? encodeURIComponent(token) : '';
-    const url = `/api/agent/sessions/${sessionId}/progress?token=${encodedToken}`;
-    return new EventSource(url);
   },
 
   // ============================================================

@@ -8,7 +8,7 @@
  * - 全局设计要求
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -17,7 +17,8 @@ import {
   Image as ImageIcon,
   Sparkles,
   Loader2,
-  ZoomIn
+  ZoomIn,
+  AlertCircle
 } from 'lucide-react';
 import { StyleControls } from './StyleControls';
 import type { StyleConfig, GlobalStyleMap, PageType } from '../types';
@@ -60,6 +61,7 @@ export default function AgentGlobalConfigModal({
   const [styleMap, setStyleMap] = useState<GlobalStyleMap>(initialStyleMap);
   const [activePreviewType, setActivePreviewType] = useState<PageType>('cover');
   const [isRefiningRequirements, setIsRefiningRequirements] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // 同步外部状态
   useEffect(() => {
@@ -94,7 +96,8 @@ export default function AgentGlobalConfigModal({
   };
 
   // 清空所有配置（风格参考图 + 风格配置）
-  const handleClearAllConfig = () => {
+  const confirmReset = () => {
+    setShowResetConfirm(false);
     // 清空风格参考图
     const clearedMap: GlobalStyleMap = {
       cover: null,
@@ -156,13 +159,27 @@ export default function AgentGlobalConfigModal({
   };
 
   // 解析资源 URL
-  const getImageUrl = (resource: File | string | null): string | null => {
+  const objectUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const getImageUrl = useCallback((resource: File | string | null): string | null => {
     if (!resource) return null;
     if (resource instanceof File) {
-      return URL.createObjectURL(resource);
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      const url = URL.createObjectURL(resource);
+      objectUrlRef.current = url;
+      return url;
     }
     return resolveResourceUrl(resource);
-  };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -337,12 +354,29 @@ export default function AgentGlobalConfigModal({
                 修改全局配置将影响后续所有 AI 生成的内容
               </p>
               <button
-                onClick={handleClearAllConfig}
+                onClick={() => setShowResetConfirm(true)}
                 className="text-xs text-red-500 hover:text-red-600 underline"
               >
                 重置所有配置
               </button>
             </div>
+
+            {/* 重置确认对话框 */}
+            {showResetConfirm && (
+              <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50">
+                <div className="bg-white rounded-lg p-6 max-w-sm mx-4 shadow-xl">
+                  <h3 className="text-lg font-semibold text-gray-900">重置所有配置</h3>
+                  <p className="mt-2 text-sm text-gray-600">
+                    确定要重置所有配置吗？此操作不可撤销，所有风格参考图和配置将被清空。
+                  </p>
+                  <div className="mt-4 flex gap-3 justify-end">
+                    <button onClick={() => setShowResetConfirm(false)} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">取消</button>
+                    <button onClick={confirmReset} className="px-4 py-2 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100">确认重置</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
                 onClick={onClose}

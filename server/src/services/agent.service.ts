@@ -150,6 +150,7 @@ export class AgentService {
         thumbnailUrl: true,
         status: true,
         scenarioType: true,
+        source: true,
         isPinned: true,
         createdAt: true,
         updatedAt: true,
@@ -382,13 +383,46 @@ export class AgentService {
    * 重置会话
    */
   private async resetSession(sessionId: string, mode?: AgentModeType) {
-    await prisma.$transaction([
+    // 获取退还积分所需信息
+    const sessionForRefund = await prisma.agentSession.findUnique({
+      where: { id: sessionId },
+      select: { totalPointsUsed: true, projectId: true }
+    });
+    const project = sessionForRefund ? await prisma.project.findUnique({
+      where: { id: sessionForRefund.projectId },
+      select: { userId: true }
+    }) : null;
+
+    await prisma.$transaction(async (tx) => {
+      // 退还积分（在同一事务内，避免竞态）
+      if (sessionForRefund && sessionForRefund.totalPointsUsed > 0 && project) {
+        const userId = project.userId!;
+        const projectId = sessionForRefund.projectId;
+        const updatedUser = await tx.user.update({
+          where: { id: userId },
+          data: { points: { increment: sessionForRefund.totalPointsUsed } }
+        });
+        await tx.transaction.create({
+          data: {
+            userId,
+            projectId,
+            type: 'adjust',
+            amount: sessionForRefund.totalPointsUsed,
+            balance: updatedUser.points,
+            description: '重置会话退还积分',
+            module: 'Agent',
+            category: '退还'
+          }
+        });
+        logger.info(`[Agent] 重置会话退还积分: ${sessionForRefund.totalPointsUsed}, 用户: ${userId}`);
+      }
+
       // 清除旧消息
-      prisma.agentMessage.deleteMany({ where: { sessionId } }),
+      await tx.agentMessage.deleteMany({ where: { sessionId } });
       // 清除旧任务
-      prisma.agentTask.deleteMany({ where: { sessionId } }),
+      await tx.agentTask.deleteMany({ where: { sessionId } });
       // 重置会话状态
-      prisma.agentSession.update({
+      await tx.agentSession.update({
         where: { id: sessionId },
         data: {
           status: AgentSessionStatus.ACTIVE,
@@ -400,8 +434,8 @@ export class AgentService {
           context: null,
           completedAt: null
         }
-      })
-    ]);
+      });
+    });
 
     return this.getSession(sessionId);
   }
@@ -416,7 +450,8 @@ export class AgentService {
   async processMessage(
     sessionId: string,
     content: string,
-    userId: string
+    userId: string,
+    autoExecute?: boolean
   ): Promise<AgentChatResponse> {
     // 获取会话
     const session = await this.getSession(sessionId);
@@ -482,8 +517,9 @@ export class AgentService {
       }
     });
 
-    // 如果是自动模式，立即执行任务
-    if (session.mode === AgentMode.AUTO && tasks.length > 0) {
+    // 如果是自动模式或单条消息指定autoExecute，立即执行任务
+    const shouldAutoExecute = autoExecute || session.mode === AgentMode.AUTO;
+    if (shouldAutoExecute && tasks.length > 0) {
       // 异步执行任务，不等待完成
       this.executeTasksAsync(sessionId, userId).catch(err => {
         logger.error(`[Agent] 任务执行失败: ${err.message}`);
@@ -905,43 +941,41 @@ ${contextInfo}
     }
 
     // ============================================================
-    // 任务意图识别
+    // 任务意图识别（else if优先级链，从具体→宽泛，只匹配一个）
     // ============================================================
 
-    // 生成大纲
-    if (lowerContent.includes('大纲') || lowerContent.includes('目录') ||
-        lowerContent.includes('结构') || lowerContent.includes('生成') ||
-        lowerContent.includes('做一个') || lowerContent.includes('帮我') ||
-        lowerContent.includes('创建') || lowerContent.includes('制作')) {
-      result.tasks.push(AgentTaskType.OUTLINE);
-      result.params.topic = content;
-      if (!result.response) {
-        result.response = `好的，我将为您生成关于"${content}"的 PPT 大纲。请稍候...`;
-      }
-    }
-
-    // 生成内容
-    if (lowerContent.includes('内容') || lowerContent.includes('正文') ||
-        lowerContent.includes('详细')) {
-      result.tasks.push(AgentTaskType.CONTENT);
-    }
-
-    // 生成配图
-    if (lowerContent.includes('配图') || lowerContent.includes('图片') ||
-        lowerContent.includes('插图') || lowerContent.includes('图像')) {
-      result.tasks.push(AgentTaskType.IMAGE);
-    }
-
-    // 导出
-    if (lowerContent.includes('导出') || lowerContent.includes('下载')) {
-      result.tasks.push(AgentTaskType.EXPORT);
-      result.params.format = lowerContent.includes('pdf') ? 'pdf' : 'pptx';
-    }
-
-    // 修改
+    // 修改意图（最具体，优先匹配）
     if (lowerContent.includes('修改') || lowerContent.includes('改') ||
         lowerContent.includes('调整') || lowerContent.includes('换成')) {
       result.tasks.push(AgentTaskType.MODIFY);
+      if (!result.response) result.response = '好的，我将为您修改。请稍候...';
+    }
+    // 导出意图
+    else if (lowerContent.includes('导出') || lowerContent.includes('下载')) {
+      result.tasks.push(AgentTaskType.EXPORT);
+      result.params.format = lowerContent.includes('pdf') ? 'pdf' : 'pptx';
+      result.response = '好的，我将为您导出PPT。请稍候...';
+    }
+    // 配图意图
+    else if (lowerContent.includes('配图') || lowerContent.includes('图片') ||
+             lowerContent.includes('插图') || lowerContent.includes('图像')) {
+      result.tasks.push(AgentTaskType.IMAGE);
+      result.response = '好的，我将为您生成配图。请稍候...';
+    }
+    // 内容意图
+    else if (lowerContent.includes('内容') || lowerContent.includes('正文') ||
+             lowerContent.includes('详细')) {
+      result.tasks.push(AgentTaskType.CONTENT);
+      result.response = '好的，我将为您生成正文内容。请稍候...';
+    }
+    // 大纲/创建意图（最宽泛，兜底匹配）
+    else if (lowerContent.includes('大纲') || lowerContent.includes('目录') ||
+             lowerContent.includes('结构') || lowerContent.includes('生成') ||
+             lowerContent.includes('做一个') || lowerContent.includes('帮我') ||
+             lowerContent.includes('创建') || lowerContent.includes('制作')) {
+      result.tasks.push(AgentTaskType.OUTLINE);
+      result.params.topic = content;
+      result.response = `好的，我将为您生成关于"${content}"的 PPT 大纲。请稍候...`;
     }
 
     // ============================================================
@@ -963,6 +997,20 @@ ${contextInfo}
         // 无任何上下文，生成大纲
         result.tasks.push(AgentTaskType.OUTLINE);
         result.params.topic = content;
+      }
+    }
+
+    // 强制修复：如果配置未确认且包含创建意图，插入CONFIG_CONFIRM
+    if (!context.confirmedConfig &&
+        (result.tasks.includes(AgentTaskType.OUTLINE) ||
+         result.tasks.includes(AgentTaskType.CONTENT) ||
+         result.tasks.includes(AgentTaskType.IMAGE))) {
+      if (!result.tasks.includes(AgentTaskType.CONFIG_CONFIRM)) {
+        result.tasks.unshift(AgentTaskType.CONFIG_CONFIRM);
+        if ((result as any).plannedTasks && !(result as any).plannedTasks.includes(AgentTaskType.CONFIG_CONFIRM)) {
+          (result as any).plannedTasks.unshift(AgentTaskType.CONFIG_CONFIRM);
+        }
+        logger.info(`[Agent] fallback强制插入CONFIG_CONFIRM任务`);
       }
     }
 
@@ -1194,10 +1242,10 @@ ${contextInfo}
    * 在当前任务完成后自动创建下一个任务
    */
   private async createNextTask(sessionId: string, completedTaskType: AgentTaskTypeType, userId: string) {
-    // 获取会话模式
+    // 获取会话模式与上下文（含 plannedTasks）
     const session = await prisma.agentSession.findUnique({
       where: { id: sessionId },
-      select: { mode: true, projectId: true }
+      select: { mode: true, projectId: true, context: true }
     });
 
     if (!session) return;
@@ -1206,41 +1254,60 @@ ${contextInfo}
     let nextTaskType: AgentTaskTypeType | null = null;
     let nextTaskParams: Record<string, unknown> = {};
 
-    switch (completedTaskType) {
-      case 'CONFIG_CONFIRM' as AgentTaskTypeType:
-        // 配置确认完成后，标记配置已确认并创建大纲任务
-        await this.markConfigConfirmed(sessionId);
-        nextTaskType = AgentTaskType.OUTLINE;
-        break;
+    // 尝试从 plannedTasks 取下一个任务类型
+    let parsedContext: any = null;
+    try {
+      parsedContext = session.context ? JSON.parse(session.context) : null;
+    } catch {
+      parsedContext = null;
+    }
+    const plannedTasks: string[] | undefined = parsedContext?.plannedTasks;
+    if (plannedTasks && plannedTasks.length > 0) {
+      const currentIndex = plannedTasks.indexOf(completedTaskType);
+      if (currentIndex >= 0 && currentIndex < plannedTasks.length - 1) {
+        nextTaskType = plannedTasks[currentIndex + 1] as AgentTaskTypeType;
+        logger.info(`[Agent] 任务链: 从 plannedTasks 取下一个任务 ${completedTaskType} -> ${nextTaskType}`);
+      }
+    }
 
-      case AgentTaskType.OUTLINE:
-        // 大纲完成后创建内容任务
-        nextTaskType = AgentTaskType.CONTENT;
-        // 获取幻灯片数量
-        const slides = await prisma.slide.findMany({
-          where: { projectId: session.projectId },
-          select: { id: true }
-        });
-        nextTaskParams = { slideCount: slides.length };
-        break;
+    // plannedTasks 未命中时，回退到硬编码 switch（向后兼容）
+    if (!nextTaskType) {
+      switch (completedTaskType) {
+        case 'CONFIG_CONFIRM' as AgentTaskTypeType:
+          // 配置确认完成后，标记配置已确认并创建大纲任务
+          await this.markConfigConfirmed(sessionId);
+          nextTaskType = AgentTaskType.OUTLINE;
+          break;
 
-      case AgentTaskType.CONTENT:
-        // 内容完成后创建配图任务
-        nextTaskType = AgentTaskType.IMAGE;
-        const contentSlides = await prisma.slide.findMany({
-          where: { projectId: session.projectId },
-          select: { id: true }
-        });
-        nextTaskParams = { slideCount: contentSlides.length };
-        break;
+        case AgentTaskType.OUTLINE:
+          // 大纲完成后创建内容任务
+          nextTaskType = AgentTaskType.CONTENT;
+          // 获取幻灯片数量
+          const slides = await prisma.slide.findMany({
+            where: { projectId: session.projectId },
+            select: { id: true }
+          });
+          nextTaskParams = { slideCount: slides.length };
+          break;
 
-      case AgentTaskType.IMAGE:
-        // 配图完成后，任务链结束
-        break;
+        case AgentTaskType.CONTENT:
+          // 内容完成后创建配图任务
+          nextTaskType = AgentTaskType.IMAGE;
+          const contentSlides = await prisma.slide.findMany({
+            where: { projectId: session.projectId },
+            select: { id: true }
+          });
+          nextTaskParams = { slideCount: contentSlides.length };
+          break;
 
-      default:
-        // 其他任务类型不创建后续任务
-        break;
+        case AgentTaskType.IMAGE:
+          // 配图完成后，任务链结束
+          break;
+
+        default:
+          // 其他任务类型不创建后续任务
+          break;
+      }
     }
 
     if (nextTaskType) {
@@ -1267,13 +1334,6 @@ ${contextInfo}
             task: nextTask
           },
           timestamp: Date.now()
-        });
-      }
-
-      // 如果是自动模式，立即执行下一个任务
-      if (session.mode === AgentMode.AUTO) {
-        this.executeTasksAsync(sessionId, userId).catch(err => {
-          logger.error(`[Agent] 自动执行下一个任务失败: ${err.message}`);
         });
       }
     }
@@ -1313,6 +1373,29 @@ ${contextInfo}
         { createdAt: 'asc' }
       ]
     });
+  }
+
+  private async checkSessionCompletion(sessionId: string) {
+    const pendingCount = await prisma.agentTask.count({
+      where: { sessionId, status: AgentTaskStatus.PENDING }
+    });
+    const runningCount = await prisma.agentTask.count({
+      where: { sessionId, status: AgentTaskStatus.RUNNING }
+    });
+
+    if (pendingCount === 0 && runningCount === 0) {
+      const failedCount = await prisma.agentTask.count({
+        where: { sessionId, status: AgentTaskStatus.FAILED }
+      });
+
+      await prisma.agentSession.update({
+        where: { id: sessionId },
+        data: {
+          status: failedCount > 0 ? AgentSessionStatus.FAILED : AgentSessionStatus.COMPLETED,
+          completedAt: new Date()
+        }
+      });
+    }
   }
 
   /**
@@ -1367,21 +1450,7 @@ ${contextInfo}
     // 执行任务
     await this.executeTask(task, userId);
 
-    // 检查是否还有待处理的任务，如果有则继续执行（引导模式下自动执行下一个）
-    const pendingCount = await prisma.agentTask.count({
-      where: { sessionId: task.sessionId, status: AgentTaskStatus.PENDING }
-    });
-
-    if (pendingCount === 0) {
-      // 所有任务完成，更新会话状态
-      await prisma.agentSession.update({
-        where: { id: task.sessionId },
-        data: {
-          status: AgentSessionStatus.COMPLETED,
-          completedAt: new Date()
-        }
-      });
-    }
+    await this.checkSessionCompletion(task.sessionId);
   }
 
   /**
@@ -1391,30 +1460,16 @@ ${contextInfo}
     let task = await this.getNextTask(sessionId);
 
     while (task) {
-      const currentTask = task;
       try {
-        await this.executeTask(currentTask, userId);
-        task = await this.getNextTask(sessionId);
+        await this.executeTask(task, userId);
       } catch (error) {
-        logger.error(`[Agent] 任务执行失败: ${currentTask.id}`, error);
-        break;
+        logger.error(`[Agent] 任务执行失败: ${task.id}`, error);
+        // 继续执行下一个任务而非中断整个链
       }
+      task = await this.getNextTask(sessionId);
     }
 
-    // 检查是否所有任务完成
-    const pendingCount = await prisma.agentTask.count({
-      where: { sessionId, status: AgentTaskStatus.PENDING }
-    });
-
-    if (pendingCount === 0) {
-      await prisma.agentSession.update({
-        where: { id: sessionId },
-        data: {
-          status: AgentSessionStatus.COMPLETED,
-          completedAt: new Date()
-        }
-      });
-    }
+    await this.checkSessionCompletion(sessionId);
   }
 
   /**
@@ -1486,6 +1541,38 @@ ${contextInfo}
             break;
           case AgentTaskType.EXPORT:
             result = await this.executeExport(task.sessionId, params);
+            break;
+          case AgentTaskType.SNAPSHOT:
+            result = await this.executeSnapshot(task.sessionId, userId, params);
+            break;
+          case AgentTaskType.IMPORT:
+            result = { importReady: false, message: '文档导入请通过项目上传界面操作', uploadUrl: '/api/upload' };
+            break;
+          // STYLE 任务暂未实现独立执行逻辑，不应 fall-through 到 MODIFY
+          case AgentTaskType.STYLE:
+            throw new Error('样式切换功能暂未实现，请使用修改功能调整幻灯片样式');
+          case 'GENERATE_OUTLINE' as any:
+            result = await this.executeOutline(task.id, task.sessionId, params, userId);
+            break;
+          case 'EXPAND_CONTENT' as any:
+            result = await this.executeContent(task.id, task.sessionId, params, userId);
+            break;
+          case 'GENERATE_IMAGE' as any:
+          case 'BATCH_GENERATE_IMAGES' as any:
+            result = await this.executeImage(task.id, task.sessionId, params, userId);
+            break;
+          case 'MODIFY_SLIDE' as any:
+          case 'SWITCH_STYLE_TEMPLATE' as any:
+            result = await this.executeModify(task.sessionId, params);
+            break;
+          case 'IMPORT_DOCUMENT' as any:
+            result = { importReady: false, message: '文档导入请通过项目上传界面操作' };
+            break;
+          case 'EXPORT_PROJECT' as any:
+            result = await this.executeExport(task.sessionId, params);
+            break;
+          case 'FINALIZE_PROJECT' as any:
+            result = { finalized: true, message: '项目已完成' };
             break;
           default:
             throw new Error(`未知任务类型: ${task.type}`);
@@ -2434,6 +2521,9 @@ ${contextInfo}
 
     // 计算内容页数（确保总和等于目标页数）
     const fixedPages = (pageStructure.cover || 1) + (pageStructure.directory || 1) + (pageStructure.end || 1) + (pageStructure.transition || 0);
+    if (targetPageCount < fixedPages + 1) {
+      logger.warn(`[Agent] 目标页数 ${targetPageCount} 小于固定页 ${fixedPages}+1，自动调整为 ${fixedPages + 1}`);
+    }
     pageStructure.content = Math.max(1, targetPageCount - fixedPages);
 
     // 辅助函数：确保 colorPalette 是数组
@@ -2593,8 +2683,8 @@ ${contextInfo}
       const completedTask = await prisma.agentTask.update({
         where: { id: taskId },
         data: {
-          status: AgentTaskStatus.COMPLETED,
-          progress: 100,
+          status: AgentTaskStatus.PENDING,
+          progress: 0,
           result: JSON.stringify(taskResult),
           params: JSON.stringify({
             topic: config.topic,
@@ -2602,28 +2692,26 @@ ${contextInfo}
             styleName: config.styleName,
             aspectRatio: config.aspectRatio,
             requirements: config.requirements
-          }),
-          completedAt: new Date()
+          })
         }
       });
 
-      logger.info(`[Agent] 配置重新生成完成: ${taskId}, 新主题: ${config.topic}`);
+      logger.info(`[Agent] 配置重新生成完成（待用户确认）: ${taskId}, 新主题: ${config.topic}`);
 
-      // 使用完成事件广播，确保前端用新结果替换旧占位卡片
-      websocketService.broadcastAgentTaskComplete(sessionId, session.projectId, {
+      // 使用预览事件广播，让前端展示配置供用户确认
+      websocketService.broadcastAgentTaskPreview(sessionId, session.projectId, {
         id: completedTask.id,
         type: completedTask.type,
         status: completedTask.status,
-        progress: completedTask.progress,
-        result: taskResult,
-        completedAt: completedTask.completedAt
+        progress: 100,
+        result: taskResult
       });
 
       // 添加 AI 响应消息
       await prisma.agentMessage.create({
         data: {
           sessionId,
-          role: 'ASSISTANT',
+          role: 'assistant',
           content: `我已根据您的需求重新生成了一套新的配置建议，请查看并确认：`,
           metadata: JSON.stringify({ taskId })
         }
@@ -2651,6 +2739,13 @@ ${contextInfo}
       throw new Error('缺少修改参数');
     }
 
+    const ALLOWED_MODIFY_FIELDS = ['title', 'content', 'brief'] as const;
+    if (!ALLOWED_MODIFY_FIELDS.includes(params.field as typeof ALLOWED_MODIFY_FIELDS[number])) {
+      throw new Error(`不允许修改字段: ${params.field}，仅允许: title, content, brief`);
+    }
+
+    const field = params.field as typeof ALLOWED_MODIFY_FIELDS[number];
+
     const slide = await prisma.slide.findFirst({
       where: { projectId: session.projectId, index: params.slideIndex }
     });
@@ -2661,7 +2756,7 @@ ${contextInfo}
 
     await prisma.slide.update({
       where: { id: slide.id },
-      data: { [params.field]: params.value }
+      data: { [field]: params.value }
     });
 
     // 广播幻灯片更新
@@ -2856,6 +2951,61 @@ ${contextInfo}
     };
   }
 
+  private async executeSnapshot(sessionId: string, userId: string, params: any) {
+    const session = await prisma.agentSession.findUnique({
+      where: { id: sessionId },
+      select: { projectId: true }
+    });
+    if (!session) throw new Error('会话不存在');
+
+    const projectId = session.projectId;
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: { Slide: { orderBy: { index: 'asc' } } }
+    });
+    if (!project) throw new Error('项目不存在');
+
+    const snapshotData: any = {
+      id: project.id,
+      title: project.title,
+      lastModified: Date.now(),
+      createdAt: project.createdAt.getTime(),
+      status: project.status || 'idle',
+      items: project.Slide.map((slide: any) => ({
+        id: slide.id,
+        contentType: slide.contentType || 'text',
+        pageType: slide.pageType || 'content',
+        title: slide.title,
+        textContent: slide.content,
+        brief: slide.brief,
+        previewUrl: slide.previewUrl,
+        variants: slide.variants ? JSON.parse(slide.variants) : [],
+        variantCount: slide.variantCount || 0,
+        status: slide.status || 'idle'
+      })),
+      globalConfig: project.globalConfig ? JSON.parse(project.globalConfig) : {},
+      globalStyleMap: project.styleMap ? JSON.parse(project.styleMap) : {}
+    };
+
+    const { SettingService } = await import('./setting.service');
+    const settings = await SettingService.getSettings();
+
+    const snapshot = await snapshotService.create(
+      projectId,
+      userId,
+      snapshotData,
+      settings || { ai: { provider: 'Gemini' } }
+    );
+
+    return {
+      snapshotCreated: true,
+      snapshotId: snapshot.id,
+      version: snapshot.version,
+      message: `已保存项目快照 (v${snapshot.version})`
+    };
+  }
+
   // ============================================================
   // 进度和状态
   // ============================================================
@@ -2926,18 +3076,63 @@ ${contextInfo}
    * 取消会话
    */
   async cancelSession(sessionId: string) {
-    await prisma.$transaction([
-      // 取消所有待处理任务
-      prisma.agentTask.updateMany({
-        where: { sessionId, status: AgentTaskStatus.PENDING },
+    // 获取退还积分所需信息
+    const sessionForRefund = await prisma.agentSession.findUnique({
+      where: { id: sessionId },
+      select: { totalPointsUsed: true, projectId: true }
+    });
+    const project = sessionForRefund ? await prisma.project.findUnique({
+      where: { id: sessionForRefund.projectId },
+      select: { userId: true }
+    }) : null;
+
+    // 查询已部分退款的金额，避免双倍退款
+    const existingRefunds = await prisma.transaction.findMany({
+      where: {
+        projectId: sessionForRefund?.projectId,
+        type: 'refund',
+        module: 'Agent',
+        description: { contains: '部分退款' }
+      },
+      select: { amount: true }
+    });
+    const alreadyRefunded = existingRefunds.reduce((sum, t) => sum + t.amount, 0);
+    const netPointsToRefund = Math.max(0, (sessionForRefund?.totalPointsUsed || 0) - alreadyRefunded);
+
+    await prisma.$transaction(async (tx) => {
+      // 退还积分（在同一事务内，避免竞态）
+      if (sessionForRefund && netPointsToRefund > 0 && project) {
+        const userId = project.userId!;
+        const projectId = sessionForRefund.projectId;
+        const updatedUser = await tx.user.update({
+          where: { id: userId },
+          data: { points: { increment: netPointsToRefund } }
+        });
+        await tx.transaction.create({
+          data: {
+            userId,
+            projectId,
+            type: 'refund',
+            amount: netPointsToRefund,
+            balance: updatedUser.points,
+            description: `取消会话退还积分（已排除部分退款 ${alreadyRefunded}）`,
+            module: 'Agent',
+            category: '退还'
+          }
+        });
+        logger.info(`[Agent] 取消会话退还积分: ${netPointsToRefund} (已排除部分退款: ${alreadyRefunded}), 用户: ${userId}`);
+      }
+
+      // 取消 PENDING 和 RUNNING 任务
+      await tx.agentTask.updateMany({
+        where: { sessionId, status: { in: [AgentTaskStatus.PENDING, AgentTaskStatus.RUNNING] } },
         data: { status: AgentTaskStatus.CANCELLED }
-      }),
-      // 更新会话状态
-      prisma.agentSession.update({
+      });
+      await tx.agentSession.update({
         where: { id: sessionId },
         data: { status: AgentSessionStatus.CANCELLED }
-      })
-    ]);
+      });
+    });
 
     return this.getSession(sessionId);
   }

@@ -88,8 +88,9 @@ async function restoreHistoryLibrary() {
           status: 'completed',
           completedAt: new Date(),
           userId: 'default-user', // 需要替换为实际用户ID
+          globalConfig: '{}',
           Slide: {
-            create: Array.from({ length: 10 }, (_, idx) => ({
+            create: Array.from({ length: 10 }, (_, idx => ({
               index: idx,
               pageType: idx === 0 ? 'cover' : idx === 9 ? 'end' : 'content',
               contentType: 'text',

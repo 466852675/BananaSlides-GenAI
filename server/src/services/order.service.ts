@@ -218,7 +218,7 @@ export async function fulfillOrder(orderId: string) {
                 userId: order.userId,
                 type: 'recharge',
                 amount: pointsToAdd,
-                balance: 0,
+                balance: user.points + pointsToAdd,
                 orderId: orderId,
                 description: `订单充值: ${order.productName}`,
             },
@@ -306,10 +306,12 @@ export async function createOrder(userId: string, productId: string, paymentMeth
             productId,
             productType: product.type,
             productName: product.name,
+            productDesc: product.desc,
             originalPrice: product.originalPrice || product.price,
+            discountPrice: product.originalPrice ? product.price : undefined,
             finalPrice: product.price,
             status: OrderStatus.PENDING,
-            quantity: product.points,
+            quantity: 1,
             paymentMethod: paymentMethod || null,
         }
     });
@@ -318,11 +320,16 @@ export async function createOrder(userId: string, productId: string, paymentMeth
 /**
  * 模拟支付 (用户端)
  */
-export async function simulatePay(id: string, simulate: string = 'success', paymentMethod?: string) {
+export async function simulatePay(id: string, userId: string, simulate: string = 'success', paymentMethod?: string) {
+    const existingOrder = await prisma.order.findUnique({ where: { id } });
+    if (!existingOrder || existingOrder.userId !== userId) {
+        throw new Error('无权操作此订单');
+    }
+
     if (simulate === 'fail') {
         return await prisma.order.update({
             where: { id },
-            data: { 
+            data: {
                 status: OrderStatus.FAILED,
                 paymentMethod: paymentMethod || 'mock'
             }
@@ -330,9 +337,9 @@ export async function simulatePay(id: string, simulate: string = 'success', paym
     }
 
     // 更新订单状态并设置支付方式
-    const order = await prisma.order.update({
+    const paidOrder = await prisma.order.update({
         where: { id },
-        data: { 
+        data: {
             status: OrderStatus.PAID,
             paymentMethod: paymentMethod || 'mock',
             paymentNo: `MOCK_PAY_${Date.now()}`,
@@ -342,8 +349,8 @@ export async function simulatePay(id: string, simulate: string = 'success', paym
 
     // 执行履约
     await fulfillOrder(id);
-    
-    return order;
+
+    return paidOrder;
 }
 
 /**

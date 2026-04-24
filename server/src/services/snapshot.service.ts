@@ -360,7 +360,7 @@ export class SnapshotService {
         // 1. Get Snapshot
         const snapshot = await prisma.projectSnapshot.findUnique({
             where: { id: snapshotId },
-            include: { Project: { select: { userId: true, title: true } } }
+            include: { Project: { select: { userId: true, title: true, scenarioType: true } } }
         });
         if (!snapshot || snapshot.Project.userId !== userId) {
             throw new Error("Snapshot not found or access denied");
@@ -391,7 +391,7 @@ export class SnapshotService {
                     globalConfig: JSON.stringify(data.globalConfig || {}),
                     styleMap: JSON.stringify(styleMap || {}),
                     status: 'idle',
-                    scenarioType: 'BLANK'
+                    scenarioType: originalProject.scenarioType || 'BUSINESS'
                 }
             });
 
@@ -400,7 +400,6 @@ export class SnapshotService {
                 for (const item of data.items) {
                     await tx.slide.create({
                         data: {
-                            id: item.id,
                             projectId: project.id,
                             index: item.index || 0,
                             pageType: item.pageType,
@@ -412,7 +411,7 @@ export class SnapshotService {
                             variantCount: item.variantCount || 2,
                             previewUrl: item.previewUrl,
                             originalFileRef: item.originalFile ? JSON.stringify(item.originalFile) : null,
-                            status: item.status || 'pending'
+                            status: item.status === 'completed' ? 'success' : (item.status || 'idle')
                         }
                     });
                 }

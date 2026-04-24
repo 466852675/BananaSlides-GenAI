@@ -66,6 +66,8 @@ export const authenticate = async (
                 role: true,
                 status: true,
                 points: true,
+                vipLevel: true,
+                vipExpiresAt: true,
             }
         });
 
@@ -129,6 +131,8 @@ export const optionalAuth = async (
                     role: true,
                     status: true,
                     points: true,
+                    vipLevel: true,
+                    vipExpiresAt: true,
                 }
             });
 
@@ -348,6 +352,8 @@ declare global {
                 role: string;
                 status: string;
                 points: number;
+                vipLevel: number;
+                vipExpiresAt: Date | null;
             };
             dataScope?: 'own' | 'all';
         }

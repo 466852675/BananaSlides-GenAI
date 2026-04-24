@@ -3,7 +3,7 @@
  * 支持虚拟滚动优化大规模消息场景
  */
 
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { User, Bot, Loader2, CheckCircle, Sparkles } from 'lucide-react';
 import ConfirmationCard from './ConfirmationCard';
@@ -41,11 +41,16 @@ interface ChatAreaProps {
   streamingOutline?: { slides: any[]; isGenerating: boolean };
   streamingContent?: { slides: any[]; isGenerating: boolean };
   isVip?: boolean;
+  autoMode?: boolean;
 }
 
 // 计算任务预估积分
 function estimatePoints(task: AgentTask): number {
-  const params = task.params ? JSON.parse(task.params) : {};
+  const params = (() => {
+    if (!task.params) return {};
+    try { return JSON.parse(task.params); }
+    catch { return {}; }
+  })();
   const basePoints = POINTS_ESTIMATE[task.type] || 0;
 
   // 根据参数调整积分
@@ -83,13 +88,21 @@ export default function ChatArea({
   onSendAiModify,
   streamingOutline,
   streamingContent,
-  isVip = false
+  isVip = false,
+  autoMode = false
 }: ChatAreaProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
 
-  // 自动滚动到底部
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 50;
+  }, []);
+
+  // 自动滚动到底部（仅在用户位于底部时）
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && isAtBottomRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, tasks]);
@@ -98,9 +111,10 @@ export default function ChatArea({
   const confirmationTasks = useMemo(() =>
     tasks.filter(
       task => ['PENDING', 'RUNNING'].includes(task.status) &&
-        ['CONFIG_CONFIRM', 'OUTLINE', 'CONTENT', 'IMAGE', 'IMAGE_BY_PAGE', 'FINAL_OVERVIEW'].includes(task.type)
+        ['CONFIG_CONFIRM', 'OUTLINE', 'CONTENT', 'IMAGE', 'IMAGE_BY_PAGE', 'FINAL_OVERVIEW'].includes(task.type) &&
+        !autoMode
     ),
-    [tasks]
+    [tasks, autoMode]
   );
 
   // 获取已完成的任务（用于历史展示）
@@ -176,7 +190,7 @@ export default function ChatArea({
   }, [uniqueMessages, completedTasks]);
 
   return (
-    <div ref={scrollRef} className="h-full overflow-y-auto p-4">
+    <div ref={scrollRef} className="h-full overflow-y-auto p-4" onScroll={handleScroll}>
       <div className="mx-auto max-w-2xl space-y-4">
         {/* 使用虚拟消息列表渲染消息和已完成任务 */}
         <VirtualMessageList

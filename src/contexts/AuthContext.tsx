@@ -3,29 +3,13 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import * as AuthAPI from '../api/auth';
+import { User } from '../api/auth';
 import { TOKEN_KEY } from '../api/client';
 import { getOutputMode } from '../services/geminiService';
 
 // ============================================================
 // 类型定义
 // ============================================================
-
-interface User {
-    id: string;
-    email: string | null;
-    username: string | null;
-    nickname: string | null;
-    avatar: string | null;
-    role: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
-    points: number;
-    vipLevel: number;
-    vipExpiresAt: string | null; // V8.5 Added
-    bio: string | null;
-    // V8.0 增长体系字段
-    inviteCode?: string | null;
-    checkInDate?: string | null;
-    checkInStreak?: number;
-}
 
 interface AuthContextType {
     // 状态
@@ -85,9 +69,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
 
         try {
-            // 检查会话时间 (10分钟 = 600000ms)
+            // 检查会话时间 (24小时 = 86400000ms，与 JWT token 有效期对齐)
             const lastActive = localStorage.getItem('lastActiveTime');
-            if (lastActive && Date.now() - parseInt(lastActive) > 10 * 60 * 1000) {
+            if (lastActive && Date.now() - parseInt(lastActive) > 24 * 60 * 60 * 1000) {
                 // 会话过期
                 localStorage.removeItem(TOKEN_KEY);
                 localStorage.removeItem('lastActiveTime');
@@ -107,11 +91,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 nickname: userData.nickname,
                 avatar: userData.avatar,
                 role: userData.role,
+                status: userData.status || 'ACTIVE',
                 points: userData.points,
-                vipLevel: userData.vipLevel,
-                vipExpiresAt: userData.vipExpiresAt,
+                pointsUsed: userData.pointsUsed ?? 0,
+                vipLevel: userData.vipLevel ?? 0,
+                vipExpiresAt: userData.vipExpiresAt ?? null,
                 bio: userData.bio || null,
-                inviteCode: userData.inviteCode, // 添加邀请码
+                inviteCode: userData.inviteCode,
+                createdAt: userData.createdAt || '',
             });
 
             // 预热 outputMode 缓存，减少后续 AI 调用的延迟
@@ -136,11 +123,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
             nickname: result.user.nickname,
             avatar: result.user.avatar,
             role: result.user.role,
+            status: result.user.status || 'ACTIVE',
             points: result.user.points,
-            vipLevel: result.user.vipLevel,
-            vipExpiresAt: result.user.vipExpiresAt,
+            pointsUsed: result.user.pointsUsed ?? 0,
+            vipLevel: result.user.vipLevel ?? 0,
+            vipExpiresAt: result.user.vipExpiresAt ?? null,
             bio: result.user.bio || null,
             inviteCode: result.user.inviteCode,
+            createdAt: result.user.createdAt || '',
         });
         setShowLoginModal(false);
     }, []);
@@ -155,11 +145,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
             nickname: result.user.nickname,
             avatar: result.user.avatar,
             role: result.user.role,
+            status: result.user.status || 'ACTIVE',
             points: result.user.points,
-            vipLevel: result.user.vipLevel,
-            vipExpiresAt: result.user.vipExpiresAt,
+            pointsUsed: result.user.pointsUsed ?? 0,
+            vipLevel: result.user.vipLevel ?? 0,
+            vipExpiresAt: result.user.vipExpiresAt ?? null,
             bio: result.user.bio || null,
             inviteCode: result.user.inviteCode,
+            createdAt: result.user.createdAt || '',
         });
         setShowLoginModal(false);
     }, []);
@@ -179,11 +172,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
             nickname: result.user.nickname,
             avatar: result.user.avatar,
             role: result.user.role,
+            status: result.user.status || 'ACTIVE',
             points: result.user.points,
-            vipLevel: result.user.vipLevel,
-            vipExpiresAt: result.user.vipExpiresAt,
+            pointsUsed: result.user.pointsUsed ?? 0,
+            vipLevel: result.user.vipLevel ?? 0,
+            vipExpiresAt: result.user.vipExpiresAt ?? null,
             bio: result.user.bio || null,
             inviteCode: result.user.inviteCode,
+            createdAt: result.user.createdAt || '',
         });
         setShowLoginModal(false);
     }, []);

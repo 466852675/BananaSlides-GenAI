@@ -4,9 +4,9 @@
  * 实时显示生成中的大纲内容，支持逐条添加动画
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 
 interface OutlineSlide {
   index: number;
@@ -26,6 +26,18 @@ export default function StreamingOutlineDisplay({
   isGenerating,
   currentIndex = -1
 }: StreamingOutlineDisplayProps) {
+  const [timeoutError, setTimeoutError] = useState(false);
+
+  useEffect(() => {
+    if (!isGenerating) {
+      setTimeoutError(false);
+      return;
+    }
+    setTimeoutError(false);
+    const timer = setTimeout(() => setTimeoutError(true), 180000);
+    return () => clearTimeout(timer);
+  }, [isGenerating]);
+
   return (
     <div className="space-y-3">
       {/* 生成中提示 */}
@@ -35,6 +47,14 @@ export default function StreamingOutlineDisplay({
           <span className="text-sm text-blue-700">
             {slides.length === 0 ? '正在构思大纲...' : `已生成 ${slides.length} 页...`}
           </span>
+        </div>
+      )}
+
+      {/* 超时提示 */}
+      {timeoutError && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-100">
+          <AlertCircle className="h-4 w-4 text-red-500" />
+          <span className="text-sm text-red-700">大纲生成超时，请尝试重新生成</span>
         </div>
       )}
 

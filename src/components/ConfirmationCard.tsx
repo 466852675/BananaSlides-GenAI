@@ -606,7 +606,7 @@ export default function ConfirmationCard({
                   </div>
                   {slide.content && (
                     <div className="text-xs text-gray-500 truncate">
-                      {slide.content.slice(0, 50)}...
+                      {slide.content.length > 50 ? slide.content.slice(0, 50) + '...' : slide.content}
                     </div>
                   )}
                 </div>
@@ -937,11 +937,11 @@ export default function ConfirmationCard({
                 <button
                   onClick={() => onRegenerate(task.id)}
                   disabled={isLoading}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
-                  title="取消当前执行"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+                  title="重新执行此任务"
                 >
-                  <StopCircle className="h-3.5 w-3.5" />
-                  <span>取消</span>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>重新生成</span>
                 </button>
               </div>
             )}

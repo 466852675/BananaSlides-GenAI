@@ -88,7 +88,8 @@ export class ProjectService {
     async countActive(ownerId: string) {
         return prisma.project.count({
             where: {
-                userId: ownerId
+                userId: ownerId,
+                isDeleted: false
             }
         });
     }
@@ -229,7 +230,8 @@ export class ProjectService {
 
         const result = await prisma.project.update({
             where: { id },
-            data: data
+            data: data,
+            include: { Slide: true }
         });
 
         // 检查是否刚刚完成 (状态变为 completed)
@@ -244,7 +246,7 @@ export class ProjectService {
             });
         }
 
-        return result;
+        return this.mapSlideToItems(result);
     }
 
     // Set Pinned Status
@@ -256,7 +258,8 @@ export class ProjectService {
             data: {
                 isPinned,
                 updatedAt: current?.updatedAt
-            }
+            },
+            include: { Slide: true }
         });
     }
 

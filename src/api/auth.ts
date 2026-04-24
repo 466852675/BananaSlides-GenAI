@@ -14,8 +14,8 @@ export interface User {
     nickname: string | null;
     avatar: string | null;
     bio?: string | null;
-    role: 'USER' | 'ADMIN' | 'SUPER_ADMIN';
-    status: 'ACTIVE' | 'DISABLED' | 'PENDING';
+    role: string;
+    status: string;
     points: number;
     pointsUsed: number;
     vipLevel: number;

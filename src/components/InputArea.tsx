@@ -109,7 +109,9 @@ export default function InputArea({
 
               {/* 附件下拉菜单 */}
               {showAttachMenu && (
-                <div className="absolute bottom-full left-0 mb-2 w-56 rounded-lg border border-gray-200 bg-white shadow-lg z-10">
+                <>
+                  <div className="fixed inset-0 z-[5]" onClick={() => setShowAttachMenu(false)} />
+                  <div className="absolute bottom-full left-0 mb-2 w-56 rounded-lg border border-gray-200 bg-white shadow-lg z-10">
                   <div className="p-1">
                     <label className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer">
                       <FileText className="h-4 w-4 text-gray-500" />
@@ -135,6 +137,7 @@ export default function InputArea({
                     </label>
                   </div>
                 </div>
+                </>
               )}
             </div>
 

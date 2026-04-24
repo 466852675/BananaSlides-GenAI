@@ -170,7 +170,7 @@ router.post('/refunds/:id/audit', authenticate, requireAdmin, requirePermission(
         const result = await RefundService.auditRefund(id, adminId, { approved, remark });
 
         if (result.success) {
-            res.json(result);
+            res.json({ success: true, data: result });
         } else {
             res.status(400).json({
                 success: false,

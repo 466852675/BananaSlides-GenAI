@@ -6,8 +6,9 @@
 export type AgentSessionStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type AgentMode = 'GUIDED' | 'AUTO';
 
-// 任务类型
-export type AgentTaskType = 'CONFIG_CONFIRM' | 'OUTLINE' | 'CONTENT' | 'IMAGE' | 'IMAGE_BY_PAGE' | 'FINAL_OVERVIEW' | 'EXPORT' | 'IMPORT' | 'MODIFY' | 'STYLE' | 'SNAPSHOT';
+// 任务类型（包含短名称和 legacy 别名，确保与后端 AgentTaskType 对齐）
+export type AgentTaskType = 'CONFIG_CONFIRM' | 'OUTLINE' | 'CONTENT' | 'IMAGE' | 'IMAGE_BY_PAGE' | 'FINAL_OVERVIEW' | 'EXPORT' | 'IMPORT' | 'MODIFY' | 'STYLE' | 'SNAPSHOT'
+  | 'GENERATE_OUTLINE' | 'EXPAND_CONTENT' | 'GENERATE_IMAGE' | 'BATCH_GENERATE_IMAGES' | 'MODIFY_SLIDE' | 'SWITCH_STYLE_TEMPLATE' | 'IMPORT_DOCUMENT' | 'EXPORT_PROJECT' | 'FINALIZE_PROJECT';
 export type AgentTaskStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
 // Agent 会话

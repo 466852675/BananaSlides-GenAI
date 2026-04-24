@@ -375,40 +375,34 @@ export async function addPoints(
     operatorId?: string,
     orderId?: string
 ): Promise<{ success: boolean; newBalance: number }> {
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { points: true },
-    });
-
-    if (!user) {
-        return { success: false, newBalance: 0 };
-    }
-
-    const newBalance = user.points + amount;
-
-    await prisma.$transaction([
-        prisma.user.update({
+    const result = await prisma.$transaction(async (tx) => {
+        const updatedUser = await tx.user.update({
             where: { id: userId },
-            data: { points: newBalance },
-        }),
-        prisma.transaction.create({
+            data: { points: { increment: amount } },
+        });
+
+        const newBalance = updatedUser.points;
+
+        await tx.transaction.create({
             data: {
                 userId,
                 type,
                 amount,
                 balance: newBalance,
                 description,
-                module: '系统操作', // 默认为系统操作板块
+                module: '系统操作',
                 category: type === 'reward' ? '奖励' : (type === 'adjust' ? (amount > 0 ? '奖励' : '扣除') : '充值'),
                 operatorId,
                 orderId,
             },
-        }),
-    ]);
+        });
 
-    console.log(`[Points] 用户 ${userId} 增加 ${amount} 积分 (${type})，新余额 ${newBalance}`);
+        return newBalance;
+    });
 
-    return { success: true, newBalance };
+    console.log(`[Points] 用户 ${userId} 增加 ${amount} 积分 (${type})，新余额 ${result}`);
+
+    return { success: true, newBalance: result };
 }
 
 /**

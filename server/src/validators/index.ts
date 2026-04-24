@@ -131,3 +131,34 @@ export const CreateSnapshotSchema = z.object({
     projectData: z.object({}).passthrough(),
     settings: z.object({}).passthrough().optional()
 });
+
+// ==================== Agent Controller Schemas ====================
+
+export const agentSchemas = {
+  createSession: z.object({
+    projectId: z.string().min(1, '项目ID不能为空'),
+    mode: z.enum(['GUIDED', 'AUTO']).optional().default('GUIDED')
+  }),
+
+  sendMessage: z.object({
+    content: z.string().min(1, '消息内容不能为空').max(10000, '消息内容过长'),
+    autoExecute: z.boolean().optional().default(false)
+  }),
+
+  createTask: z.object({
+    type: z.enum([
+      'CONFIG_CONFIRM', 'OUTLINE', 'CONTENT', 'IMAGE', 'IMAGE_BY_PAGE',
+      'MODIFY', 'STYLE', 'EXPORT', 'IMPORT', 'SNAPSHOT',
+      'FINAL_OVERVIEW'
+    ] as const, { message: '无效的任务类型' }),
+    params: z.record(z.string(), z.unknown()).optional()
+  }),
+
+  modifyTask: z.object({
+    params: z.record(z.string(), z.unknown())
+  }),
+
+  updateMode: z.object({
+    mode: z.enum(['GUIDED', 'AUTO'], { message: '模式必须是 GUIDED 或 AUTO' })
+  })
+};

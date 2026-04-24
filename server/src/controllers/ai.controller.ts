@@ -373,7 +373,7 @@ export const handleSmartRefine = async (req: Request, res: Response) => {
 
         // 检查积分扣费结果
         if (req.user && !isMockAiMode() && !deductResult.success) {
-            res.status(420).json({
+            res.status(402).json({
                 success: false,
                 error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
             });

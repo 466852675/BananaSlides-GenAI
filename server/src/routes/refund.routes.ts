@@ -12,7 +12,7 @@ router.get('/orders/:orderId/eligibility', async (req, res) => {
         const userId = req.user!.id;
 
         const result = await RefundService.checkRefundEligibility(userId, orderId);
-        res.json(result);
+        res.json({ success: true, data: result });
     } catch (error: any) {
         console.error('[Refund] 检查退款资格失败:', error);
         res.status(500).json({
@@ -42,7 +42,7 @@ router.post('/orders/:orderId/apply', async (req, res) => {
         });
 
         if (result.success) {
-            res.json(result);
+            res.json({ success: true, data: result });
         } else {
             res.status(400).json({
                 success: false,

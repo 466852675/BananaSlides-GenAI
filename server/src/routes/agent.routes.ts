@@ -10,7 +10,10 @@ import { agentSessionLimiter, agentMessageLimiter, agentTaskLimiter } from '../m
 import { agentService } from '../services/agent.service';
 import { logger } from '../utils/logger';
 import { AgentMode, AgentTaskType, AgentModeType, AgentTaskTypeType } from '../types/user.types';
+import { AUTO_EXECUTE_ROLES } from '../types/agent.types';
 import { prisma } from '../db';
+import { validate } from '../middleware/validateMiddleware';
+import { agentSchemas } from '../validators';
 
 const router = Router();
 
@@ -77,12 +80,13 @@ async function verifyProjectOwnership(projectId: string, userId: string): Promis
 /**
  * POST /api/agent/sessions
  * 创建新的 Agent 会话
- * 权限: agent.session.create
+ * 权限: agent_use
  */
 router.post('/sessions',
   agentSessionLimiter,
   authenticate,
-  requirePermission('agent.session.create'),
+  requirePermission('agent_use'),
+  validate(agentSchemas.createSession),
   async (req: Request, res: Response) => {
     try {
       const { projectId, mode } = req.body;
@@ -109,8 +113,8 @@ router.post('/sessions',
           select: { role: true }
         });
         // PROFESSIONAL 及以上才能使用自动执行模式
-        const autoExecuteRoles = ['PROFESSIONAL', 'PREMIUM', 'ENTERPRISE', 'ADMIN', 'SUPER_ADMIN'];
-        if (!user || !autoExecuteRoles.includes(user.role)) {
+        const autoExecuteRoles = AUTO_EXECUTE_ROLES;
+        if (!user || !autoExecuteRoles.includes(user.role as any)) {
           return res.status(403).json({ error: '您的账户等级不支持自动执行模式，请升级到专业版' });
         }
       }
@@ -140,7 +144,7 @@ router.post('/sessions',
  * 获取用户的所有项目及其 AgentSession 信息
  * 用于 Agent 模式侧边栏显示
  */
-router.get('/projects-with-sessions', authenticate, async (req: Request, res: Response) => {
+router.get('/projects-with-sessions', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
 
@@ -160,7 +164,7 @@ router.get('/projects-with-sessions', authenticate, async (req: Request, res: Re
  * GET /api/agent/recent-sessions
  * 获取用户最近完成的会话（用于一键复用配置）
  */
-router.get('/recent-sessions', authenticate, async (req: Request, res: Response) => {
+router.get('/recent-sessions', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -226,6 +230,20 @@ router.get('/sessions/:id/progress', async (req: Request, res: Response) => {
 
   // 附加用户信息到 req
   req.user = user as any;
+
+  // 检查 agent_use 权限（SUPER_ADMIN 自动通过）
+  if (user.role !== 'SUPER_ADMIN') {
+    const rolePerms = await prisma.rolePermission.findMany({
+      where: { role: user.role },
+      include: { Permission: { select: { code: true } } }
+    });
+    const hasPermission = rolePerms.some(rp => rp.Permission.code === 'agent_use');
+    if (!hasPermission) {
+      logger.warn(`[SSE] 用户 ${user.id} 缺少 agent_use 权限`);
+      res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: '缺少 Agent 使用权限' } });
+      return;
+    }
+  }
 
   // 验证会话归属
   const ownership = await verifySessionOwnership(id, user.id);
@@ -327,7 +345,7 @@ router.get('/sessions/:id/progress', async (req: Request, res: Response) => {
  * GET /api/agent/sessions/:id
  * 获取会话详情
  */
-router.get('/sessions/:id', authenticate, async (req: Request, res: Response) => {
+router.get('/sessions/:id', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const userId = req.user?.id;
@@ -359,7 +377,7 @@ router.get('/sessions/:id', authenticate, async (req: Request, res: Response) =>
  * GET /api/agent/projects/:projectId/session
  * 根据项目ID获取会话
  */
-router.get('/projects/:projectId/session', authenticate, async (req: Request, res: Response) => {
+router.get('/projects/:projectId/session', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const projectId = String(req.params.projectId);
     const userId = req.user?.id;
@@ -391,7 +409,7 @@ router.get('/projects/:projectId/session', authenticate, async (req: Request, re
  * POST /api/agent/sessions/:id/pause
  * 暂停会话
  */
-router.post('/sessions/:id/pause', authenticate, async (req: Request, res: Response) => {
+router.post('/sessions/:id/pause', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const userId = req.user?.id;
@@ -418,7 +436,7 @@ router.post('/sessions/:id/pause', authenticate, async (req: Request, res: Respo
  * POST /api/agent/sessions/:id/resume
  * 恢复会话
  */
-router.post('/sessions/:id/resume', authenticate, async (req: Request, res: Response) => {
+router.post('/sessions/:id/resume', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const userId = req.user?.id;
@@ -445,7 +463,7 @@ router.post('/sessions/:id/resume', authenticate, async (req: Request, res: Resp
  * POST /api/agent/sessions/:id/cancel
  * 取消会话
  */
-router.post('/sessions/:id/cancel', authenticate, async (req: Request, res: Response) => {
+router.post('/sessions/:id/cancel', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const userId = req.user?.id;
@@ -472,7 +490,7 @@ router.post('/sessions/:id/cancel', authenticate, async (req: Request, res: Resp
  * PATCH /api/agent/sessions/:id/mode
  * 更新会话模式（引导/自动）
  */
-router.patch('/sessions/:id/mode', authenticate, async (req: Request, res: Response) => {
+router.patch('/sessions/:id/mode', authenticate, requirePermission('agent_use'), validate(agentSchemas.updateMode), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const { mode } = req.body;
@@ -498,8 +516,8 @@ router.patch('/sessions/:id/mode', authenticate, async (req: Request, res: Respo
         where: { id: userId },
         select: { role: true }
       });
-      const autoExecuteRoles = ['PROFESSIONAL', 'PREMIUM', 'ENTERPRISE', 'ADMIN', 'SUPER_ADMIN'];
-      if (!user || !autoExecuteRoles.includes(user.role)) {
+      const autoExecuteRoles = AUTO_EXECUTE_ROLES;
+      if (!user || !autoExecuteRoles.includes(user.role as any)) {
         return res.status(403).json({ error: '您的账户等级不支持自动执行模式，请升级到专业版' });
       }
     }
@@ -520,12 +538,13 @@ router.patch('/sessions/:id/mode', authenticate, async (req: Request, res: Respo
 /**
  * POST /api/agent/sessions/:id/messages
  * 发送消息到会话
- * 权限: agent.task.execute (如果消息会触发任务执行)
+ * 权限: agent_use (如果消息会触发任务执行)
  */
 router.post('/sessions/:id/messages',
   agentMessageLimiter,
   authenticate,
-  requirePermission('agent.task.execute'),
+  requirePermission('agent_use'),
+  validate(agentSchemas.sendMessage),
   async (req: Request, res: Response) => {
     try {
       const id = String(req.params.id);
@@ -552,13 +571,13 @@ router.post('/sessions/:id/messages',
           where: { id: userId },
           select: { role: true }
         });
-        const autoExecuteRoles = ['PROFESSIONAL', 'PREMIUM', 'ENTERPRISE', 'ADMIN', 'SUPER_ADMIN'];
-        if (!user || !autoExecuteRoles.includes(user.role)) {
+        const autoExecuteRoles = AUTO_EXECUTE_ROLES;
+        if (!user || !autoExecuteRoles.includes(user.role as any)) {
           return res.status(403).json({ error: '您的账户等级不支持自动执行模式' });
         }
       }
 
-      const result = await agentService.processMessage(id, content, userId);
+      const result = await agentService.processMessage(id, content, userId, autoExecute);
 
       logger.info(`[Agent] 用户 ${userId} 发送消息到会话 ${id}`);
 
@@ -574,7 +593,7 @@ router.post('/sessions/:id/messages',
  * GET /api/agent/sessions/:id/messages
  * 获取会话消息历史
  */
-router.get('/sessions/:id/messages', authenticate, async (req: Request, res: Response) => {
+router.get('/sessions/:id/messages', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const userId = req.user?.id;
@@ -627,7 +646,7 @@ router.get('/sessions/:id/messages', authenticate, async (req: Request, res: Res
  * GET /api/agent/sessions/:id/tasks
  * 获取会话任务列表
  */
-router.get('/sessions/:id/tasks', authenticate, async (req: Request, res: Response) => {
+router.get('/sessions/:id/tasks', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const userId = req.user?.id;
@@ -667,7 +686,7 @@ router.get('/sessions/:id/tasks', authenticate, async (req: Request, res: Respon
  * POST /api/agent/sessions/:id/tasks
  * 手动创建任务
  */
-router.post('/sessions/:id/tasks', authenticate, async (req: Request, res: Response) => {
+router.post('/sessions/:id/tasks', authenticate, requirePermission('agent_use'), validate(agentSchemas.createTask), async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const userId = req.user?.id;
@@ -702,7 +721,7 @@ router.post('/sessions/:id/tasks', authenticate, async (req: Request, res: Respo
  * PUT /api/agent/sessions/:id/messages/:messageId
  * 编辑消息
  */
-router.put('/sessions/:id/messages/:messageId', authenticate, async (req: Request, res: Response) => {
+router.put('/sessions/:id/messages/:messageId', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const sessionId = String(req.params.id);
     const messageId = String(req.params.messageId);
@@ -755,7 +774,7 @@ router.put('/sessions/:id/messages/:messageId', authenticate, async (req: Reques
  * DELETE /api/agent/sessions/:id/messages
  * 清空会话的所有消息和任务
  */
-router.delete('/sessions/:id/messages', authenticate, async (req: Request, res: Response) => {
+router.delete('/sessions/:id/messages', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const sessionId = String(req.params.id);
     const userId = req.user?.id;
@@ -776,65 +795,65 @@ router.delete('/sessions/:id/messages', authenticate, async (req: Request, res: 
       select: { projectId: true, totalPointsUsed: true }
     });
 
-    // 【修复】退还已消耗的积分
+    // 【修复】退款与数据删除合并为单一事务
     if (session && session.totalPointsUsed > 0) {
-      // 先获取用户当前积分
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { points: true }
-      });
-      const newBalance = (user?.points || 0) + session.totalPointsUsed;
-
-      await prisma.$transaction([
-        // 创建退款交易记录
-        prisma.transaction.create({
+      await prisma.$transaction(async (tx) => {
+        // 退款
+        const updatedUser = await tx.user.update({
+          where: { id: userId },
+          data: { points: { increment: session.totalPointsUsed } }
+        });
+        await tx.transaction.create({
           data: {
             userId,
             projectId: session.projectId,
             type: 'refund',
-            amount: session.totalPointsUsed, // 正数表示增加积分
-            balance: newBalance,
+            amount: session.totalPointsUsed,
+            balance: updatedUser.points,
             description: '清空会话退还积分',
             completedAt: new Date()
           }
-        }),
-        // 增加用户积分
-        prisma.user.update({
-          where: { id: userId },
-          data: { points: { increment: session.totalPointsUsed } }
-        })
-      ]);
+        });
+
+        // 删除消息和任务
+        await tx.agentMessage.deleteMany({ where: { sessionId } });
+        await tx.agentTask.deleteMany({ where: { sessionId } });
+
+        // 重置会话
+        await tx.agentSession.update({
+          where: { id: sessionId },
+          data: {
+            context: JSON.stringify({}),
+            totalTasks: 0,
+            completedTasks: 0,
+            failedTasks: 0,
+            totalPointsUsed: 0
+          }
+        });
+      });
       logger.info(`[Agent] 清空会话退还积分: ${session.totalPointsUsed}, 用户: ${userId}`);
+    } else {
+      // 无退款需要，仅删除数据
+      await prisma.$transaction(async (tx) => {
+        await tx.agentMessage.deleteMany({ where: { sessionId } });
+        await tx.agentTask.deleteMany({ where: { sessionId } });
+        await tx.agentSession.update({
+          where: { id: sessionId },
+          data: {
+            context: JSON.stringify({}),
+            totalTasks: 0,
+            completedTasks: 0,
+            failedTasks: 0,
+            totalPointsUsed: 0
+          }
+        });
+      });
     }
 
-    // 删除该会话的所有消息
-    const messagesDeleteResult = await prisma.agentMessage.deleteMany({
-      where: { sessionId }
-    });
-
-    // 删除该会话的所有任务
-    const tasksDeleteResult = await prisma.agentTask.deleteMany({
-      where: { sessionId }
-    });
-
-    // 重置会话上下文（保留基本配置信息）
-    await prisma.agentSession.update({
-      where: { id: sessionId },
-      data: {
-        context: JSON.stringify({}),
-        totalTasks: 0,
-        completedTasks: 0,
-        failedTasks: 0,
-        totalPointsUsed: 0
-      }
-    });
-
-    logger.info(`[Agent] 用户 ${userId} 清空会话: ${sessionId}，删除消息 ${messagesDeleteResult.count} 条，任务 ${tasksDeleteResult.count} 个`);
+    logger.info(`[Agent] 用户 ${userId} 清空会话: ${sessionId}`);
 
     res.json({
       success: true,
-      deletedMessagesCount: messagesDeleteResult.count,
-      deletedTasksCount: tasksDeleteResult.count,
       refundedPoints: session?.totalPointsUsed || 0
     });
   } catch (error: any) {
@@ -847,7 +866,7 @@ router.delete('/sessions/:id/messages', authenticate, async (req: Request, res: 
  * DELETE /api/agent/sessions/:id/messages/:messageId
  * 重置消息（删除该消息及后续所有消息）
  */
-router.delete('/sessions/:id/messages/:messageId', authenticate, async (req: Request, res: Response) => {
+router.delete('/sessions/:id/messages/:messageId', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const sessionId = String(req.params.id);
     const messageId = String(req.params.messageId);
@@ -884,73 +903,68 @@ router.delete('/sessions/:id/messages/:messageId', authenticate, async (req: Req
     // 【修复】计算需要退还的总积分
     const totalPointsToRefund = tasksToDelete.reduce((sum, task) => sum + (task.pointsCost || 0), 0);
 
-    // 【修复】退还积分
+    // 【修复】退款与数据删除合并为单一事务
     if (totalPointsToRefund > 0) {
       const session = await prisma.agentSession.findUnique({
         where: { id: sessionId },
         select: { projectId: true }
       });
 
-      // 先获取用户当前积分
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { points: true }
-      });
-      const newBalance = (user?.points || 0) + totalPointsToRefund;
-
-      await prisma.$transaction([
-        // 创建退款交易记录
-        prisma.transaction.create({
+      await prisma.$transaction(async (tx) => {
+        // 退款
+        const updatedUser = await tx.user.update({
+          where: { id: userId },
+          data: { points: { increment: totalPointsToRefund } }
+        });
+        await tx.transaction.create({
           data: {
             userId,
             projectId: session?.projectId,
             type: 'refund',
-            amount: totalPointsToRefund, // 正数表示增加积分
-            balance: newBalance,
+            amount: totalPointsToRefund,
+            balance: updatedUser.points,
             description: '重置消息退还积分',
             completedAt: new Date()
           }
-        }),
-        // 增加用户积分
-        prisma.user.update({
-          where: { id: userId },
-          data: { points: { increment: totalPointsToRefund } }
-        }),
-        // 更新会话的积分统计
-        prisma.agentSession.update({
+        });
+
+        // 更新会话积分统计
+        await tx.agentSession.update({
           where: { id: sessionId },
           data: { totalPointsUsed: { decrement: totalPointsToRefund } }
-        })
-      ]);
+        });
+
+        // 删除消息和任务
+        await tx.agentMessage.deleteMany({
+          where: { sessionId, createdAt: { gte: targetMessage.createdAt } }
+        });
+        await tx.agentTask.deleteMany({
+          where: { sessionId, createdAt: { gte: targetMessage.createdAt } }
+        });
+      });
       logger.info(`[Agent] 重置消息退还积分: ${totalPointsToRefund}, 用户: ${userId}`);
+    } else {
+      // 无退款需要，仅删除数据
+      await prisma.$transaction(async (tx) => {
+        await tx.agentMessage.deleteMany({
+          where: { sessionId, createdAt: { gte: targetMessage.createdAt } }
+        });
+        await tx.agentTask.deleteMany({
+          where: { sessionId, createdAt: { gte: targetMessage.createdAt } }
+        });
+      });
     }
 
-    // 删除该消息及之后的所有消息
-    const deleteResult = await prisma.agentMessage.deleteMany({
-      where: {
-        sessionId,
-        createdAt: { gte: targetMessage.createdAt }
-      }
-    });
+    logger.info(`[Agent] 用户 ${userId} 重置消息: ${messageId}`);
 
-    // 同时删除在该消息之后创建的任务
-    await prisma.agentTask.deleteMany({
-      where: {
-        sessionId,
-        createdAt: { gte: targetMessage.createdAt }
-      }
-    });
-
-    logger.info(`[Agent] 用户 ${userId} 重置消息: ${messageId}，删除了 ${deleteResult.count} 条消息`);
-
-    res.json({ success: true, deletedCount: deleteResult.count, refundedPoints: totalPointsToRefund });
+    res.json({ success: true, refundedPoints: totalPointsToRefund });
   } catch (error: any) {
     logger.error('[Agent] 重置消息失败:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/sessions/:id/tasks/:taskId/confirm', agentTaskLimiter, authenticate, async (req: Request, res: Response) => {
+router.post('/sessions/:id/tasks/:taskId/confirm', agentTaskLimiter, authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const sessionId = String(req.params.id);
     const taskId = String(req.params.taskId);
@@ -1006,7 +1020,7 @@ router.post('/sessions/:id/tasks/:taskId/confirm', agentTaskLimiter, authenticat
  * POST /api/agent/sessions/:id/tasks/:taskId/modify
  * 修改任务参数
  */
-router.post('/sessions/:id/tasks/:taskId/modify', authenticate, async (req: Request, res: Response) => {
+router.post('/sessions/:id/tasks/:taskId/modify', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const sessionId = String(req.params.id);
     const taskId = String(req.params.taskId);
@@ -1059,7 +1073,7 @@ router.post('/sessions/:id/tasks/:taskId/modify', authenticate, async (req: Requ
  * POST /api/agent/sessions/:id/tasks/:taskId/regenerate
  * 重新生成任务
  */
-router.post('/sessions/:id/tasks/:taskId/regenerate', agentTaskLimiter, authenticate, async (req: Request, res: Response) => {
+router.post('/sessions/:id/tasks/:taskId/regenerate', agentTaskLimiter, authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const sessionId = String(req.params.id);
     const taskId = String(req.params.taskId);
@@ -1103,7 +1117,7 @@ router.post('/sessions/:id/tasks/:taskId/regenerate', agentTaskLimiter, authenti
     if (task.type === 'CONFIG_CONFIRM') {
       // 获取第一条用户消息作为原始需求
       const firstUserMessage = await prisma.agentMessage.findFirst({
-        where: { sessionId, role: 'USER' },
+        where: { sessionId, role: 'user' },
         orderBy: { createdAt: 'asc' }
       });
 
@@ -1126,7 +1140,7 @@ router.post('/sessions/:id/tasks/:taskId/regenerate', agentTaskLimiter, authenti
  * POST /api/agent/sessions/:id/tasks/:taskId/confirm-images
  * 确认所有配图（完成配图任务）
  */
-router.post('/sessions/:id/tasks/:taskId/confirm-images', authenticate, async (req: Request, res: Response) => {
+router.post('/sessions/:id/tasks/:taskId/confirm-images', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const sessionId = String(req.params.id);
     const taskId = String(req.params.taskId);
@@ -1151,7 +1165,7 @@ router.post('/sessions/:id/tasks/:taskId/confirm-images', authenticate, async (r
       return res.status(404).json({ error: '任务不存在' });
     }
 
-    if (task.type !== 'IMAGE') {
+    if (task.type !== 'IMAGE' && task.type !== 'IMAGE_BY_PAGE') {
       return res.status(400).json({ error: '只能确认配图任务' });
     }
 
@@ -1183,7 +1197,7 @@ router.post('/sessions/:id/tasks/:taskId/confirm-images', authenticate, async (r
  * POST /api/agent/sessions/:id/tasks/:taskId/regenerate-images
  * 重新生成选中的配图
  */
-router.post('/sessions/:id/tasks/:taskId/regenerate-images', agentTaskLimiter, authenticate, async (req: Request, res: Response) => {
+router.post('/sessions/:id/tasks/:taskId/regenerate-images', agentTaskLimiter, authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   try {
     const sessionId = String(req.params.id);
     const taskId = String(req.params.taskId);
@@ -1245,7 +1259,7 @@ router.post('/sessions/:id/tasks/:taskId/regenerate-images', agentTaskLimiter, a
  * GET /api/agent/tools
  * 获取可用的 Agent 工具列表
  */
-router.get('/tools', authenticate, async (req: Request, res: Response) => {
+router.get('/tools', authenticate, requirePermission('agent_use'), async (req: Request, res: Response) => {
   const { AGENT_TOOLS } = require('../types/agent.types');
   res.json(AGENT_TOOLS);
 });

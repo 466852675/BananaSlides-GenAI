@@ -6,15 +6,24 @@ export const productService = {
      * Public API: Get all active products for landing page
      */
     async listActiveProducts() {
-        return (await prisma.product.findMany({
+        const products = await prisma.product.findMany({
             where: { isActive: true },
             orderBy: { sortOrder: 'asc' },
             include: {
-                createdBy: {
+                User: {
                     select: { nickname: true, avatar: true }
                 }
             }
-        } as any));
+        });
+
+        // Map User -> createdBy for frontend compatibility
+        return products.map(p => {
+            const { User, ...rest } = p;
+            return {
+                ...rest,
+                createdBy: User
+            };
+        });
     },
 
     /**

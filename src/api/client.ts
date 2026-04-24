@@ -3,6 +3,25 @@ import axios from 'axios';
 // Token 存储键名
 export const TOKEN_KEY = 'bananaslides_token';
 
+/**
+ * 获取 SSE 连接的 base URL
+ *
+ * 开发环境：通过 Vite 代理，使用相对路径（浏览器 EventSource 不支持自定义 headers）
+ * 生产环境：使用 VITE_SSE_URL 环境变量，或基于当前页面 host 推算
+ */
+export function getSseBaseUrl(): string {
+  const sseUrl = import.meta.env.VITE_SSE_URL;
+  if (sseUrl) {
+    return sseUrl;
+  }
+  // 开发环境：Vite 代理 /api -> localhost:1111，相对路径即可
+  if (import.meta.env.DEV) {
+    return '';
+  }
+  // 生产环境无配置时：基于当前页面 origin 推算（假设前后端同域或反向代理）
+  return `${window.location.origin}`;
+}
+
 // Base API client
 export const client = axios.create({
     baseURL: '/api', // Proxy handles forwarding to localhost:1111

@@ -230,7 +230,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
   handleReset = () => {
     try {
-      localStorage.clear();
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('bananaslides_'))
+        .forEach(k => localStorage.removeItem(k));
       window.location.reload();
     } catch (e) {
       window.location.href = '/';
@@ -695,7 +697,7 @@ const App: React.FC = () => {
       case 'outline_confirmed':
         // 大纲确认完成，刷新项目数据
         queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
-        queryClient.invalidateQueries({ queryKey: ['slides', currentProjectId] });
+        queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
         setToast({
           id: `outline-confirmed-${Date.now()}`,
           message: '大纲已确认，正在生成内容...',
@@ -708,7 +710,7 @@ const App: React.FC = () => {
         // 内容确认完成，更新幻灯片内容
         if (payload?.slides && Array.isArray(payload.slides)) {
           // 刷新幻灯片数据
-          queryClient.invalidateQueries({ queryKey: ['slides', currentProjectId] });
+          queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
           setToast({
             id: `content-confirmed-${Date.now()}`,
             message: `已生成 ${payload.slides.length} 页内容`,
@@ -721,7 +723,7 @@ const App: React.FC = () => {
       case 'image_confirmed':
         // 配图确认完成，更新幻灯片图片
         if (payload?.images && Array.isArray(payload.images)) {
-          queryClient.invalidateQueries({ queryKey: ['slides', currentProjectId] });
+          queryClient.invalidateQueries({ queryKey: ['project', currentProjectId] });
           setToast({
             id: `image-confirmed-${Date.now()}`,
             message: `已生成 ${payload.images.length} 张配图`,
@@ -1274,7 +1276,7 @@ const App: React.FC = () => {
       // Generate new IDs for forked items to avoid unique constraint conflicts
       const forkedItems = snapshotItems?.map((item: any) => ({
         ...item,
-        id: Math.random().toString(36).substring(2, 11) // Generate new unique ID
+        id: generateId()
       })) || [];
 
       // If there are items, sync them to the new project
@@ -1301,16 +1303,6 @@ const App: React.FC = () => {
     }
   };
 
-
-  // --- Effects ---
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () =>
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
 
   // Auto-save config changes
   useEffect(() => {
@@ -1763,7 +1755,7 @@ const App: React.FC = () => {
 
     const newItem: GeneratedSlide = {
       ...itemToClone,
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateId(),
       title: itemToClone.title ? `${itemToClone.title} (副本)` : undefined,
       status: "idle",
       variants: [],
@@ -1775,7 +1767,7 @@ const App: React.FC = () => {
   };
 
   // --- Favorites Logic ---
-  const filteredFavorites = favorites.filter((fav) => {
+  const filteredFavorites = useMemo(() => favorites.filter((fav) => {
     const matchSearch = fav.name
       .toLowerCase()
       .includes(searchTerm.toLowerCase());
@@ -1805,10 +1797,10 @@ const App: React.FC = () => {
       matchPageCount &&
       matchTime
     );
-  });
+  }), [favorites, searchTerm, filterStyle, filterRatio, filterPalette, filterPageCount, filterTime]);
 
   // --- History Logic ---
-  const filteredHistory = projects.filter((session) => {
+  const filteredHistory = useMemo(() => projects.filter((session) => {
     const matchSearch =
       session.title.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
       session.id.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
@@ -1842,7 +1834,7 @@ const App: React.FC = () => {
       const ONE_DAY = 24 * 60 * 60 * 1000;
       if (historyFilterTime === "24h") matchTime = diff <= ONE_DAY;
       else if (historyFilterTime === "7d") matchTime = diff <= 7 * ONE_DAY;
-      else if (filterTime === "30d") matchTime = diff <= 30 * ONE_DAY;
+      else if (historyFilterTime === "30d") matchTime = diff <= 30 * ONE_DAY;
     }
 
     const matchDateRange = (() => {
@@ -1875,7 +1867,7 @@ const App: React.FC = () => {
     if (historySortBy === "createdAt") return multiplier * (a.createdAt - b.createdAt);
     if (historySortBy === "pages") return multiplier * (a.items.length - b.items.length);
     return 0;
-  });
+  }), [projects, historySearchTerm, historyFilterStyle, historyFilterRatio, historyFilterPalette, historyFilterTime, historyFilterTimeType, historyFilterStartDate, historyFilterEndDate, historyFilterPageType, historyFilterMinPages, historyFilterMaxPages, historySortBy, historySortOrder]);
 
   // --- Refinement Handlers ---
   const handleRefineRequirements = async () => {
@@ -1968,7 +1960,7 @@ const App: React.FC = () => {
 
     const nextType = getNextPageType(items.length);
     const newItem: GeneratedSlide = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateId(),
       contentType: "text",
       pageType: nextType,
       originalFile: null,
@@ -3187,11 +3179,7 @@ const App: React.FC = () => {
     }));
   };
 
-  // Sync: Cover Content -> Project Title (Reverse) - REMOVED per user request
   // Project title is now independent from cover page content.
-  useEffect(() => {
-    // Logic removed to separate project title from cover page
-  }, []);
   const [localTitle, setLocalTitle] = useState("");
 
   // Sync active project title to local state when project changes

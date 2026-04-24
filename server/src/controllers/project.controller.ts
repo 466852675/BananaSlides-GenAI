@@ -71,7 +71,7 @@ export const getProject = async (req: Request, res: Response) => {
 export const createProject = async (req: Request, res: Response) => {
     try {
         const ownerId = getOwnerId(req);
-        const isPro = Boolean((req as any).user?.isPro);
+        const isPro = ((req as any).user?.vipLevel > 0 && (!req.user?.vipExpiresAt || new Date(req.user.vipExpiresAt) > new Date())) || ['ADMIN', 'SUPER_ADMIN'].includes((req as any).user?.role);
         const { title, status, isPinned, globalConfig, styleMap, globalStyleMap, items, thumbnailUrl, scenarioType } = req.body;
         if (scenarioType !== undefined && scenarioType !== null && !allowedScenarioTypes.has(String(scenarioType))) {
             res.status(400).json({ error: 'INVALID_SCENARIO_TYPE' });
@@ -91,6 +91,20 @@ export const createProject = async (req: Request, res: Response) => {
         }
 
         // Transform Input -> Prisma Format
+        const slideData = (items || []).map((item: any, idx: number) => ({
+            index: idx,
+            pageType: item.pageType,
+            contentType: item.contentType,
+            title: item.title || "Untitled",
+            content: item.textContent || item.content || "",
+            brief: item.brief || "",
+            variantCount: Math.min(Math.max(item.variantCount || 2, 1), 4),
+            variants: safeJSONStringify(item.variants) || "[]",
+            previewUrl: item.previewUrl || null,
+            originalFileRef: safeJSONStringify(item.originalFileRef ?? item.originalFile),
+            status: item.status === 'completed' ? 'success' : (item.status || "idle")
+        }));
+
         const projectData: any = {
             title,
             status: status || 'idle', // Use provided status or default to idle
@@ -99,23 +113,12 @@ export const createProject = async (req: Request, res: Response) => {
             scenarioType: scenarioType || 'BUSINESS',
             globalConfig: safeJSONStringify(globalConfig) || "{}",
             styleMap: safeJSONStringify(styleMap || globalStyleMap),
-            items: {
-                create: (items || []).map((item: any, idx: number) => ({
-                    ownerId,
-                    index: idx,
-                    pageType: item.pageType,
-                    contentType: item.contentType,
-                    title: item.title || "Untitled",
-                    content: item.textContent || item.content || "",
-                    brief: item.brief || "",
-                    variantCount: Math.min(Math.max(item.variantCount || 2, 1), 4),
-                    variants: safeJSONStringify(item.variants) || "[]",
-                    previewUrl: item.previewUrl || null,
-                    originalFileRef: safeJSONStringify(item.originalFileRef ?? item.originalFile),
-                    status: item.status === 'completed' ? 'success' : (item.status || "idle")
-                }))
-            }
         };
+
+        // Only include Slide creation if there are slides to create
+        if (slideData.length > 0) {
+            projectData.Slide = { create: slideData };
+        }
 
         const result = await projectService.create(ownerId, projectData);
         res.status(201).json(transformProjectOut(result));

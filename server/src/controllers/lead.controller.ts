@@ -8,7 +8,7 @@ import { hashPassword } from '../utils/password.util';
  */
 export async function submitLead(req: Request, res: Response) {
     try {
-        const userId = (req as any).user?.userId;
+        const userId = (req as any).user?.id;
         const data = req.body;
         const lead = await LeadService.createLead({ ...data, userId });
         res.status(201).json({ success: true, data: lead });
@@ -58,7 +58,7 @@ export async function addLeadNote(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
         const { note } = req.body;
-        const operatorId = (req as any).user?.userId || 'system';
+        const operatorId = (req as any).user?.id || 'system';
 
         if (!note) return res.status(400).json({ success: false, error: '备注不能为空' });
 
@@ -95,7 +95,7 @@ export async function getActivities(req: Request, res: Response) {
 export async function addActivity(req: Request, res: Response) {
     try {
         const leadId = req.params.id as string;
-        const operatorId = (req as any).user?.userId || 'system';
+        const operatorId = (req as any).user?.id || 'system';
         const { type, content, metadata } = req.body;
 
         if (!content) return res.status(400).json({ success: false, error: '内容不能为空' });
@@ -120,7 +120,7 @@ export async function addActivity(req: Request, res: Response) {
 export async function updateLeadStatus(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
-        const operatorId = (req as any).user?.userId || 'system';
+        const operatorId = (req as any).user?.id || 'system';
         const { status, notes } = req.body;
 
         const lead = await LeadService.updateLeadStatus(id, status, notes, operatorId);
@@ -137,7 +137,7 @@ export async function updateLeadStatus(req: Request, res: Response) {
 export async function assignLead(req: Request, res: Response) {
     try {
         const id = req.params.id as string;
-        const operatorId = (req as any).user?.userId || 'system';
+        const operatorId = (req as any).user?.id || 'system';
         const { assigneeId } = req.body;
 
         const lead = await LeadService.assignLead(id, assigneeId, operatorId);

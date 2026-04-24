@@ -15,7 +15,7 @@ export const prisma = new PrismaClient({
 });
 
 function initTestDatabase(): void {
-  if (!existsSync('./test.db')) {
+  if (!existsSync('./prisma/test.db')) {
     execSync('npx prisma db push --schema=./prisma/schema.prisma --accept-data-loss', {
       env: { ...process.env, DATABASE_URL: 'file:./test.db' },
       stdio: 'pipe',
@@ -24,7 +24,11 @@ function initTestDatabase(): void {
 }
 
 export async function cleanupDatabase(): Promise<void> {
-  const modelNames = ['User', 'Project', 'Order', 'PointAccount', 'Snapshot', 'Template', 'Role', 'Permission'];
+  const modelNames = [
+    'AgentMessage', 'AgentTask', 'AgentSession',
+    'Transaction', 'Slide',
+    'User', 'Project', 'Order', 'PointAccount', 'Snapshot', 'Template', 'Role', 'Permission'
+  ];
 
   for (const modelName of modelNames) {
     try {

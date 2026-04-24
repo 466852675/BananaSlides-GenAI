@@ -93,7 +93,11 @@ function scheduleResourceCleanup() {
     logger.info(`[Cron] 下次资源清理时间: ${next.toLocaleString('zh-CN')}`);
 
     setTimeout(async () => {
-      await runResourceCleanup();
+      try {
+        await runResourceCleanup();
+      } catch (err) {
+        logger.error('[Cron] 资源清理执行失败:', err);
+      }
       scheduleNext();
     }, delay);
   };

@@ -78,7 +78,6 @@ export const useRestoreSnapshot = () => {
         },
         onSuccess: () => {
              queryClient.invalidateQueries({ queryKey: ['projects'] });
-             queryClient.invalidateQueries({ queryKey: ['project'] });
         }
      });
 };

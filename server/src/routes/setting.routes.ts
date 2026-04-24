@@ -4,9 +4,8 @@ import { authenticate, requireAdmin, requirePermission } from '../middlewares/au
 
 const router = Router();
 
-// GET /api/settings - Full settings (for backend/AI service use)
-// 注意：此接口用于后端服务，保持无认证，由调用方保证安全
-router.get('/', handleGetSettings);
+// GET /api/settings - Full settings (requires authentication)
+router.get('/', authenticate, requireAdmin, handleGetSettings);
 
 // GET /api/settings/masked - Masked settings (for frontend display, hides API keys)
 // 需要查看系统设置权限
