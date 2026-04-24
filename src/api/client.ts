@@ -161,9 +161,12 @@ client.interceptors.response.use(
  * Upload a file to the backend
  * Returns the file URL (e.g. "/uploads/xyz.jpg")
  */
-export const uploadFile = async (file: File): Promise<string> => {
+export const uploadFile = async (file: File, extraParams?: Record<string, string>): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
+    if (extraParams) {
+        Object.entries(extraParams).forEach(([k, v]) => formData.append(k, v));
+    }
 
     // axios interceptor automatically unwraps response.data
     const result = await client.post('/upload', formData, {

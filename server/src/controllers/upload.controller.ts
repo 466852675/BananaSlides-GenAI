@@ -15,6 +15,7 @@ export const handleUpload = async (req: Request, res: Response): Promise<void> =
     try {
         const projectId = req.body?.projectId || null;
         const userId = (req as any).user?.id || null;
+        const purpose = req.body?.purpose || null;
 
         await resourceService.registerUserUpload({
             url,
@@ -22,7 +23,8 @@ export const handleUpload = async (req: Request, res: Response): Promise<void> =
             sizeBytes: req.file.size,
             mimeType: req.file.mimetype,
             projectId,
-            userId
+            userId,
+            isReferenced: purpose === 'avatar'
         });
     } catch (registerError) {
         // 注册失败不影响上传功能

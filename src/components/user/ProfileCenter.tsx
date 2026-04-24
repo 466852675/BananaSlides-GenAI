@@ -62,10 +62,9 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose, o
 
     const handleAvatarUpload = async (file: File) => {
         try {
-            const url = await uploadFile(file);
+            const url = await uploadFile(file, { purpose: 'avatar' });
             setFormData(prev => ({ ...prev, avatar: url }));
-            // Auto save avatar
-            updateProfileMutation.mutate({ ...formData, avatar: url });
+            updateProfileMutation.mutate({ nickname: formData.nickname, bio: formData.bio, avatar: url });
         } catch (error) {
             showToast('上传头像失败', 'error');
         }
@@ -129,8 +128,10 @@ export const ProfileCenter: React.FC<ProfileCenterProps> = ({ isOpen, onClose, o
                                             {formData.avatar ? (
                                                 <img src={formData.avatar} alt="Avatar" className="w-full h-full object-cover" />
                                             ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-slate-400">
-                                                    <User size={40} />
+                                                <div className="w-full h-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center">
+                                                    <span className="text-3xl font-black text-white select-none">
+                                                        {(formData.nickname || user?.email || 'U')[0].toUpperCase()}
+                                                    </span>
                                                 </div>
                                             )}
                                         </div>

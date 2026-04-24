@@ -533,6 +533,19 @@ export async function updateProfile(userId: string, data: UpdateProfileDto): Pro
             }
         });
 
+        // 保护头像资源，防止被清理服务删除
+        if (data.avatar && data.avatar.startsWith('/uploads/')) {
+            const avatarAsset = await tx.assetRegistry.findFirst({
+                where: { url: data.avatar, status: 'ACTIVE' }
+            });
+            if (avatarAsset) {
+                await tx.assetRegistry.update({
+                    where: { id: avatarAsset.id },
+                    data: { isReferenced: true }
+                });
+            }
+        }
+
         // 首次绑定手机号赠送积分
         if (shouldRewardPhone) {
             const settings = await SettingService.getSettings();

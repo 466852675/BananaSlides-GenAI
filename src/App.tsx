@@ -4872,7 +4872,7 @@ const App: React.FC = () => {
         {/* User Modals */}
         {showProfile && (
           <Suspense fallback={null}>
-            <ProfileCenter isOpen={showProfile} onClose={() => setShowProfile(false)} />
+            <ProfileCenter isOpen={showProfile} onClose={() => setShowProfile(false)} onToast={(msg, type) => showToast(msg, type)} />
           </Suspense>
         )}
         <MyOrdersModal

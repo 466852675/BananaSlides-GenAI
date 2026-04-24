@@ -73,6 +73,15 @@ npx playwright test         # E2E 测试
 cd server && bun test       # 后端测试
 ```
 
+### 测试账号 (开发环境)
+管理员账号（由 Bootstrap 自动创建）：
+- 邮箱: `admin@local`
+- 用户名: `admin`
+- 密码: `admin12345678`
+- 角色: SUPER_ADMIN（永久 VIP）
+
+**注意**: 始终使用此账号进行模拟用户测试验证。
+
 ### PPT编译脚本 (AI实用化应用大赛)
 ```bash
 cd AI实用化应用大赛/03-脚本代码

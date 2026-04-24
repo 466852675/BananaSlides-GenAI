@@ -201,8 +201,9 @@ export class ResourceService {
     mimeType: string;
     projectId?: string;
     userId?: string;
+    isReferenced?: boolean;
   }) {
-    const { url, filename, sizeBytes, mimeType, projectId, userId } = params;
+    const { url, filename, sizeBytes, mimeType, projectId, userId, isReferenced } = params;
 
     // 根据文件类型确定 AssetType
     const type = this.determineUploadType(mimeType);
@@ -214,6 +215,7 @@ export class ResourceService {
       projectId,
       sizeBytes,
       mimeType,
+      isReferenced: isReferenced ?? false,
       metadata: {
         source: 'user-upload',
         userId
