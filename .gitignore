@@ -247,6 +247,14 @@ tests/e2e/fail_*.png
 # OpenCode 运行时文件
 .opencode/
 
+# oh-my-claudecode (OMC)
+# OMC 会话状态和本地运行时文件
+.omc/
+
+# OpenSpec
+# OpenSpec 工作流本地文件 (proposal/design/spec/tasks)
+openspec/
+
 # 通用 AI 上下文目录
 # AI 上下文文件
 contexts/
