@@ -17,10 +17,10 @@ const PRESETS = [
         isActive: process.env.AI_PROVIDER === 'Volcengine' ? 1 : 0,
         config: {
             baseUrl: process.env.VOLCENGINE_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
-            apiKey: process.env.VOLCENGINE_API_KEY || '2b927725-d354-4573-8078-eec60fc1bc52',
-            textModel: process.env.VOLCENGINE_MODEL_TEXT || 'ep-20260121163958-vk8db',
-            imageModel: process.env.VOLCENGINE_MODEL_IMAGE || 'ep-20260122074430-7tgtg',
-            visionModel: process.env.VOLCENGINE_MODEL_VISION || 'ep-20260121164254-bngbw'
+            apiKey: process.env.VOLCENGINE_API_KEY || '',
+            textModel: process.env.VOLCENGINE_MODEL_TEXT || '',
+            imageModel: process.env.VOLCENGINE_MODEL_IMAGE || '',
+            visionModel: process.env.VOLCENGINE_MODEL_VISION || ''
         }
     },
     {
@@ -29,21 +29,21 @@ const PRESETS = [
         description: '自定义组合模式，适用于本地开发或 OneAPI 中转。',
         isActive: process.env.AI_PROVIDER === 'CustomCombo' ? 1 : 0,
         config: {
-            apiKey: process.env.CUSTOM_COMBO_API_KEY || 'sk-107362d770ee4b2b97b7b77d1b448993',
+            apiKey: process.env.CUSTOM_COMBO_API_KEY || '',
             combo: {
                 text: {
                     baseUrl: process.env.CUSTOM_COMBO_TEXT_BASE_URL || 'http://127.0.0.1:8045/v1',
-                    apiKey: process.env.CUSTOM_COMBO_TEXT_API_KEY || 'sk-107362d770ee4b2b97b7b77d1b448993',
+                    apiKey: process.env.CUSTOM_COMBO_TEXT_API_KEY || '',
                     model: process.env.CUSTOM_COMBO_TEXT_MODEL || 'gemini-3-flash'
                 },
                 image: {
                     baseUrl: process.env.CUSTOM_COMBO_IMAGE_BASE_URL || 'http://127.0.0.1:8045/v1',
-                    apiKey: process.env.CUSTOM_COMBO_IMAGE_API_KEY || 'sk-107362d770ee4b2b97b7b77d1b448993',
+                    apiKey: process.env.CUSTOM_COMBO_IMAGE_API_KEY || '',
                     model: process.env.CUSTOM_COMBO_IMAGE_MODEL || 'gemini-3-pro-image'
                 },
                 vision: {
                     baseUrl: process.env.CUSTOM_COMBO_VISION_BASE_URL || 'http://127.0.0.1:8045/v1',
-                    apiKey: process.env.CUSTOM_COMBO_VISION_API_KEY || 'sk-107362d770ee4b2b97b7b77d1b448993',
+                    apiKey: process.env.CUSTOM_COMBO_VISION_API_KEY || '',
                     model: process.env.CUSTOM_COMBO_VISION_MODEL || 'gemini-3-flash'
                 }
             }
@@ -56,7 +56,7 @@ const PRESETS = [
         isActive: process.env.AI_PROVIDER === 'ModelScope' ? 1 : 0,
         config: {
             baseUrl: process.env.MODELSCOPE_BASE_URL || 'https://api-inference.modelscope.cn/v1',
-            apiKey: process.env.MODELSCOPE_API_KEY || 'ms-28562bc5-d506-4a45-b855-6a155a0b8a97',
+            apiKey: process.env.MODELSCOPE_API_KEY || '',
             textModel: process.env.MODELSCOPE_MODEL_TEXT || 'ZhipuAI/GLM-4.7',
             imageModel: process.env.MODELSCOPE_MODEL_IMAGE || 'Tongyi-MAI/Z-Image-Turbo',
             visionModel: process.env.MODELSCOPE_MODEL_VISION || 'Qwen/Qwen3-VL-30B-A3B-Instruct'
@@ -119,7 +119,7 @@ const PRESETS = [
 const GLOBAL_CONFIG = {
     docParser: {
         provider: 'MinerU',
-        apiKey: 'eyJ0eXBlIjoiSldUIiwiYWxnIjoiSFM1MTIifQ.eyJqdGkiOiI1NTcwNDMzNiIsInJvbCI6IlJPTEVfUkVHSVNURVIiLCJpc3MiOiJPcGVuWExhYiIsImlhdCI6MTc2OTA0NDk0MSwiY2xpZW50SWQiOiJsa3pkeDU3bnZ5MjJqa3BxOXgydyIsInBob25lIjoiIiwib3BlbklkIjpudWxsLCJ1dWlkIjoiZjhiM2E0YjYtYmMxYi00ZTZmLWIzMGQtYTExOGVkMjA4NGUyIiwiZW1haWwiOiIiLCJleHAiOjE3NzAyNTQ1NDF9.1TORqI0dMdacXLlCwn_K2N4YsnitRZNCtRixTzZUcrnXnqAN9Q3TOtSqvM47_fLOL1pvqLrVlioCDwYZh1e7eA',
+        apiKey: process.env.MINERU_API_KEY || '',
         baseUrl: 'https://mineru.net'
     },
     imageResolution: '2048x2048',

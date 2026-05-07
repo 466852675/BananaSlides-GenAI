@@ -33,14 +33,14 @@ async function main() {
             points: 1000
         },
         {
-            email: '466852675@qq.com',
+            email: 'testuser@example.com',
             username: 'user466',
             nickname: '测试用户',
             role: UserRole.USER,
             points: 500
         },
         {
-            phone: '13294120521',
+            phone: '13800000000',
             nickname: '手机测试用户',
             role: UserRole.USER,
             points: 100

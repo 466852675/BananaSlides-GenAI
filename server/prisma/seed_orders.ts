@@ -12,14 +12,14 @@ async function main() {
     const testUser = await prisma.user.findFirst({
         where: {
             OR: [
-                { email: '466852675@qq.com' },
+                { email: 'testuser@example.com' },
                 { username: 'user466' }
             ]
         }
     });
 
     if (!testUser) {
-        console.error('[SeedOrders] ❌ 未找到测试用户 466852675@qq.com，请先运行 seed_users.ts');
+        console.error('[SeedOrders] ❌ 未找到测试用户 testuser@example.com，请先运行 seed_users.ts');
         process.exit(1);
     }
 

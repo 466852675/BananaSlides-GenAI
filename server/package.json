@@ -1,7 +1,8 @@
 {
-  "name": "server",
+  "name": "yh-ai-ppt-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "YH-AI PPT 后端服务",
+  "keywords": ["ppt", "ai", "express", "prisma"],
   "main": "index.js",
   "scripts": {
     "dev": "ts-node src/app.ts",
@@ -14,7 +15,15 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/466852675/YH-AI-PPT.git",
+    "directory": "server"
+  },
+  "bugs": {
+    "url": "https://github.com/466852675/YH-AI-PPT/issues"
+  },
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "@types/express-rate-limit": "^5.1.3",

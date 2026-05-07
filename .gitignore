@@ -228,6 +228,8 @@ tests/e2e/fail_*.png
 # Claude Code
 # Claude 上下文和历史
 .claude/
+# Claude 个人开发配置 (包含 AI 工具指令，非项目共享)
+CLAUDE.md
 # Claude Agent 目录
 .agent/
 

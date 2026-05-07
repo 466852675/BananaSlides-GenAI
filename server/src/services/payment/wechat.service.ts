@@ -368,13 +368,17 @@ export class WechatPayService {
      * 生成签名（真实环境使用 - 兼容旧版 API）
      */
     private static generateSignature(params: Record<string, any>): string {
-        const apiKey = process.env.WECHAT_API_KEY || 'mock_key';
+        const apiKey = process.env.WECHAT_API_KEY;
+        if (!apiKey && !this.isMockMode) {
+            throw new Error('WECHAT_API_KEY 未配置，无法生成签名');
+        }
+        const key = apiKey || 'mock_key';
         
         const signString = Object.keys(params)
-            .filter(key => key !== 'sign' && params[key] !== undefined)
+            .filter(k => k !== 'sign' && params[k] !== undefined)
             .sort()
-            .map(key => `${key}=${params[key]}`)
-            .join('&') + `&key=${apiKey}`;
+            .map(k => `${k}=${params[k]}`)
+            .join('&') + `&key=${key}`;
 
         return crypto
             .createHash('md5')

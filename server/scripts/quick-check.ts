@@ -29,8 +29,8 @@ async function quickCheck() {
     const testUsers = await prisma.user.findMany({
         where: {
             OR: [
-                { email: { contains: '466852675' } },
-                { phone: { contains: '13294120521' } }
+                { email: { contains: 'testuser' } },
+                { phone: { contains: '13800000000' } }
             ]
         },
         select: { id: true, email: true, username: true, role: true }

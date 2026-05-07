@@ -15,15 +15,6 @@ npm run test:run     # Vitest 运行一次
 npm run test:e2e     # Playwright E2E 测试（baseURL: localhost:1000）
 ```
 
-### 运行单个测试
-```bash
-npx vitest src/utils.test.ts              # Vitest 单文件测试
-npx vitest -t "具体测试名称"               # Vitest 按名称测试
-npx playwright test tests/e2e/foo.spec.ts # Playwright 单文件测试
-npx playwright test -g "测试名称"          # Playwright 按名称测试
-npx playwright test --headed              # 显示浏览器窗口
-```
-
 ### 后端（server/）
 ```bash
 cd server
@@ -31,11 +22,46 @@ npm run dev          # ts-node src/app.ts → localhost:1111
 npm run build        # tsc 编译 → dist/
 npm start            # node dist/app.js
 npm test             # Bun 测试
-npm test:watch       # Bun 监听模式
+npm run test:watch   # Bun 监听模式
+npm run test:coverage# Bun 覆盖率
+npm run db:seed      # 数据库种子数据
 npx prisma db push   # 同步数据库结构（开发环境）
 npx prisma migrate dev --name <名称>  # 创建数据库迁移
+npx prisma migrate deploy            # 应用迁移（生产环境）
 npx prisma studio    # 数据库 GUI
 ```
+
+### 运维脚本（scripts/）
+```bash
+启动应用.bat          # 同时启动前后端
+停止服务.bat          # 终止 Node/Vite 进程
+初始化数据库.bat      # Prisma push + seed
+备份数据库.bat        # SQLite dump
+强制重置数据库(慎用).bat  # 删除 dev.db 后重建
+```
+
+### 快捷启动
+```bash
+start_app.bat        # Windows 一键启动前后端
+```
+
+### 运行单个测试
+```bash
+npx vitest src/utils.test.ts              # Vitest 单文件测试
+npx vitest -t "具体测试名称"               # Vitest 按名称测试
+npx playwright test tests/e2e/foo.spec.ts # Playwright 单文件测试
+npx playwright test -g "测试名称"          # Playwright 按名称测试
+npx playwright test --headed              # 显示浏览器窗口
+cd server && bun test                     # 后端 Bun 测试
+cd server && bun test --watch             # 后端监听模式
+```
+
+### 测试账号（开发环境）
+管理员账号（由 Bootstrap 自动创建）：
+- 邮箱: `admin@local`
+- 用户名: `admin`
+- 密码: `admin12345678`
+- 角色: SUPER_ADMIN（永久 VIP）
 
 ### 提交前验证
 ```bash
@@ -115,40 +141,79 @@ Token 存储 key：`bananaslides_token`
 ## 项目结构
 ```
 YH-AI PPT/
-├── src/                    # 前端（React）
-│   ├── api/                # API 客户端 + TanStack Query hooks
-│   ├── components/         # React 组件（admin/, auth/, user/）
-│   ├── contexts/           # React 上下文（AuthContext）
-│   ├── hooks/              # 自定义 hooks（useWebSocket, usePermissions）
-│   ├── services/           # Gemini/导出服务
-│   ├── styles/             # CSS
-│   ├── types.ts            # 全局类型定义
-│   └── utils.ts            # 工具函数
-├── server/                 # 后端（Express）
+├── src/                          # 前端（React）
+│   ├── api/                      # API 客户端 + TanStack Query hooks（17 个模块）
+│   │   ├── client.ts             # 含 Token 自动刷新
+│   │   ├── agent.ts / auth.ts / projects.ts / ...
+│   │   └── admin.ts / settings.ts / refund.ts / ...
+│   ├── components/               # React 组件
+│   │   ├── admin/                # 后台管理页面
+│   │   ├── auth/                 # 登录注册
+│   │   ├── dashboard/            # 仪表盘
+│   │   ├── landing/              # 着陆页
+│   │   ├── message/              # 消息通知组件
+│   │   ├── outline/              # 大纲组件
+│   │   ├── shared/               # 共享卡片
+│   │   ├── ui/                   # UI 基础组件
+│   │   ├── user/                 # 用户中心
+│   │   └── workbench/            # 工作台
+│   ├── contexts/                 # React 上下文（AuthContext）
+│   ├── hooks/                    # 自定义 hooks
+│   │   ├── useWebSocket.ts
+│   │   ├── usePermissions.ts
+│   │   ├── useMessages.ts
+│   │   ├── useGenerationResume.ts
+│   │   └── useToast.ts
+│   ├── services/                 # AI 服务/导出服务
+│   ├── styles/                   # CSS（tailwind.css, animations.css, landing.css）
+│   ├── types.ts                  # 全局类型定义
+│   └── utils.ts                  # 工具函数
+├── server/                       # 后端（Express）
 │   ├── src/
-│   │   ├── routes/         # API 端点
-│   │   ├── services/       # 业务逻辑（ai, agent, points）
-│   │   ├── middleware/    # 单数：rateLimit, validate
-│   │   ├── middlewares/   # 复数：auth, requirePermission, upload
-│   │   └── utils/          # 内容过滤、提示词安全
-│   ├── prisma/             # 数据库结构 + 迁移 + 种子
-│   └── uploads/            # 本地文件存储
-└── tests/e2e/              # Playwright E2E 测试
+│   │   ├── routes/               # API 端点（21 个路由模块）
+│   │   ├── controllers/          # 控制器层（12 个模块）
+│   │   ├── services/             # 业务逻辑层（40+ 个服务）
+│   │   ├── middleware/           # 单数：rateLimit, validate
+│   │   ├── middlewares/          # 复数：auth, requirePermission, upload
+│   │   ├── validators/           # Zod 验证器
+│   │   ├── utils/                # 工具函数（logger, jwt, 内容过滤等）
+│   │   ├── types/                # 类型定义（agent, user, express）
+│   │   ├── constants/            # 常量（colorPalette）
+│   │   ├── bootstrap/            # 启动引导
+│   │   ├── jobs/                 # 定时任务（cron.ts）
+│   │   ├── scripts/              # 运维脚本（seed, unlock）
+│   │   └── __tests__/            # 后端测试（Bun）
+│   │       ├── setup.ts
+│   │       ├── integration/
+│   │       └── services/
+│   ├── prisma/                   # 数据库
+│   │   ├── schema.prisma         # 32 个模型
+│   │   ├── migrations/
+│   │   ├── seed_builtin.ts       # 内置种子
+│   │   ├── seed_users.ts         # 用户种子
+│   │   ├── seed_orders.ts        # 订单种子
+│   │   └── seed_permissions_v9.ts# 权限种子
+│   └── uploads/                  # 本地文件存储
+├── docs/                         # 项目文档（架构/数据库/API 等）
+├── scripts/                      # 运维 bat 脚本
+└── tests/e2e/                    # Playwright E2E 测试
 ```
 
 ## 核心架构说明
 
-- **AI 提供商**：Gemini（原生 SDK）、火山引擎、智谱、SiliconFlow、ModelScope、CustomCombo — 均通过路由适配器模式
+- **AI 提供商**：基于 Router-Adapter 适配器架构灵活切换全球各大厂商生成模型 — Gemini（原生 SDK）、火山引擎、智谱、DeepSeek、SiliconFlow、ModelScope、OpenAI-compatible、本地 Ollama、CustomCombo 等，按任务类型（生图/推理/视觉分析）自动路由最优模型资源
 - **Agent 模式**：自然语言驱动 PPT 生成，9 个 function-calling 工具，SSE 进度 + WebSocket 同步
 - **RBAC**：7 个角色（USER → SUPER_ADMIN），通过 `requirePermission()` 中间件检查权限
-- **积分与计费**：VIP 定价、限流（slide_image 30/小时，默认 100/小时）、事务生命周期
+- **积分与计费**：VIP 定价、限流（slide_image 30/小时，默认 100/小时）、事务生命周期（Pending → Completed → Refunded）
+- **支付系统**：支付宝 / 微信（当前 Mock 模式，需配置商户密钥启用），完整退款引擎（7 项风控规则）
 - **WebSocket**：基于 `projectId` 的项目房间广播，JWT 认证，30 秒心跳
 - **Vite 代理**：`/api` → `http://127.0.0.1:1111`，支持 SSE 长连接
+- **通知集群**：ai-notification | admin-notification | vip-notification | order-notification | security-notification
 
 ## 关键机制
 
 ### .env 热重载
-后端通过 `fs.watch` 监听 `.env` 文件变化，自动调用 `SettingService.reloadEnv()` — 修改配置无需重启服务。
+后端通过 `fs.watch` 监听 `.env` 文件变化，自动调用 `SettingService.reloadEnv()`。注意：AI 配置仅在首次启动时从 .env 写入数据库，之后以管理后台为准。非 AI 配置（JWT、CORS、端口等）修改后需重启服务。
 
 ### Token 自动刷新
 前端 API 客户端（`src/api/client.ts`）内置 401 拦截 + 自动刷新流程：
@@ -205,31 +270,57 @@ YH-AI PPT/
 - 前端入口: `src/components/TrashPage.tsx`（已懒加载）
 
 ### 消息与通知系统
-- **消息**: `message.service.ts` + `message-archive.service.ts` + `message-template.service.ts`
-- **通知集群**: `ai-notification` | `admin-notification` | `vip-notification` | `order-notification` | `security-notification`
+- **消息**: `message.service.ts` + `message-archive.service.ts` + `message-template.service.ts` + `message-settings.service.ts`
+- **通知集群**: `ai-notification` | `admin-notification` | `vip-notification` | `order-notification` | `security-notification` | `activity-notification` | `points-notification`
 - **通知路由**: `notification.routes.ts` — 轮询新通知、标记已读
-- 前端入口: `src/components/MessagesPage.tsx`（已懒加载）
+- **前端入口**: `src/components/message/MessagesPage.tsx`（已懒加载）、`NotificationBell.tsx`
+
+### 支付与退款系统
+- **支付服务**: `server/src/services/payment/alipay.service.ts` + `wechat.service.ts`
+- **退款引擎**: `refund.service.ts` + `refund-processor.service.ts` + `refund-edge-cases.service.ts` + `refund-exception.service.ts` + `refund-notification.service.ts`
+- **风控规则**: 7 项规则（反欺诈、频率检测、金额阈值等）+ 自动审批 + 权益回收
+- **订单服务**: `order.service.ts` + `product.service.ts`
 
 ### MinerU 文档解析
-环境变量 `DOC_PARSER_PROVIDER`/`DOC_PARSER_KEY`/`DOC_PARSER_BASE` 控制 MinerU 文档解析服务。
+`mineru.service.ts` + `mineru.routes.ts` — 环境变量 `DOC_PARSER_PROVIDER`/`DOC_PARSER_KEY`/`DOC_PARSER_BASE` 控制。
 Vite 开发代理转发到 MinerU 的 Web 端和 OSS 端。
+
+### 资源与配额管理
+- **资源服务**: `resource.service.ts` + `resource-cleanup.service.ts` — 上传资源管理 + 定时清理
+- **配额服务**: `quota.service.ts` — AI 调用额度跟踪
+- **审计服务**: `audit.service.ts` — 操作审计日志
 
 ## 关键文件
 
 | 功能 | 文件 |
 |------|------|
-| 主入口 | `src/App.tsx`（~4700 行，包含路由和状态编排）|
+| 前端主入口 | `src/App.tsx`（~5000 行，包含路由和状态编排）|
 | 认证上下文 | `src/contexts/AuthContext.tsx` |
 | API 客户端 | `src/api/client.ts`（含 Token 自动刷新）|
-| API hooks | `src/api/`（TanStack Query hooks）|
+| API hooks | `src/api/`（17 个模块，TanStack Query hooks）|
+| 权限守卫 | `src/components/PermissionGuard.tsx` |
+| 权限 Hook | `src/hooks/usePermissions.ts` |
+| Agent 前端 | `src/components/AgentView.tsx` |
 | 后端入口 | `server/src/app.ts` |
-| AI 路由 | `server/src/services/ai.service.ts` |
-| Agent 服务 | `server/src/services/agent.service.ts` |
-| WebSocket | `server/src/services/websocket.service.ts` |
+| 启动引导 | `server/src/bootstrap/admin.bootstrap.ts` |
+| AI 路由服务 | `server/src/services/ai.service.ts`（6+ 提供商，1 分钟缓存）|
+| Agent 服务 | `server/src/services/agent.service.ts`（~108KB，9 大 AI 工具）|
+| WebSocket 服务 | `server/src/services/websocket.service.ts` |
 | 积分服务 | `server/src/services/points.service.ts` |
 | 退款引擎 | `server/src/services/refund.service.ts` |
-| 数据库 | `server/prisma/dev.db` |
-| RBAC 中间件 | `server/src/middlewares/requirePermission.ts` |
+| 支付服务 | `server/src/services/payment/alipay.service.ts` / `wechat.service.ts` |
+| 快照服务 | `server/src/services/snapshot.service.ts` |
+| 回收站服务 | `server/src/services/trash.service.ts` |
+| MinerU 解析 | `server/src/services/mineru.service.ts` |
+| 数据库 Schema | `server/prisma/schema.prisma`（32 个模型）|
+| 速率限制 | `server/src/middleware/rateLimitMiddleware.ts` |
+| RBAC 中间件 | `server/src/middlewares/auth.middleware.ts` |
+| Zod 验证器 | `server/src/validators/index.ts` |
+| Cron 调度器 | `server/src/jobs/cron.ts`（setTimeout 实现）|
+| 内容过滤 | `server/src/utils/content-filter.ts` |
+| Prompt 安全 | `server/src/utils/prompt-security.ts` |
+| Token 工具 | `server/src/utils/jwt.util.ts` |
+| 日志工具 | `server/src/utils/logger.ts` |
 
 ## 非标准偏差（已知问题）
 
@@ -239,3 +330,4 @@ Vite 开发代理转发到 MinerU 的 Web 端和 OSS 端。
 4. **混合测试运行器**：Vitest + Playwright（前端），Bun（后端）
 5. **Prisma 单例** 通过 `globalThis.prisma` 防止热重载泄漏
 6. **Cron 调度** 使用 `setTimeout` 而非 node-cron
+7. **`src/App.tsx`** 约 5000 行，包含所有路由和状态编排（单体组件）

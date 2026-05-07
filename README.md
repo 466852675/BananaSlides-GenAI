@@ -1,13 +1,16 @@
 # 🚀 YH-AI PPT - 智能演示文稿全链条设计平台
 
-> **新一代混合 AI 引擎驱动的智能演示文稿全链条设计平台**
-> 融合 Google Gemini 的"视觉原生"能力与 GLM/DeepSeek 生态的通用逻辑推理，集成 **MinerU 工业级智能文档解析内核**，创新推出 **Agent 对话式生成模式**（自然语言驱动全流程），并内置 **完整的商业化 SaaS 基础设施**（支付、积分、会员、退款），旨在通过"意图驱动"的设计哲学，将复杂的 PPT 创作过程降维至分钟级响应，同时提供零代码的商业变现能力。
+> **新一代多模型 AI 引擎驱动的智能演示文稿全链条设计平台**
+> 基于 Router-Adapter 适配器架构灵活切换全球各大厂商生成模型（Gemini / GLM / DeepSeek / 火山引擎 / 智谱 / OpenAI / SiliconFlow / ModelScope / 本地 Ollama 等），按任务类型自动路由最优模型资源，集成 **MinerU 工业级智能文档解析内核**，创新推出 **Agent 对话式生成模式**（自然语言驱动全流程），将复杂的 PPT 创作过程降维至分钟级响应。
+>
+> 🏢 **企业用户额外获得**: 内置完整的商业化 SaaS 基础设施（支付、积分、会员、退款），零代码搭建 AI 产品商业变现能力。详见下方 [双使用场景](#-双使用场景-dual-usage-scenarios) 章节。
 
 [![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)](#)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](#)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4.1-38B2AC?logo=tailwind-css)](#)
 [![Prisma](https://img.shields.io/badge/Prisma-SQLite-2D3748?logo=prisma)](#)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0-blue)](./LICENSE)
 
 ---
 
@@ -17,7 +20,7 @@
 
 - **内容重塑与语义唤醒**: 彻底打通从"非结构化文档 -> 结构化大纲 -> 详细章节正文"的自动演进链路，支持 AI 主题修饰与**原生的 MinerU 文档语义解构**。
 - **视觉基因的精准复制**: 独创的 4 层级 Prompt 智能合成算法，配合视觉预处理（Vision Pre-processing），确保每一页变体图片都能完美吻合参考图的质感、配色与构图。原生支持 **火山引擎 (Volcengine)** 并发加速与 Seed 锁定技术。
-- **混合 AI 引擎的全球化调度**: 灵活切换 GLM-4.7 (逻辑推理)、Gemini Image (极致审美) 与本地 Llama/Qwen (离线安全)，实现成本、速度与质量的最优指数级平衡。已集成 **Gemini 2.0/1.5** 路由别名 (`gemini-3-*`)。
+- **多模型 AI 引擎的全球化调度**: 基于 Router-Adapter 适配器架构灵活切换全球各大厂商生成模型（Gemini / GLM / DeepSeek / 火山引擎 / 智谱 / OpenAI / SiliconFlow / ModelScope / 本地 Ollama 等），按任务类型（生图、推理、视觉分析）自动路由最优模型资源，实现成本、速度与质量的最优平衡。支持一键热切换，无需重启即可在云端与本地大模型间无缝流转。
 - **工业级生产力韧性**: 基于快照的版本时光机与项目自动归档系统，让每一次灵感闪现都有迹可循，支持资产的二次循环利用。
 - **商业化就绪的 SaaS 基础设施**: 内置支付（支付宝/微信，接口已预留）、积分、VIP 会员、退款（接口已预留）、消息推送等完整商业化能力框架，配置密钥后即可启动 AI 产品的商业变现。
 - **Agent 对话式生成**: 创新的 AI Agent 模式，通过自然语言对话即可完成从大纲到配图的全流程 PPT 生成。支持引导式确认与自动执行双模式，9 大 AI 工具智能调度（OpenAI Function Calling 格式），SSE + WebSocket 实时进度推送，将 PPT 创作门槛降至"会说话就行"。
@@ -39,11 +42,99 @@
 
 ---
 
+## 🌐 双使用场景 (Dual Usage Scenarios)
+
+YH-AI PPT 同时服务两类用户——个人开发者仅需 5 个配置项即可启动 AI 创作，企业团队则可激活完整的商业化运营能力。同一套代码，两种部署复杂度。
+
+| 维度 | 🏠 个人模式 | 🏢 企业模式 |
+|---|---|---|
+| **目标** | AI 创作 PPT，自我使用 | 商业化 SaaS 运营，对外服务 |
+| **必填配置** | 5 项（AI Key + JWT + DB） | 全部配置 + 商户密钥 + SSL |
+| **核心功能** | 大纲→内容→配图→导出 | 全功能 + 管理后台 + 支付 + VIP |
+| **可忽略模块** | admin 面板、支付、VIP、积分、退款 | 无 |
+| **许可证** | AGPL-3.0（个人自用无附加要求） | AGPL-3.0 + 二次开发标注来源 |
+
+### 🏠 个人轻量部署 (Personal Mode)
+
+只需以下最小配置即可启动：
+
+```env
+# 个人模式最小配置（5 项必填）
+PORT=1111
+DATABASE_URL="file:./dev.db"                              # SQLite 内置，无需额外安装
+JWT_SECRET="your-secret-key-at-least-32-characters"       # openssl rand -base64 32 生成
+AI_PROVIDER="Gemini"                                      # 可选: Gemini, OpenAI, Volcengine, Zhipu, SiliconFlow, CustomCombo
+GEMINI_API_KEY="your-gemini-api-key"                      # 或其他提供商对应的 API Key
+```
+
+> 未配置支付密钥时，支付功能自动以 Mock 模式运行（模拟支付），管理后台仍可访问但无真实交易数据。个人部署可安全忽略。
+
+### 🏢 企业商业化运营 (Enterprise Mode)
+
+完整配置包含支付、积分、VIP、邮件、风控等 6 组：
+
+```env
+# ===== 核心基础 =====
+PORT=1111
+DATABASE_URL="file:./prod.db"
+JWT_SECRET="64-char-secret-for-production"
+ALLOWED_ORIGINS="https://your-domain.com"
+
+# ===== AI 混合引擎 =====
+AI_PROVIDER="CustomCombo"                                 # 按任务类型自动路由最优模型
+COMBO_TEXT_MODEL="gemini-3-flash"
+COMBO_IMAGE_MODEL="gemini-3-pro-image"
+COMBO_VISION_MODEL="gemini-3-flash"
+
+# ===== 支付渠道 =====
+# 支付宝（需申请商户账号）
+ALIPAY_APP_ID="your-alipay-app-id"
+ALIPAY_PRIVATE_KEY="your-alipay-private-key"
+ALIPAY_MOCK_MODE="false"                                  # 关闭 Mock 才启用真实支付
+
+# 微信支付（需申请商户账号）
+WECHAT_MCH_ID="your-wechat-mch-id"
+WECHAT_APP_ID="your-wechat-app-id"
+WECHAT_MOCK_MODE="false"                                  # 关闭 Mock 才启用真实支付
+
+# ===== 积分与会员 =====
+POINTS_TO_YUAN_RATE=0.1                                   # 积分与人民币兑换比例
+DEFAULT_NEW_USER_POINTS=30                                # 新用户默认赠送积分
+
+# ===== 邮件通知 =====
+SMTP_HOST="smtp.example.com"
+SMTP_PORT=587
+SMTP_USER="noreply@your-domain.com"
+SMTP_PASS="your-smtp-password"
+
+# ===== 安全与风控 =====
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+MAX_LOGIN_FAIL_COUNT=5
+ACCOUNT_LOCK_DURATION_MINUTES=30
+```
+
+企业模式额外激活的管理模块详见下方第 5-8 节功能展示。
+
+### ⚖️ 许可证与二次开发声明 (License & Attribution)
+
+本项目采用 [GNU AGPL-3.0-or-later](./LICENSE) 许可证开源。
+
+- **所有用户**: 修改后的代码必须以相同许可证开源（AGPL-3.0 核心义务）
+- **企业二次开发**: 在对外服务的 SaaS 产品中，必须在产品可见位置（页面/关于页/登录页）标注 **"Based on YH-AI PPT"** 并附原项目链接，以尊重原创贡献
+- **个人自用**: 无附加标注要求
+
+> 二次开发标注不属于 AGPL-3.0 的法定条款，而是项目社区的礼仪性要求，旨在促进开源生态的良性发展。
+
+---
+
 ## 🎨 系统视觉全景与业务深度解析 (System Visual Tour & Deep Dive)
 
 > **YH-AI PPT** 并不是简单的绘图工具，它是一套完整的"意图驱动"设计操作系统。以下我们将从九个核心维度，为您揭秘其工业级的生产力奥秘。
 
 > **双模式架构**：YH-AI PPT 提供两种并行的 PPT 创作范式——**工作台模式**（手动配置 + 批量生成，精细控制每一页）和 **Agent 对话模式**（自然语言驱动全流程，一句话从想法到演示）。两种模式共享同一项目数据层，顶部 Tab 一键切换，任何一方的修改实时同步到另一方。下文第 1-8 节主要展示工作台模式能力，第 9 节聚焦 Agent 对话模式。
+
+> **阅读导航**: 个人用户可重点阅读第 1-4 节（创作核心）和第 9 节（Agent 模式），第 5-8 节为企业商业化功能，个人部署可安全忽略。
 
 ### 1. 🚀 敏捷协作矩阵 (Agile Collaboration Matrix)
 
@@ -105,9 +196,9 @@
 | :--------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
 | ![导出详情](./image/01-智能生产力链路/10-本地导出-本地导出详情预览+支持图片PRD与PPTX+满足多场景交付需求.png) | ![图片包](./image/01-智能生产力链路/11-图片包导出-超高清图片包导出+快速分享与分发+适配任何社交媒体终端.gif) |
 
-| 13 - 成果演示 (高保真)                                                                                     |  |
-| :--------------------------------------------------------------------------------------------------------- | :- |
-| ![高保真展示](./image/01-智能生产力链路/12-成果演示-PDF全屏演示预览+高保真视觉效果+让您的汇报更具感染力.png) |  |
+| 13 - 成果演示 (高保真)                                                                                     | 14 - PPTX 导出 (原生体验)                                                                                      |
+| :--------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
+| ![高保真展示](./image/01-智能生产力链路/12-成果演示-PDF全屏演示预览+高保真视觉效果+让您的汇报更具感染力.png) | ![PPTX导出](./image/01-智能生产力链路/13-PPT导出-PowerPoint原生导出体验+支持二次编辑+确保演示万无一失.gif) |
 
 ---
 
@@ -239,7 +330,7 @@
 - **📖 章节总述**: 基于 RBAC（基于角色的访问控制）的精细化权限管理系统，支持 6 级用户角色、多维度权限粒度，配合完整的操作审计日志，满足企业级合规要求。
 - **🎯 典型场景**: 管理员分级授权、运营人员权限隔离、敏感操作审计追踪、异常登录风控、数据安全合规。
 - **🛠️ 核心功能**: 
-  - 6 级角色体系（USER / BASIC / PROFESSIONAL / PREMIUM / ENTERPRISE / ADMIN / SUPER_ADMIN）
+  - 6 级角色体系（USER / VIP / PROFESSIONAL / ENTERPRISE / ADMIN / SUPER_ADMIN）
   - 模块化权限矩阵（用户/订单/退款/积分/系统/AI 引擎等 10+ 模块）
   - 操作审计日志（全量记录，支持追溯）
   - 登录风控（失败次数限制、账号自动锁定）
@@ -261,7 +352,7 @@
 - **🎯 典型场景**: 快速生成新 PPT（"帮我做一个关于AI发展的10页PPT"）、对话修改已有项目（"把第3页标题改成..."）、上传文档一键转换（Word/PDF → PPT）、风格模板应用。
 - **🛠️ 核心功能**:
   - **AI 意图识别**: 自动理解用户需求，智能拆解为生成任务（AI 优先 + 关键词回退双策略）
-  - **9 大 AI 工具**: 涵盖大纲生成、内容扩写、配图生成、页面修改、风格切换、文档导入、导出等全流程（详见 [Agent PRD](./docs/prd-agent-upgrade.md)）
+  - **9 大 AI 工具**: 涵盖大纲生成、内容扩写、配图生成、页面修改、风格切换、文档导入、导出等全流程
   - **双执行模式**: 引导确认（逐步把关，默认）+ 自动执行（一气呵成，PROFESSIONAL+）
   - **文件上传**: 支持 Word/MD 大纲文件、PPT/PDF 文档导入作为参考素材
   - **实时进度**: SSE + WebSocket 双通道推送，毫秒级状态更新
@@ -275,13 +366,13 @@
   - WebSocket 房间机制——基于项目 ID 广播，支持多标签页/多设备实时同步
 - **💎 业务价值**: 将 PPT 创作门槛降至"会说话就行"，显著扩大潜在用户群体，为 AI 产品的自然语言交互树立标杆。
 
-| 01 - Agent 欢迎页 (主题 + 风格)                                                                              | 02 - 分步确认卡片 (引导执行)                                                                                    |
+| 01 - Agent 欢迎页 (主题 + 风格)                                                                              | 02 - 生成结果预览 (引导执行)                                                                                    |
 | :----------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------- |
-| ![Agent首页](./image/06-Agent智能模式/Agent模式首页.png)                                                      | ![确认卡片](./image/06-Agent智能模式/Agent模式自主执行用户确认页.png)                                              |
+| ![Agent首页](./image/06-Agent模式/新建对话引导示例.png)                                                      | ![生成结果预览](./image/06-Agent模式/生成结果预览.png)                                              |
 
-| 03 - 多对话侧边栏 (进度追踪)                                                                                 |  |
+| 03 - 二次修订与重新生成 (精细打磨)                                                                              |  |
 | :----------------------------------------------------------------------------------------------------------- | :- |
-| ![多对话栏](./image/06-Agent智能模式/Agent模式多开对话栏.png)                                                  |  |
+| ![二次修订](./image/06-Agent模式/生成结果二次修订和重新生成.png)                                                  |  |
 
 ---
 
@@ -303,17 +394,17 @@
 
 ## 🧬 技术深度解析 (Technical Architecture)
 
-### 1. 混合模型路由器 (Intelligent Router-Adapter)
+### 1. 多模型路由器 (Intelligent Router-Adapter)
 
-本系统采用高度抽象的适配器模式，构建了一套通用的 AI 路由协议。它能根据任务属性（生图型、推理型、视觉分析型）自动调度最匹配的模型资源。
+本系统采用高度抽象的适配器模式，构建了一套通用的 AI 路由协议。它能根据任务属性（生图型、推理型、视觉分析型）自动调度最匹配的模型资源，支持灵活切换全球各大厂商生成模型，不限定具体某一个提供商。
 
 ```mermaid
 graph TD
     UI[前端 React 组件] --> Service[后端 API 服务]
-    Service --> Router{混合路由层}
-    Router -- 推理/逻辑 --> GLM[GLM-4.7 / DeepSeek]
-    Router -- 审美/生图 --> Gemini[Gemini-3-Pro-Image]
-    Router -- 视觉分析 --> Flash[Gemini-3-Flash]
+    Service --> Router{多模型路由层}
+    Router -- 推理/逻辑 --> Logic[各大厂商逻辑推理模型]
+    Router -- 审美/生图 --> Image[各大厂商图片生成模型]
+    Router -- 视觉分析 --> Vision[各大厂商视觉分析模型]
     Router -- 原生文档内核 --> MinerU[MinerU Engine]
     UI <-->|SSE + WebSocket| AgentSvc[Agent 对话服务]
     AgentSvc --> Router
@@ -374,49 +465,11 @@ graph TD
 
 ### 2. 配置文件 (`server/.env`)
 
-```env
-# 核心通信端口
-PORT=1111 
-# 数据库存储
-DATABASE_URL="file:./dev.db" 
-# AI 混合引擎配置
-AI_PROVIDER="Volcengine" # 可选: Gemini, OpenAI, Volcengine, Zhipu, CustomCombo
-COMBO_TEXT_MODEL="gemini-3-flash"
-COMBO_IMAGE_MODEL="gemini-3-pro-image"
-COMBO_VISION_MODEL="gemini-3-flash"
-DOC_PARSER_BASE="https://mineru.net"
-DOC_PARSER_PROVIDER="MinerU" # 文档解析内核
-
-# 商业化配置 - 支付渠道（可选，用于开启付费功能）
-# ⚠️ 注意：以下支付配置为预留接口，需申请支付宝/微信商户账号并配置密钥后方可启用
-# 支付宝配置
-PAYMENT_ALIPAY_APP_ID=your_alipay_app_id
-PAYMENT_ALIPAY_PRIVATE_KEY=your_alipay_private_key
-PAYMENT_ALIPAY_PUBLIC_KEY=your_alipay_public_key
-
-# 微信支付配置
-PAYMENT_WECHAT_MCH_ID=your_wechat_merchant_id
-PAYMENT_WECHAT_API_KEY=your_wechat_api_key
-PAYMENT_WECHAT_APP_ID=your_wechat_app_id
-
-# 积分与价格配置
-POINTS_TO_YUAN_RATE=0.1                    # 积分与人民币兑换比例
-DEFAULT_NEW_USER_POINTS=30                 # 新用户默认赠送积分
-
-# 邮件通知配置（可选，用于邮件通知）
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=your_email@example.com
-SMTP_PASS=your_email_password
-SMTP_FROM=noreply@yhai-ppt.com
-
-# 风控与安全配置
-RATE_LIMIT_WINDOW_MS=900000                # 限流窗口（15分钟）
-RATE_LIMIT_MAX_REQUESTS=100                # 窗口内最大请求数
-MAX_LOGIN_FAIL_COUNT=5                     # 最大登录失败次数
-ACCOUNT_LOCK_DURATION_MINUTES=30           # 账号锁定时长
-
-```
+> 根据你的使用场景选择配置方案：
+> - **个人模式**: 参见上方 [🏠 个人轻量部署](#个人轻量部署-personal-mode) 章节 — 5 项必填即可启动
+> - **企业模式**: 参见上方 [🏢 企业商业化运营](#企业商业化运营-enterprise-mode) 章节 — 含支付/VIP/积分完整配置
+>
+> 也可直接复制 `server/.env.example` 并按需填写。
 
 ### 3. 三步启动
 
@@ -466,8 +519,6 @@ ACCOUNT_LOCK_DURATION_MINUTES=30           # 账号锁定时长
 - **[📋 大纲生成](./docs/04_Modules/02_AI生成能力/大纲生成.md)**: 结构化大纲生成逻辑、页面占比公式、智能页面序列算法。
 
 #### Agent 对话模式
-- **[🤖 Agent 模式 PRD](./docs/prd-agent-upgrade.md)**: 双模式架构设计、9 大工具定义、权限体系、执行流程、状态同步机制。
-- **[📊 Agent 实现状态](./docs/agent-implementation-status.md)**: Agent 功能开发进度、已完成阶段、验收清单、下一步计划。
 
 #### 商业化系统
 - **[💰 积分系统](./docs/04_Modules/04_用户增值服务/积分系统.md)**: 积分获取、消耗规则、VIP专属价格。
@@ -499,7 +550,6 @@ ACCOUNT_LOCK_DURATION_MINUTES=30           # 账号锁定时长
 ### 📋 规范与参考
 - **[🔤 术语表](./docs/00_Meta/术语表.md)**: 项目术语、缩写、技术名词解释。
 - **[📊 文档同步检查清单](./docs/00_Meta/文档同步检查清单.md)**: 文档维护与代码同步的检查项。
-- **[📜 版本历史](./docs/00_Meta/文档版本历史.md)**: 文档版本变更记录。
 
 ---
 *YH-AI PPT: 让每一场演示都能直抵人心。*

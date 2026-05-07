@@ -1,6 +1,16 @@
 {
   "name": "yh-ai-ppt",
-  "private": true,
+  "description": "AI驱动的智能演示文稿全链条设计平台",
+  "license": "AGPL-3.0-or-later",
+  "keywords": ["ppt", "ai", "presentation", "slides", "agent"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/466852675/YH-AI-PPT.git"
+  },
+  "bugs": {
+    "url": "https://github.com/466852675/YH-AI-PPT/issues"
+  },
+  "homepage": "https://github.com/466852675/YH-AI-PPT#readme",
   "version": "0.0.0",
   "type": "module",
   "scripts": {

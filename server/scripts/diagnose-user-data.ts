@@ -12,8 +12,8 @@ async function diagnoseUserData() {
     const users = await prisma.user.findMany({
         where: {
             OR: [
-                { email: '466852675@qq.com' },
-                { phone: '13294120521' }
+                { email: 'testuser@example.com' },
+                { phone: '13800000000' }
             ]
         },
         select: { id: true, email: true, phone: true, role: true }
