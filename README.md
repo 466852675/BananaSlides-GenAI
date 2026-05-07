@@ -30,7 +30,7 @@
 
 ### Dashboard & Project Management
 
-Card-based kanban board with real-time status tracking, priority pinning, and quick-preview carousel.
+Card-based project kanban with real-time status tracking, priority pinning, quick-preview carousel, and archive management with asset reuse.
 
 ![Dashboard](./image/02-敏捷协作矩阵/01-系统概览-项目卡片式看板+多任务并行管理+为您呈现工业级的生产效率.gif)
 
