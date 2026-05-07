@@ -32,17 +32,21 @@
 
 Card-based kanban board with real-time status tracking, priority pinning, and quick-preview carousel.
 
-| | |
-|:---:|:---:|
-| ![Dashboard](./image/02-敏捷协作矩阵/01-系统概览-项目卡片式看板+多任务并行管理+为您呈现工业级的生产效率.gif) | ![Status](./image/02-敏捷协作矩阵/02-实时状态-动态任务实时播报+项目状态看板+帮您实时掌控全局生产进度.gif) |
+![Dashboard](./image/02-敏捷协作矩阵/01-系统概览-项目卡片式看板+多任务并行管理+为您呈现工业级的生产效率.gif)
+
+| |
+|:---:|
+| ![Status](./image/02-敏捷协作矩阵/02-实时状态-动态任务实时播报+项目状态看板+帮您实时掌控全局生产进度.gif) |
 
 ### AI Productivity Pipeline
 
 End-to-end automation: topic → outline → content → images → export (PDF / image pack / PPTX). Supports version rollback and asset reuse.
 
-| | | |
-|:---:|:---:|:---:|
-| ![Topic](./image/01-智能生产力链路/00-开启大纲-输入一句话描述+AI修饰生成主题+让您的PPT标题更有专业深度.gif) | ![Outline](./image/01-智能生产力链路/01-开启大纲-结构化大纲预览+节点清晰可见+确保演示逻辑严丝合缝.png) | ![Content](./image/01-智能生产力链路/02-生成描述-AI内容批量扩写+深度语境润色+助您打造专业级演讲文稿.gif) |
+![Topic](./image/01-智能生产力链路/00-开启大纲-输入一句话描述+AI修饰生成主题+让您的PPT标题更有专业深度.gif)
+
+| | |
+|:---:|:---:|
+| ![Outline](./image/01-智能生产力链路/01-开启大纲-结构化大纲预览+节点清晰可见+确保演示逻辑严丝合缝.png) | ![Content](./image/01-智能生产力链路/02-生成描述-AI内容批量扩写+深度语境润色+助您打造专业级演讲文稿.gif) |
 
 | | | |
 |:---:|:---:|:---:|
@@ -56,33 +60,37 @@ End-to-end automation: topic → outline → content → images → export (PDF 
 
 Template gallery, AI-powered visual style extraction, rule injection, and personal style vault.
 
-| | | |
-|:---:|:---:|:---:|
-| ![Templates](./image/03-设计资产智库/01-灵感选择-精品模版广场+多风格一键引用+为您提供取之不尽的设计灵感.png) | ![Style](./image/03-设计资产智库/02-规范生成-设计方案AI秒级产出+全套视觉定义+小白也能拥有专业级设计水准.gif) | ![Rules](./image/03-设计资产智库/04-规则注入-样式规则一键注入+视觉规范同传+确保多项目间品质的一致性.gif) |
+![Templates](./image/03-设计资产智库/01-灵感选择-精品模版广场+多风格一键引用+为您提供取之不尽的设计灵感.png)
+
+| | |
+|:---:|:---:|
+| ![Style](./image/03-设计资产智库/02-规范生成-设计方案AI秒级产出+全套视觉定义+小白也能拥有专业级设计水准.gif) | ![Rules](./image/03-设计资产智库/04-规则注入-样式规则一键注入+视觉规范同传+确保多项目间品质的一致性.gif) |
 
 ### AI Model Router
 
 Configure and hot-swap between 7+ AI providers. Auto-route by task type.
 
-| |
-|:---:|
-| ![Router](./image/04-智算管理底座/01-引擎配置-全协议AI模型配置+模型自由自由切换+助您整合全球最顶尖智力资源.gif) |
+![Router](./image/04-智算管理底座/01-引擎配置-全协议AI模型配置+模型自由自由切换+助您整合全球最顶尖智力资源.gif)
 
 ### Admin Panel
 
 Business dashboard, order management, RBAC permissions, credits, AI engine config, and system settings.
 
-| | | |
-|:---:|:---:|:---:|
-| ![Console](./image/05-系统管理后台/01-控制台.png) | ![Orders](./image/05-系统管理后台/03-订单管理.png) | ![Roles](./image/05-系统管理后台/05-角色权限.png) |
+![Console](./image/05-系统管理后台/01-控制台.png)
+
+| | |
+|:---:|:---:|
+| ![Orders](./image/05-系统管理后台/03-订单管理.png) | ![Roles](./image/05-系统管理后台/05-角色权限.png) |
 
 ### Agent Mode
 
 Conversational AI drives the entire PPT creation workflow. Say it, and it's done.
 
-| | | |
-|:---:|:---:|:---:|
-| ![Welcome](./image/06-Agent模式/新建对话引导示例.png) | ![Result](./image/06-Agent模式/生成结果预览.png) | ![Revise](./image/06-Agent模式/生成结果二次修订和重新生成.png) |
+![Welcome](./image/06-Agent模式/新建对话引导示例.png)
+
+| | |
+|:---:|:---:|
+| ![Result](./image/06-Agent模式/生成结果预览.png) | ![Revise](./image/06-Agent模式/生成结果二次修订和重新生成.png) |
 
 ---
 
