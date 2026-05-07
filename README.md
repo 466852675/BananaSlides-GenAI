@@ -30,19 +30,15 @@
 
 ### Dashboard & Project Management
 
-Card-based kanban board, real-time status tracking, one-click pinning, quick-preview carousel.
+Card-based kanban board with real-time status tracking, priority pinning, and quick-preview carousel.
 
-| | | |
-|:---:|:---:|:---:|
-| ![Dashboard](./image/02-敏捷协作矩阵/01-系统概览-项目卡片式看板+多任务并行管理+为您呈现工业级的生产效率.gif) | ![Status](./image/02-敏捷协作矩阵/02-实时状态-动态任务实时播报+项目状态看板+帮您实时掌控全局生产进度.gif) | ![Pinning](./image/02-敏捷协作矩阵/03-优先级定义-核心项目一键置顶+优先级动态调整+让您的重要任务永远在线.gif) |
-
-| |
-|:---:|
-| ![Quick View](./image/02-敏捷协作矩阵/04-快速调度-工作台快捷调度+进度可视化监控+让PPT批量生产变得井然有序.gif) |
+| | |
+|:---:|:---:|
+| ![Dashboard](./image/02-敏捷协作矩阵/01-系统概览-项目卡片式看板+多任务并行管理+为您呈现工业级的生产效率.gif) | ![Status](./image/02-敏捷协作矩阵/02-实时状态-动态任务实时播报+项目状态看板+帮您实时掌控全局生产进度.gif) |
 
 ### AI Productivity Pipeline
 
-End-to-end automation: topic generation → outline → content → images → export.
+End-to-end automation: topic → outline → content → images → export (PDF / image pack / PPTX). Supports version rollback and asset reuse.
 
 | | | |
 |:---:|:---:|:---:|
@@ -50,55 +46,35 @@ End-to-end automation: topic generation → outline → content → images → e
 
 | | | |
 |:---:|:---:|:---:|
-| ![Import](./image/01-智能生产力链路/03-导入任务-任务一键批量导入+极简启动流程+让您的想法瞬间转化为生产力.gif) | ![Edit](./image/01-智能生产力链路/04-编辑修饰-AI生成智能内容修饰+人机协作细节打磨+赋予内容更强的说服力.gif) | ![Batch](./image/01-智能生产力链路/05-批量生成-单页批量生成切换+按需定制生产+为您节省每一秒创作时间.gif) |
-
-| | | |
-|:---:|:---:|:---:|
-| ![History](./image/01-智能生产力链路/06-历史回滚-版本时光回溯+自由撤销与恢复+给您的创作买一份后悔药.gif) | ![Archive](./image/01-智能生产力链路/07-自动归档-项目自动归档入库+云端同步管理+让您的每一份努力都有迹可循.gif) | ![Reuse](./image/01-智能生产力链路/08-二次创作-归档项目二次加工+旧资产焕发新生+让经典方案实现循环利用.gif) |
-
-| | | |
-|:---:|:---:|:---:|
-| ![Export](./image/01-智能生产力链路/09-本地导出-全套幻灯片一键打包+智能合并完整导出+助您从容面对正式交付.png) | ![Preview](./image/01-智能生产力链路/10-本地导出-本地导出详情预览+支持图片PRD与PPTX+满足多场景交付需求.png) | ![Images](./image/01-智能生产力链路/11-图片包导出-超高清图片包导出+快速分享与分发+适配任何社交媒体终端.gif) |
-
-| | | |
-|:---:|:---:|:---:|
-| ![PDF](./image/01-智能生产力链路/12-成果演示-PDF全屏演示预览+高保真视觉效果+让您的汇报更具感染力.png) | ![PPTX](./image/01-智能生产力链路/13-PPT导出-PowerPoint原生导出体验+支持二次编辑+确保演示万无一失.gif) | |
-
-### Design Asset Library
-
-Template gallery, AI visual style extraction, personal style vault.
-
-| | | |
-|:---:|:---:|:---:|
-| ![Templates](./image/03-设计资产智库/01-灵感选择-精品模版广场+多风格一键引用+为您提供取之不尽的设计灵感.png) | ![Style](./image/03-设计资产智库/02-规范生成-设计方案AI秒级产出+全套视觉定义+小白也能拥有专业级设计水准.gif) | ![Adapt](./image/03-设计资产智库/03-内容适配-设计规范自动适配+全局样式统一+为整个演示项目注入灵魂.gif) |
+| ![Import](./image/01-智能生产力链路/03-导入任务-任务一键批量导入+极简启动流程+让您的想法瞬间转化为生产力.gif) | ![Batch](./image/01-智能生产力链路/05-批量生成-单页批量生成切换+按需定制生产+为您节省每一秒创作时间.gif) | ![History](./image/01-智能生产力链路/06-历史回滚-版本时光回溯+自由撤销与恢复+给您的创作买一份后悔药.gif) |
 
 | | |
 |:---:|:---:|
-| ![Rules](./image/03-设计资产智库/04-规则注入-样式规则一键注入+视觉规范同传+确保多项目间品质的一致性.gif) | ![Personal](./image/03-设计资产智库/05-个人资产-个性化风格入库+私域资产沉淀+助您构建专属的高端商业图库.gif) |
+| ![Images](./image/01-智能生产力链路/11-图片包导出-超高清图片包导出+快速分享与分发+适配任何社交媒体终端.gif) | ![PPTX](./image/01-智能生产力链路/13-PPT导出-PowerPoint原生导出体验+支持二次编辑+确保演示万无一失.gif) |
+
+### Design Asset Library
+
+Template gallery, AI-powered visual style extraction, rule injection, and personal style vault.
+
+| | | |
+|:---:|:---:|:---:|
+| ![Templates](./image/03-设计资产智库/01-灵感选择-精品模版广场+多风格一键引用+为您提供取之不尽的设计灵感.png) | ![Style](./image/03-设计资产智库/02-规范生成-设计方案AI秒级产出+全套视觉定义+小白也能拥有专业级设计水准.gif) | ![Rules](./image/03-设计资产智库/04-规则注入-样式规则一键注入+视觉规范同传+确保多项目间品质的一致性.gif) |
 
 ### AI Model Router
 
 Configure and hot-swap between 7+ AI providers. Auto-route by task type.
 
-| | |
-|:---:|:---:|
-| ![Router](./image/04-智算管理底座/01-引擎配置-全协议AI模型配置+模型自由自由切换+助您整合全球最顶尖智力资源.gif) | ![Params](./image/04-智算管理底座/02-参数调优-高性能参数自定义+极致生成效率调优+让您的AI引擎完美适配硬件实力.png) |
+| |
+|:---:|
+| ![Router](./image/04-智算管理底座/01-引擎配置-全协议AI模型配置+模型自由自由切换+助您整合全球最顶尖智力资源.gif) |
 
 ### Admin Panel
 
-Business dashboard, user management, orders, credits, RBAC permissions, system settings, AI engine config.
+Business dashboard, order management, RBAC permissions, credits, AI engine config, and system settings.
 
 | | | |
 |:---:|:---:|:---:|
-| ![Console](./image/05-系统管理后台/01-控制台.png) | ![Users](./image/05-系统管理后台/02-用户管理.png) | ![Orders](./image/05-系统管理后台/03-订单管理.png) |
-
-| | | |
-|:---:|:---:|:---:|
-| ![Credits](./image/05-系统管理后台/04-积分规则.png) | ![Roles](./image/05-系统管理后台/05-角色权限.png) | ![Engine](./image/05-系统管理后台/06-AI核心引擎.png) |
-
-| |
-|:---:|
-| ![Settings](./image/05-系统管理后台/07-系统设置.png) |
+| ![Console](./image/05-系统管理后台/01-控制台.png) | ![Orders](./image/05-系统管理后台/03-订单管理.png) | ![Roles](./image/05-系统管理后台/05-角色权限.png) |
 
 ### Agent Mode
 
