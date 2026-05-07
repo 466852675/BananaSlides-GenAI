@@ -36,7 +36,7 @@ Card-based kanban board with real-time status tracking, priority pinning, and qu
 
 | |
 |:---:|
-| ![Status](./image/02-敏捷协作矩阵/02-实时状态-动态任务实时播报+项目状态看板+帮您实时掌控全局生产进度.gif) |
+| ![Archive](./image/01-智能生产力链路/07-自动归档-项目自动归档入库+云端同步管理+让您的每一份努力都有迹可循.gif) |
 
 ### AI Productivity Pipeline
 
