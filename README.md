@@ -1,555 +1,257 @@
-# 🚀 YH-AI PPT - 智能演示文稿全链条设计平台
+**[English](./README.md) | [中文](./README.zh-CN.md)**
 
-> **新一代多模型 AI 引擎驱动的智能演示文稿全链条设计平台**
-> 基于 Router-Adapter 适配器架构灵活切换全球各大厂商生成模型（Gemini / GLM / DeepSeek / 火山引擎 / 智谱 / OpenAI / SiliconFlow / ModelScope / 本地 Ollama 等），按任务类型自动路由最优模型资源，集成 **MinerU 工业级智能文档解析内核**，创新推出 **Agent 对话式生成模式**（自然语言驱动全流程），将复杂的 PPT 创作过程降维至分钟级响应。
->
-> 🏢 **企业用户额外获得**: 内置完整的商业化 SaaS 基础设施（支付、积分、会员、退款），零代码搭建 AI 产品商业变现能力。详见下方 [双使用场景](#-双使用场景-dual-usage-scenarios) 章节。
+# YH-AI PPT - AI-Powered Presentation Design Platform
 
-[![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/)
-[![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)](#)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](#)
-[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4.1-38B2AC?logo=tailwind-css)](#)
-[![Prisma](https://img.shields.io/badge/Prisma-SQLite-2D3748?logo=prisma)](#)
-[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0-blue)](./LICENSE)
+> Multi-model AI engine with intelligent routing — from a single sentence to a polished presentation in minutes.
+
+[![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/) [![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)](#) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](#) [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4.1-38B2AC?logo=tailwind-css)](#) [![Prisma](https://img.shields.io/badge/Prisma-SQLite-2D3748?logo=prisma)](#) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue)](./LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/466852675/YH-AI-PPT?style=social)](https://github.com/466852675/YH-AI-PPT/stargazers) [![GitHub Forks](https://img.shields.io/github/forks/466852675/YH-AI-PPT?style=social)](https://github.com/466852675/YH-AI-PPT/forks) [![GitHub Issues](https://img.shields.io/github/issues/466852675/YH-AI-PPT)](https://github.com/466852675/YH-AI-PPT/issues) [![Release](https://img.shields.io/github/v/release/466852675/YH-AI-PPT)](https://github.com/466852675/YH-AI-PPT/releases)
 
 ---
 
-## 📖 核心价值主张 (Value Proposition)
+## Highlights
 
-在传统的演示文稿创作中，人类往往在 80% 的重复性排版和素材搜寻中消耗了大量的创造力。**YH-AI PPT** 致力于通过"感知与生成"的双重迭代，实现以下核心价值：
-
-- **内容重塑与语义唤醒**: 彻底打通从"非结构化文档 -> 结构化大纲 -> 详细章节正文"的自动演进链路，支持 AI 主题修饰与**原生的 MinerU 文档语义解构**。
-- **视觉基因的精准复制**: 独创的 4 层级 Prompt 智能合成算法，配合视觉预处理（Vision Pre-processing），确保每一页变体图片都能完美吻合参考图的质感、配色与构图。原生支持 **火山引擎 (Volcengine)** 并发加速与 Seed 锁定技术。
-- **多模型 AI 引擎的全球化调度**: 基于 Router-Adapter 适配器架构灵活切换全球各大厂商生成模型（Gemini / GLM / DeepSeek / 火山引擎 / 智谱 / OpenAI / SiliconFlow / ModelScope / 本地 Ollama 等），按任务类型（生图、推理、视觉分析）自动路由最优模型资源，实现成本、速度与质量的最优平衡。支持一键热切换，无需重启即可在云端与本地大模型间无缝流转。
-- **工业级生产力韧性**: 基于快照的版本时光机与项目自动归档系统，让每一次灵感闪现都有迹可循，支持资产的二次循环利用。
-- **商业化就绪的 SaaS 基础设施**: 内置支付（支付宝/微信，接口已预留）、积分、VIP 会员、退款（接口已预留）、消息推送等完整商业化能力框架，配置密钥后即可启动 AI 产品的商业变现。
-- **Agent 对话式生成**: 创新的 AI Agent 模式，通过自然语言对话即可完成从大纲到配图的全流程 PPT 生成。支持引导式确认与自动执行双模式，9 大 AI 工具智能调度（OpenAI Function Calling 格式），SSE + WebSocket 实时进度推送，将 PPT 创作门槛降至"会说话就行"。
+- **AI Productivity Pipeline** — One-sentence topic → structured outline → content expansion → AI-generated slides → multi-format export (PDF / image pack / PPTX)
+- **Multi-Model Router** — Adapter-based architecture supporting Gemini / OpenAI / Zhipu / DeepSeek / Volcengine / SiliconFlow / ModelScope / local Ollama. Auto-routes by task type (text / image / vision). Hot-swap without restart.
+- **Agent Mode** — Natural language conversation drives the entire PPT creation workflow. 9 AI tools (Function Calling), guided/auto dual execution modes, SSE + WebSocket real-time progress.
+- **Design Asset Library** — Template gallery, AI-powered visual style extraction from reference images, personal style vault. 4-layer Prompt synthesis engine for consistent visual quality.
+- **MinerU Document Parsing** — Industrial-grade PDF/Word structural extraction for content ingestion.
+- **SaaS-Ready Infrastructure** — Payment (Alipay/WeChat), credits, VIP membership, refund risk control, messaging center, RBAC with 6 user roles. Configure merchant keys to go live.
 
 ---
 
-## 👥 用户画像与应用价值矩阵 (Target Users & Matrix)
+## Supported AI Providers
 
-| 目标角色 (Personas)              | 典型业务场景                       | YH-AI PPT 带来的亮点价值                                                                              |
-| :------------------------------- | :--------------------------------- | :------------------------------------------------------------------------------------------------------- |
-| **职场精英 (Consultants)** | 竞标方案、周月报、战略分析报告。   | **快速冷启动**：从一个模糊的主题瞬间生成专业大纲，配套 15 图快速预览，决策更直观。Agent 对话模式让口头描述即可快速出稿。                 |
-| **高校科研 (Researchers)** | 学术论文汇报、课题开题、结项宣讲。 | **高保真转录**：集成的 MinerU 技术能精准识别论文中的技术术语、公式与多栏版式，转化为结构化文稿。   |
-| **教研培训 (Educators)**   | 课程讲义、培训课件、在线微课素材。 | **视觉多样性**：一键注入设计规范，秒级生成多套排版变体，极大地丰富课件的交互吸引力。Agent 模式支持上传教案文档一键转换为精美课件。               |
-| **开发者 (Engineers)**     | 技术方案评审、架构分享、PRD 演示。 | **私有化与可扩展**：支持 Ollama 等本地模型接入，保障代码与方案的绝对私密，支持 markdown 高亮渲染。支持导出 PPTX（图片嵌入模式）。 |
-| **运营人员 (Operators)** | 用户增长、活动策划、数据分析、线索跟进。 | **增长工具箱**: 内置邀请返利、签到系统、线索管理(CRM)、消息推送，支持精细化用户运营。 |
-| **企业管理员 (Admins)** | 权限分配、财务对账、审计合规、系统配置。 | **企业级治理**: RBAC 权限体系、操作审计日志、退款风控、数据看板，满足合规要求。 |
-| **财务人员 (Finance)** | 订单管理、退款审核、资金结算、报表导出。 | **财务自动化**: 自动对账、智能退款审核、权益回收机制、多维度财务报表。 |
-| **AI 体验者 (Early Adopters)** | 探索 AI 新交互、尝鲜前沿产品、效率工具评测。 | **前沿体验**: Agent 对话模式提供业界领先的 AI 交互体验，自然语言驱动全流程生成，双执行模式灵活切换。 |
+[![Gemini](https://img.shields.io/badge/Google-Gemini-4285F4?logo=google)](#) [![OpenAI](https://img.shields.io/badge/OpenAI-GPT-412991?logo=openai)](#) [![Zhipu](https://img.shields.io/badge/Zhipu-GLM-4E79A7)](#) [![DeepSeek](https://img.shields.io/badge/DeepSeek-V3-0088CC)](#) [![Volcengine](https://img.shields.io/badge/Volcengine-Doubao-3370FF?logo=bytedance)](#) [![SiliconFlow](https://img.shields.io/badge/SiliconFlow-FLUX-7C3AED)](#) [![ModelScope](https://img.shields.io/badge/ModelScope-Qwen-FF6A00)](#) [![Ollama](https://img.shields.io/badge/Ollama-Local-000000?logo=ollama)](#)
 
 ---
 
-## 🌐 双使用场景 (Dual Usage Scenarios)
+## Feature Tour
 
-YH-AI PPT 同时服务两类用户——个人开发者仅需 5 个配置项即可启动 AI 创作，企业团队则可激活完整的商业化运营能力。同一套代码，两种部署复杂度。
+### Dashboard & Project Management
 
-| 维度 | 🏠 个人模式 | 🏢 企业模式 |
+Card-based kanban board, real-time status tracking, one-click pinning, quick-preview carousel.
+
+| | | |
+|:---:|:---:|:---:|
+| ![Dashboard](./image/02-敏捷协作矩阵/01-系统概览-项目卡片式看板+多任务并行管理+为您呈现工业级的生产效率.gif) | ![Status](./image/02-敏捷协作矩阵/02-实时状态-动态任务实时播报+项目状态看板+帮您实时掌控全局生产进度.gif) | ![Pinning](./image/02-敏捷协作矩阵/03-优先级定义-核心项目一键置顶+优先级动态调整+让您的重要任务永远在线.gif) |
+
+| |
+|:---:|
+| ![Quick View](./image/02-敏捷协作矩阵/04-快速调度-工作台快捷调度+进度可视化监控+让PPT批量生产变得井然有序.gif) |
+
+### AI Productivity Pipeline
+
+End-to-end automation: topic generation → outline → content → images → export.
+
+| | | |
+|:---:|:---:|:---:|
+| ![Topic](./image/01-智能生产力链路/00-开启大纲-输入一句话描述+AI修饰生成主题+让您的PPT标题更有专业深度.gif) | ![Outline](./image/01-智能生产力链路/01-开启大纲-结构化大纲预览+节点清晰可见+确保演示逻辑严丝合缝.png) | ![Content](./image/01-智能生产力链路/02-生成描述-AI内容批量扩写+深度语境润色+助您打造专业级演讲文稿.gif) |
+
+| | | |
+|:---:|:---:|:---:|
+| ![Import](./image/01-智能生产力链路/03-导入任务-任务一键批量导入+极简启动流程+让您的想法瞬间转化为生产力.gif) | ![Edit](./image/01-智能生产力链路/04-编辑修饰-AI生成智能内容修饰+人机协作细节打磨+赋予内容更强的说服力.gif) | ![Batch](./image/01-智能生产力链路/05-批量生成-单页批量生成切换+按需定制生产+为您节省每一秒创作时间.gif) |
+
+| | | |
+|:---:|:---:|:---:|
+| ![History](./image/01-智能生产力链路/06-历史回滚-版本时光回溯+自由撤销与恢复+给您的创作买一份后悔药.gif) | ![Archive](./image/01-智能生产力链路/07-自动归档-项目自动归档入库+云端同步管理+让您的每一份努力都有迹可循.gif) | ![Reuse](./image/01-智能生产力链路/08-二次创作-归档项目二次加工+旧资产焕发新生+让经典方案实现循环利用.gif) |
+
+| | | |
+|:---:|:---:|:---:|
+| ![Export](./image/01-智能生产力链路/09-本地导出-全套幻灯片一键打包+智能合并完整导出+助您从容面对正式交付.png) | ![Preview](./image/01-智能生产力链路/10-本地导出-本地导出详情预览+支持图片PRD与PPTX+满足多场景交付需求.png) | ![Images](./image/01-智能生产力链路/11-图片包导出-超高清图片包导出+快速分享与分发+适配任何社交媒体终端.gif) |
+
+| | | |
+|:---:|:---:|:---:|
+| ![PDF](./image/01-智能生产力链路/12-成果演示-PDF全屏演示预览+高保真视觉效果+让您的汇报更具感染力.png) | ![PPTX](./image/01-智能生产力链路/13-PPT导出-PowerPoint原生导出体验+支持二次编辑+确保演示万无一失.gif) | |
+
+### Design Asset Library
+
+Template gallery, AI visual style extraction, personal style vault.
+
+| | | |
+|:---:|:---:|:---:|
+| ![Templates](./image/03-设计资产智库/01-灵感选择-精品模版广场+多风格一键引用+为您提供取之不尽的设计灵感.png) | ![Style](./image/03-设计资产智库/02-规范生成-设计方案AI秒级产出+全套视觉定义+小白也能拥有专业级设计水准.gif) | ![Adapt](./image/03-设计资产智库/03-内容适配-设计规范自动适配+全局样式统一+为整个演示项目注入灵魂.gif) |
+
+| | |
+|:---:|:---:|
+| ![Rules](./image/03-设计资产智库/04-规则注入-样式规则一键注入+视觉规范同传+确保多项目间品质的一致性.gif) | ![Personal](./image/03-设计资产智库/05-个人资产-个性化风格入库+私域资产沉淀+助您构建专属的高端商业图库.gif) |
+
+### AI Model Router
+
+Configure and hot-swap between 7+ AI providers. Auto-route by task type.
+
+| | |
+|:---:|:---:|
+| ![Router](./image/04-智算管理底座/01-引擎配置-全协议AI模型配置+模型自由自由切换+助您整合全球最顶尖智力资源.gif) | ![Params](./image/04-智算管理底座/02-参数调优-高性能参数自定义+极致生成效率调优+让您的AI引擎完美适配硬件实力.png) |
+
+### Admin Panel
+
+Business dashboard, user management, orders, credits, RBAC permissions, system settings, AI engine config.
+
+| | | |
+|:---:|:---:|:---:|
+| ![Console](./image/05-系统管理后台/01-控制台.png) | ![Users](./image/05-系统管理后台/02-用户管理.png) | ![Orders](./image/05-系统管理后台/03-订单管理.png) |
+
+| | | |
+|:---:|:---:|:---:|
+| ![Credits](./image/05-系统管理后台/04-积分规则.png) | ![Roles](./image/05-系统管理后台/05-角色权限.png) | ![Engine](./image/05-系统管理后台/06-AI核心引擎.png) |
+
+| |
+|:---:|
+| ![Settings](./image/05-系统管理后台/07-系统设置.png) |
+
+### Agent Mode
+
+Conversational AI drives the entire PPT creation workflow. Say it, and it's done.
+
+| | | |
+|:---:|:---:|:---:|
+| ![Welcome](./image/06-Agent模式/新建对话引导示例.png) | ![Result](./image/06-Agent模式/生成结果预览.png) | ![Revise](./image/06-Agent模式/生成结果二次修订和重新生成.png) |
+
+---
+
+## Dual Mode
+
+| | Personal | Enterprise |
 |---|---|---|
-| **目标** | AI 创作 PPT，自我使用 | 商业化 SaaS 运营，对外服务 |
-| **必填配置** | 5 项（AI Key + JWT + DB） | 全部配置 + 商户密钥 + SSL |
-| **核心功能** | 大纲→内容→配图→导出 | 全功能 + 管理后台 + 支付 + VIP |
-| **可忽略模块** | admin 面板、支付、VIP、积分、退款 | 无 |
-| **许可证** | AGPL-3.0（个人自用无附加要求） | AGPL-3.0 + 二次开发标注来源 |
+| **Goal** | Create AI-powered presentations for personal use | Run a commercial SaaS platform |
+| **Required config** | 5 items (AI Key + JWT + DB) | Full config + merchant keys + SSL |
+| **Features** | Outline → content → images → export | All features + admin panel + payment + VIP |
+| **Can skip** | Admin panel, payment, VIP, credits | Nothing |
 
-### 🏠 个人轻量部署 (Personal Mode)
-
-只需以下最小配置即可启动：
+### Minimal Setup (Personal, 5 items)
 
 ```env
-# 个人模式最小配置（5 项必填）
 PORT=1111
-DATABASE_URL="file:./dev.db"                              # SQLite 内置，无需额外安装
-JWT_SECRET="your-secret-key-at-least-32-characters"       # openssl rand -base64 32 生成
-AI_PROVIDER="Gemini"                                      # 可选: Gemini, OpenAI, Volcengine, Zhipu, SiliconFlow, CustomCombo
-GEMINI_API_KEY="your-gemini-api-key"                      # 或其他提供商对应的 API Key
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="your-secret-key-at-least-32-characters"
+AI_PROVIDER="Gemini"                                      # or OpenAI, Volcengine, Zhipu, etc.
+GEMINI_API_KEY="your-api-key"
 ```
 
-> 未配置支付密钥时，支付功能自动以 Mock 模式运行（模拟支付），管理后台仍可访问但无真实交易数据。个人部署可安全忽略。
+---
 
-### 🏢 企业商业化运营 (Enterprise Mode)
+## Quick Start
 
-完整配置包含支付、积分、VIP、邮件、风控等 6 组：
+### Prerequisites
 
-```env
-# ===== 核心基础 =====
-PORT=1111
-DATABASE_URL="file:./prod.db"
-JWT_SECRET="64-char-secret-for-production"
-ALLOWED_ORIGINS="https://your-domain.com"
+- **Node.js** v18+ (v22+ recommended)
+- An AI provider API key (e.g. [Gemini](https://aistudio.google.com/))
 
-# ===== AI 混合引擎 =====
-AI_PROVIDER="CustomCombo"                                 # 按任务类型自动路由最优模型
-COMBO_TEXT_MODEL="gemini-3-flash"
-COMBO_IMAGE_MODEL="gemini-3-pro-image"
-COMBO_VISION_MODEL="gemini-3-flash"
+<details>
+<summary><strong>Enterprise Database (optional)</strong></summary>
 
-# ===== 支付渠道 =====
-# 支付宝（需申请商户账号）
-ALIPAY_APP_ID="your-alipay-app-id"
-ALIPAY_PRIVATE_KEY="your-alipay-private-key"
-ALIPAY_MOCK_MODE="false"                                  # 关闭 Mock 才启用真实支付
+SQLite is used by default and requires no setup. For production / multi-user deployments, switch to:
 
-# 微信支付（需申请商户账号）
-WECHAT_MCH_ID="your-wechat-mch-id"
-WECHAT_APP_ID="your-wechat-app-id"
-WECHAT_MOCK_MODE="false"                                  # 关闭 Mock 才启用真实支付
+| Database | Recommended For | DATABASE_URL Example |
+|---|---|---|
+| **PostgreSQL** | Production, high concurrency | `postgresql://user:pass@localhost:5432/yhai_ppt` |
+| **MySQL** | Existing infrastructure | `mysql://user:pass@localhost:3306/yhai_ppt` |
+| **SQLite** (default) | Personal / development | `file:./dev.db` |
 
-# ===== 积分与会员 =====
-POINTS_TO_YUAN_RATE=0.1                                   # 积分与人民币兑换比例
-DEFAULT_NEW_USER_POINTS=30                                # 新用户默认赠送积分
+To switch: change `provider` in `server/prisma/schema.prisma` from `"sqlite"` to `"postgresql"` or `"mysql"`, update `DATABASE_URL`, then run `npx prisma db push`.
 
-# ===== 邮件通知 =====
-SMTP_HOST="smtp.example.com"
-SMTP_PORT=587
-SMTP_USER="noreply@your-domain.com"
-SMTP_PASS="your-smtp-password"
+</details>
 
-# ===== 安全与风控 =====
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX_REQUESTS=100
-MAX_LOGIN_FAIL_COUNT=5
-ACCOUNT_LOCK_DURATION_MINUTES=30
+### Install & Run
+
+```bash
+# 1. Install dependencies
+npm install && cd server && npm install
+
+# 2. Configure environment
+cp server/.env.example server/.env
+# Edit server/.env — fill in AI_PROVIDER and your API key
+
+# 3. Initialize database
+cd server && npx prisma db push
+
+# 4. Start development servers
+# Option A: Windows one-click
+start_app.bat
+# Option B: Separate terminals
+npm run dev              # Frontend → localhost:1000
+cd server && npm run dev # Backend  → localhost:1111
 ```
 
-企业模式额外激活的管理模块详见下方第 5-8 节功能展示。
-
-### ⚖️ 许可证与二次开发声明 (License & Attribution)
-
-本项目采用 [GNU AGPL-3.0-or-later](./LICENSE) 许可证开源。
-
-- **所有用户**: 修改后的代码必须以相同许可证开源（AGPL-3.0 核心义务）
-- **企业二次开发**: 在对外服务的 SaaS 产品中，必须在产品可见位置（页面/关于页/登录页）标注 **"Based on YH-AI PPT"** 并附原项目链接，以尊重原创贡献
-- **个人自用**: 无附加标注要求
-
-> 二次开发标注不属于 AGPL-3.0 的法定条款，而是项目社区的礼仪性要求，旨在促进开源生态的良性发展。
+Default admin account: `admin@local` / `admin12345678` (change in production).
 
 ---
 
-## 🎨 系统视觉全景与业务深度解析 (System Visual Tour & Deep Dive)
+## Tech Stack
 
-> **YH-AI PPT** 并不是简单的绘图工具，它是一套完整的"意图驱动"设计操作系统。以下我们将从九个核心维度，为您揭秘其工业级的生产力奥秘。
-
-> **双模式架构**：YH-AI PPT 提供两种并行的 PPT 创作范式——**工作台模式**（手动配置 + 批量生成，精细控制每一页）和 **Agent 对话模式**（自然语言驱动全流程，一句话从想法到演示）。两种模式共享同一项目数据层，顶部 Tab 一键切换，任何一方的修改实时同步到另一方。下文第 1-8 节主要展示工作台模式能力，第 9 节聚焦 Agent 对话模式。
-
-> **阅读导航**: 个人用户可重点阅读第 1-4 节（创作核心）和第 9 节（Agent 模式），第 5-8 节为企业商业化功能，个人部署可安全忽略。
-
-### 1. 🚀 敏捷协作矩阵 (Agile Collaboration Matrix)
-
-*管理、调度与掌控全局。*
-
-- **📖 章节总述**: 本模块是系统的“中央处理器”，旨在将复杂的 PPT 创作流程转化为可视化、可管理的生产单元。
-- **🎯 典型场景**: 团队多项目并行开发、紧急方案进度监控、个人创作任务优先级排序。
-- **🛠️ 核心功能**: 胶囊化卡片看板、实时进度播报、项目一键置顶、工作台快捷预览。
-- **✨ 核心亮点**: 电影胶片式的 15 图快速预览系统，让项目管理具备极佳的视觉穿透力。
-- **💎 业务价值**: 降低项目管理心智负担，提升多任务并行效率达 40% 以上。
-
-| 01 - 系统概览 (卡片看板)                                                                                  | 02 - 实时状态 (播报看板)                                                                                  |
-| :-------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
-| ![项目看板](./image/02-敏捷协作矩阵/01-系统概览-项目卡片式看板+多任务并行管理+为您呈现工业级的生产效率.gif) | ![状态看板](./image/02-敏捷协作矩阵/02-实时状态-动态任务实时播报+项目状态看板+帮您实时掌控全局生产进度.gif) |
-
-| 03 - 优先级定义 (一键置顶)                                                                                    | 04 - 快速调度 (进度监控)                                                                                   |
-| :------------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------- |
-| ![优先级置顶](./image/02-敏捷协作矩阵/03-优先级定义-核心项目一键置顶+优先级动态调整+让您的重要任务永远在线.gif) | ![快捷调度](./image/02-敏捷协作矩阵/04-快速调度-工作台快捷调度+进度可视化监控+让PPT批量生产变得井然有序.gif) |
+| Layer | Technologies |
+|---|---|
+| **Frontend** | React 19.2 · Vite 6.2 · Tailwind CSS 4.1 · TanStack Query 5.9 · Framer Motion 12 · WebSocket |
+| **Backend** | Express 5.2 · Prisma 6.19 · SQLite / PostgreSQL / MySQL · Winston · Zod 4.3 |
+| **AI** | Google GenAI SDK · MinerU · OpenAI Function Calling · SSE streaming |
+| **Commerce** | Alipay SDK · WeChat Pay v3 · Nodemailer · express-rate-limit · JWT |
+| **Testing** | Vitest · Playwright · Bun Test |
 
 ---
 
-### 2. 🧠 智能生产力链路 (AI Productivity Chain)
-
-*工作台模式：从想法到成品的全自动化流水线。*
-
-- **📖 章节总述**: 覆盖了从"一句话创意"到"最终成果交付"的全生命周期，实现内容生成的端到端自动化。
-- **🎯 典型场景**: 只有主题没内容时的冷启动、大规模文稿的快速生成、多版本设计的方案对比。
-- **🛠️ 核心功能**: AI 语义润色主题、结构化大纲自动构建、批量内容扩写预览、多格式(PDF/图片包/**PPTX图片嵌入模式**)导出。
-  - **PDF**: ✅ 矢量文本 + 超链接，高质量打印输出
-  - **图片包**: ✅ 高清 PNG/JPG (2K/4K)，适合社交媒体分享
-  - **PPTX**: ⚠️ **图片嵌入模式**（每页为单张背景图），非原生可编辑文本
-    - 优势：保持 AI 设计的完美视觉效果
-    - 限制：无法在 PowerPoint 中直接编辑文字
-    - 计划：原生可编辑 PPTX（Roadmap 2026 Q2）
-- **✨ 核心亮点**: “文本 -> 大纲 -> 页面 -> 润色”的闭环反馈机制，支持实时版本回溯，确保创意不偏离。
-- **💎 业务价值**: 将原本小时级的 PPT 制作周期压缩至分钟级，实现真正的“意图即交付”。
-
-| 01 - 主题生成 (创意润色)                                                                                     | 02 - 结构大纲 (逻辑对齐)                                                                                |
-| :----------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| ![主题生成](./image/01-智能生产力链路/00-开启大纲-输入一句话描述+AI修饰生成主题+让您的PPT标题更有专业深度.gif) | ![结构化大纲](./image/01-智能生产力链路/01-开启大纲-结构化大纲预览+节点清晰可见+确保演示逻辑严丝合缝.png) |
-
-| 03 - 生成描述 (批量扩写)                                                                                | 04 - 导入任务 (极简启动)                                                                                      |
-| :------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------ |
-| ![内容扩写](./image/01-智能生产力链路/02-生成描述-AI内容批量扩写+深度语境润色+助您打造专业级演讲文稿.gif) | ![批量导入](./image/01-智能生产力链路/03-导入任务-任务一键批量导入+极简启动流程+让您的想法瞬间转化为生产力.gif) |
-
-| 05 - 编辑修饰 (细节微调)                                                                                      | 06 - 批量生成 (效率切换)                                                                                  |
-| :------------------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------- |
-| ![智能修饰](./image/01-智能生产力链路/04-编辑修饰-AI生成智能内容修饰+人机协作细节打磨+赋予内容更强的说服力.gif) | ![切换生成](./image/01-智能生产力链路/05-批量生成-单页批量生成切换+按需定制生产+为您节省每一秒创作时间.gif) |
-
-| 07 - 历史回滚 (版本时光机)                                                                              | 08 - 自动归档 (云端同步)                                                                                      |
-| :------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------ |
-| ![版本回溯](./image/01-智能生产力链路/06-历史回滚-版本时光回溯+自由撤销与恢复+给您的创作买一份后悔药.gif) | ![归档管理](./image/01-智能生产力链路/07-自动归档-项目自动归档入库+云端同步管理+让您的每一份努力都有迹可循.gif) |
-
-| 09 - 二次创作 (资产复用)                                                                                    | 10 - 智能导出 (一键打包)                                                                                      |
-| :---------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
-| ![资源复用](./image/01-智能生产力链路/08-二次创作-归档项目二次加工+旧资产焕发新生+让经典方案实现循环利用.gif) | ![智能合并](./image/01-智能生产力链路/09-本地导出-全套幻灯片一键打包+智能合并完整导出+助您从容面对正式交付.png) |
-
-| 11 - 预览详情 (导出方案)                                                                                   | 12 - 图片导出 (高清分发)                                                                                  |
-| :--------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
-| ![导出详情](./image/01-智能生产力链路/10-本地导出-本地导出详情预览+支持图片PRD与PPTX+满足多场景交付需求.png) | ![图片包](./image/01-智能生产力链路/11-图片包导出-超高清图片包导出+快速分享与分发+适配任何社交媒体终端.gif) |
-
-| 13 - 成果演示 (高保真)                                                                                     | 14 - PPTX 导出 (原生体验)                                                                                      |
-| :--------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
-| ![高保真展示](./image/01-智能生产力链路/12-成果演示-PDF全屏演示预览+高保真视觉效果+让您的汇报更具感染力.png) | ![PPTX导出](./image/01-智能生产力链路/13-PPT导出-PowerPoint原生导出体验+支持二次编辑+确保演示万无一失.gif) |
-
----
-
-### 3. 🛡️ 设计资产智库 (Design Asset Library)
-
-*风格注入与视觉规范的同传。*
-
-- **📖 章节总述**: 本模块负责解决“设计审美”难题，通过 AI 学习参考图提取视觉基因，实现跨页面的高度一致性。
-- **🎯 典型场景**: 企业 VI 规范快速应用、特定风格 PPT 批量复刻、个人设计资产的结构化沉淀。
-- **🛠️ 核心功能**: 精品模版广场、视觉定义 AI 产出、设计规范动态适配、私域风格一键入库。
-- **✨ 核心亮点**: 独创的视觉规范“规则注入”引擎，确保即便更换内容，设计灵魂依然稳如磐石。
-- **💎 业务价值**: 消除“审美随机性”，让非设计专业人员也能稳定产出商业级高端演示文稿。
-
-| 01 - 灵感选择 (精品广场)                                                                                  | 02 - 规范生成 (秒级定义)                                                                                      |
-| :-------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
-| ![模版广场](./image/03-设计资产智库/01-灵感选择-精品模版广场+多风格一键引用+为您提供取之不尽的设计灵感.png) | ![视觉定义](./image/03-设计资产智库/02-规范生成-设计方案AI秒级产出+全套视觉定义+小白也能拥有专业级设计水准.gif) |
-
-| 03 - 内容适配 (全局统一)                                                                                | 04 - 规则注入 (规范同传)                                                                                  |
-| :------------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------- |
-| ![样式统一](./image/03-设计资产智库/03-内容适配-设计规范自动适配+全局样式统一+为整个演示项目注入灵魂.gif) | ![规范同传](./image/03-设计资产智库/04-规则注入-样式规则一键注入+视觉规范同传+确保多项目间品质的一致性.gif) |
-
-| 05 - 个人资产 (私域沉淀)                                                                                  |  |
-| :-------------------------------------------------------------------------------------------------------- | :- |
-| ![私域图库](./image/03-设计资产智库/05-个人资产-个性化风格入库+私域资产沉淀+助您构建专属的高端商业图库.gif) |  |
-
----
-
-### 4. ⚙️ 智算管理底座 (Intelligent Compute Base)
-
-*模型调度与性能调优的核心。*
-
-- **📖 章节总述**: 系统的“性能引擎室”，提供极高自由度的 AI 模型组合能力与硬件性能适配。
-- **🎯 典型场景**: 在不同成本模型间切换（如 Gemini 与 DeepSeek）、针对本地 GPU 调整并发参数、故障排查与性能监控。
-- **🛠️ 核心功能**: 全协议 AI 模型路由、高性能并发自定义、分辨率动态策略、故障实时反馈。
-- **✨ 核心亮点**: 支持“一键热切换”模型适配器，无需重启即可在云端与本地大模型间无缝流转。
-- **💎 业务价值**: 在保障数据安全的同时，显著降低大模型调用成本，并实现硬件性能的极致释放。
-
-| 01 - 引擎配置 (模型路由)                                                                                        | 02 - 参数调优 (性能引擎)                                                                                            |
-| :-------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
-| ![模型切换](./image/04-智算管理底座/01-引擎配置-全协议AI模型配置+模型自由自由切换+助您整合全球最顶尖智力资源.gif) | ![参数自定义](./image/04-智算管理底座/02-参数调优-高性能参数自定义+极致生成效率调优+让您的AI引擎完美适配硬件实力.png) |
-
----
-
-### 5. 🛠️ 系统管理后台 (System Admin Panel)
-
-*全维度的业务监控与权限调度的中枢。*
-
-- **📖 章节总述**: 作为系统的核心治理层，该模块为超级管理员提供了一站式的业务看板与原子级权限分配矩阵。
-- **🎯 典型场景**: 用户生命周期管理、交易流水对账、积分规则动态调整、AI 模型参数热配置。
-- **🛠️ 核心功能**: 多维度业务仪表盘、RBAC 精细化权限控制、订单异常处理、全局系统参数热更新。
-- **✨ 核心亮点**: 预集成了全套后台管理 UI 规范，数据看板实时刷新，支持权限配置的一键下发。
-- **💎 业务价值**: 实现从业务运营到技术底层的高效闭环，确保系统在复杂生产环境下的稳健运行。
-
-| 01 - 数据概览 (控制台)                                     | 02 - 账号治理 (用户管理)                                     |
-| :--------------------------------------------------------- | :----------------------------------------------------------- |
-| ![控制台](./image/05-系统管理后台/01-控制台.png) | ![用户管理](./image/05-系统管理后台/02-用户管理.png) |
-
-| 03 - 交易流水 (订单管理)                                     | 04 - 计费逻辑 (积分规则)                                     |
-| :--------------------------------------------------------- | :----------------------------------------------------------- |
-| ![订单管理](./image/05-系统管理后台/03-订单管理.png) | ![积分规则](./image/05-系统管理后台/04-积分规则.png) |
-
-| 05 - 权限调度 (角色权限)                                     | 06 - 引擎监控 (AI核心引擎)                                   |
-| :--------------------------------------------------------- | :----------------------------------------------------------- |
-| ![角色权限](./image/05-系统管理后台/05-角色权限.png) | ![核心引擎](./image/05-系统管理后台/06-AI核心引擎.png) |
-
-| 07 - 系统全局配置 (系统设置)                               |  |
-| :--------------------------------------------------------- | :- |
-| ![系统设置](./image/05-系统管理后台/07-系统设置.png) |  |
-
----
-
-### 6. 💰 商业化运营中心 (Commercialization Hub)
-
-*从创意到营收的完整闭环。*
-
-- **📖 章节总述**: 本模块提供完整的商业化基础设施框架，支持积分、会员、支付、退款一体化运营。
-- **🎯 典型场景**: SaaS 订阅收费、按次付费的 AI 生成服务、会员增值服务、企业级授权管理。
-- **🛠️ 核心功能**: 
-  - **双轨支付体系**（支付宝 + 微信支付）- ⚠️ **当前为 Mock 模式运行**
-    - 支付接口已完整实现，但默认运行模拟模式
-    - 需配置商户密钥 + 关闭 Mock 模式后启用真实支付
-    - 预计接入工作量：2-3天
-  - 积分消耗与充值体系（支持 VIP 专属价格）
-  - 多级 VIP 会员权益管理（6 级会员体系）
-  - **智能退款与风控**（自动审核 + 人工复核）- ✅ **完整实现**
-    - 退款流程完整（申请→风控→审核→打款→权益回收）
-    - 7项风控规则自动检测
-    - 支持自动审批（低风险用户）
-  - 邀请返利与签到激励（增长运营工具）
-- **✨ 核心亮点**: 
-  - VIP 用户享受专属积分价格，权益差异化明显
-  - 智能风控检测异常退款行为，保障资金安全
-  - 自动权益回收机制，退款后自动降级 VIP
-  - 退款接口标准化设计，30 分钟完成渠道接入
-- **💎 业务价值**: 零代码搭建 AI 产品商业化能力，支持灵活的定价策略和会员运营。
-
-> **⚠️ 重要说明**: 
-> - **支付功能**: 当前为 Mock 模式（模拟支付），需配置支付宝/微信商户密钥后方可启用真实支付
-> - **退款功能**: ✅ 已完整实现（含风控、自动审批、权益回收），可直接使用
-
----
-
-### 7. 🔔 智能消息中心 (Message Hub)
-
-*全场景触达，零延迟响应。*
-
-- **📖 章节总述**: 统一的消息管理与推送平台，支持站内信、邮件等多渠道触达，覆盖订单、退款、AI 任务、系统公告等全业务场景。
-- **🎯 典型场景**: 订单状态变更通知、退款进度实时推送、AI 生成任务完成提醒、系统维护公告、营销活动触达。
-- **🛠️ 核心功能**: 
-  - 9 大消息类型分类管理（系统/订单/退款/AI/积分/VIP/活动/安全/线索）
-  - 站内信 + 邮件双通道推送
-  - 消息已读/未读状态管理
-  - 重要消息标记与置顶
-  - 消息模板可视化配置
-  - 用户偏好设置（按类型开关通知）
-- **✨ 核心亮点**: 
-  - 消息持久化存储，支持历史查询
-  - 智能批量归档，过期消息自动清理
-  - 业务关联追踪，点击消息直达相关页面
-  - 支持消息处理状态（如退款申请可标记为"已处理"）
-- **💎 业务价值**: 提升用户留存与活跃度，降低客服咨询量，实现运营自动化触达。
-
----
-
-### 8. 🛡️ 权限与安全体系 (RBAC & Security)
-
-*企业级的访问控制与审计。*
-
-- **📖 章节总述**: 基于 RBAC（基于角色的访问控制）的精细化权限管理系统，支持 6 级用户角色、多维度权限粒度，配合完整的操作审计日志，满足企业级合规要求。
-- **🎯 典型场景**: 管理员分级授权、运营人员权限隔离、敏感操作审计追踪、异常登录风控、数据安全合规。
-- **🛠️ 核心功能**: 
-  - 6 级角色体系（USER / VIP / PROFESSIONAL / ENTERPRISE / ADMIN / SUPER_ADMIN）
-  - 模块化权限矩阵（用户/订单/退款/积分/系统/AI 引擎等 10+ 模块）
-  - 操作审计日志（全量记录，支持追溯）
-  - 登录风控（失败次数限制、账号自动锁定）
-  - 敏感数据加密存储
-- **✨ 核心亮点**: 
-  - 权限动态配置，无需重启即时生效
-  - 操作全留痕，支持时间、IP、操作人追踪
-  - 异常行为自动检测（如高频退款、异常登录）
-  - 账号安全策略（密码强度、锁定机制、重置流程）
-- **💎 业务价值**: 满足企业级安全合规要求，防止内部越权操作，保障用户数据安全。
-
----
-
-### 9. 🤖 Agent 对话式生成 (AI Agent Mode)
-
-*Agent 模式：一句话，从想法到演示。*
-
-- **📖 章节总述**: 全新的 AI Agent 交互模式，用户通过自然语言与 AI 对话，由 Agent 自动规划任务、逐步执行，完成从大纲到配图的全流程 PPT 生成。与工作台模式共享数据层，顶部 Tab 一键切换，两种模式无缝衔接。
-- **🎯 典型场景**: 快速生成新 PPT（"帮我做一个关于AI发展的10页PPT"）、对话修改已有项目（"把第3页标题改成..."）、上传文档一键转换（Word/PDF → PPT）、风格模板应用。
-- **🛠️ 核心功能**:
-  - **AI 意图识别**: 自动理解用户需求，智能拆解为生成任务（AI 优先 + 关键词回退双策略）
-  - **9 大 AI 工具**: 涵盖大纲生成、内容扩写、配图生成、页面修改、风格切换、文档导入、导出等全流程
-  - **双执行模式**: 引导确认（逐步把关，默认）+ 自动执行（一气呵成，PROFESSIONAL+）
-  - **文件上传**: 支持 Word/MD 大纲文件、PPT/PDF 文档导入作为参考素材
-  - **实时进度**: SSE + WebSocket 双通道推送，毫秒级状态更新
-  - **对话分支**: 消息支持编辑和"重置至此节点"，积分自动退还
-  - **完成预览**: 网格/列表视图浏览，单页修改与重新生成
-  - **多格式导出**: ZIP（图片包）/ PDF / PPTX 一键导出
-- **✨ 核心亮点**:
-  - 乐观更新 UI——用户发送消息后零延迟显示，服务端响应后无缝替换
-  - 分步确认卡片——每个关键环节（大纲/内容/配图）展示结果供用户确认或修改
-  - AI 修饰跑马灯——输入框 AI 润色时 BorderBeam 动画，提升等待体验
-  - WebSocket 房间机制——基于项目 ID 广播，支持多标签页/多设备实时同步
-- **💎 业务价值**: 将 PPT 创作门槛降至"会说话就行"，显著扩大潜在用户群体，为 AI 产品的自然语言交互树立标杆。
-
-| 01 - Agent 欢迎页 (主题 + 风格)                                                                              | 02 - 生成结果预览 (引导执行)                                                                                    |
-| :----------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------- |
-| ![Agent首页](./image/06-Agent模式/新建对话引导示例.png)                                                      | ![生成结果预览](./image/06-Agent模式/生成结果预览.png)                                              |
-
-| 03 - 二次修订与重新生成 (精细打磨)                                                                              |  |
-| :----------------------------------------------------------------------------------------------------------- | :- |
-| ![二次修订](./image/06-Agent模式/生成结果二次修订和重新生成.png)                                                  |  |
-
----
-
-
-## 💎 极致交互哲学 (Interaction Design Philosophy)
-
-> 我们不仅仅是在开发一个 PPT 工具，我们是在打磨一种“人机协同”的呼吸感。
-
-### 🌊 交互动画与动效
-
-- **胶囊化导航栏 (Adaptive Header)**:当用户沉浸在编辑区向下滚动时，传统的笨重 Header 会平滑收缩并“流变”成一个带有毛玻璃质感的轻量级**动态胶囊**悬浮在窗口中心。这一设计增加了 15% 的垂直编辑视野，同时减少视觉压迫感。
-- **呼吸式反馈**: 所有 AI 生成过程均配有细腻的微动效，缓解用户在等待模型响应期间的焦虑。
-
-### 🧩 级联式过滤交互
-
-- **二层逻辑设计**: 在模板库和历史库中，通过“左侧分类树 + 右侧级联标号”的形式，将“系统标准化样式”与“用户个性化创作”清晰分离，确保管理成千上万个项目依然井然有序。
-
----
-
-## 🧬 技术深度解析 (Technical Architecture)
-
-### 1. 多模型路由器 (Intelligent Router-Adapter)
-
-本系统采用高度抽象的适配器模式，构建了一套通用的 AI 路由协议。它能根据任务属性（生图型、推理型、视觉分析型）自动调度最匹配的模型资源，支持灵活切换全球各大厂商生成模型，不限定具体某一个提供商。
+## Architecture
 
 ```mermaid
 graph TD
-    UI[前端 React 组件] --> Service[后端 API 服务]
-    Service --> Router{多模型路由层}
-    Router -- 推理/逻辑 --> Logic[各大厂商逻辑推理模型]
-    Router -- 审美/生图 --> Image[各大厂商图片生成模型]
-    Router -- 视觉分析 --> Vision[各大厂商视觉分析模型]
-    Router -- 原生文档内核 --> MinerU[MinerU Engine]
-    UI <-->|SSE + WebSocket| AgentSvc[Agent 对话服务]
-    AgentSvc --> Router
-    AgentSvc -->|Function Calling| Tools[9 大 AI 工具]
+    UI[React Frontend] --> API[Express API Server]
+    API --> Router{Multi-Model Router}
+    Router -- text/logic --> Text[Text Models]
+    Router -- image gen --> Image[Image Models]
+    Router -- vision --> Vision[Vision Models]
+    API --> Agent[Agent Service]
+    Agent -->|Function Calling| Tools[9 AI Tools]
+    UI <-->|SSE + WebSocket| Agent
 ```
 
-### 2. 4 层级智能 Prompt 重组引擎
+---
 
-为了打破 AI 绘图的“拆盲盒”困境，我们将指令生成工业化：
+## Roadmap
 
-- **L1 视觉基因层**: 通过 Vision 模型预解析参考图，锁定构图、空间层级、背景肌理与配色逻辑。
-- **L2 业务语义层**: 提取页面标题、核心关键字及上下文相关的 800 字深度正文。
-- **L3 指令合成层**: 显式告知 AI 如何将视觉基因与业务语义进行有机“化合”。
-- **L4 参数标准层**: 强制 16:9 画幅、2K/4K 分辨率、光效质感（Cinematic Lighting）等工业参数。
+- [ ] Native editable PPTX export (preserving text layers and vector graphics)
+- [ ] Smart layout engine with automatic text-image alignment
+- [ ] PowerPoint animation export
+- [ ] Real-time multi-user collaboration
+- [x] Agent conversational generation mode
+- [x] Commercial SaaS infrastructure (payment, credits, VIP, refund)
+- [x] Enterprise RBAC permissions and audit logging
+- [x] Growth tools (invite rewards, check-in, CRM)
 
 ---
 
-## 🔌 技术栈详情 (Technology Stack)
+## Documentation
 
-- **下一代前端架构**:
-  - `React 19.2`：利用新版 Actions 与 Hooks 提升 UI 交互响应。
-  - `Vite 6.2`：提供秒级的冷启动体验与极致的 HMR。
-  - `Tailwind CSS v4.1`：高能引擎驱动，支持更强大的复合设计系统。
-  - `Tanstack Query v5.9`：实现多项目并行、海量图片加载的极致缓存与并发处理。
-  - `Framer Motion v12.x`：Agent 对话动画、确认卡片、侧边栏展开等流畅过渡。
-  - `WebSocket (ws)`：Agent 模式实时双向通信，支持房间管理与自动重连。
-- **弹性后端服务**:
-  - `Node.js 22 (LTS)` + `Express v5.2`：高性能异步 I/O 驱动。
-  - `Prisma ORM v6.19` + `SQLite`：单机极速架构，`.db` 文件持久化存储。
-  - `Winston v3.19`：工业级日志管理，支持分级与持久化。
-  - `Zod v4.3`：运行时类型安全校验与 Schema 验证。
-- **商业化基础设施**:
-  - `支付宝 SDK v4.14`：国内主流支付渠道原生支持（接口已预留，需配置后启用）。
-  - `微信支付 Node.js SDK v2.2`：微信支付 v3 协议完整实现（接口已预留，需配置后启用）。
-  - `Nodemailer v7.0`：邮件通知服务，支持 SMTP 多服务商。
-  - `express-rate-limit v8.2`：API 限流与风控防护。
-  - `bcryptjs v3.0`：密码安全加密与验证。
-  - `jsonwebtoken v9.0`：JWT 认证与授权。
-  - `ws v8.x`：WebSocket 服务端，支持项目房间广播、心跳检测、JWT 鉴权与自动重连。
-- **AI 系统集成**:
-  - `Google GenAI Native SDK` (v1.35+)
-  - `MinerU v4 Internal`: 项目原生集成的 **AI 高保真文档解构引擎**，支持 PDF/Word 内容的结构化提取。
-  - **Volcengine Adapter**: 针对火山引擎 Ark 平台进行深度优化，包括分辨率补偿逻辑。
-  - **SSE (Server-Sent Events)**: Agent 任务进度流式推送，支持 Token 查询参数认证。
-  - **OpenAI Function Calling 格式**: Agent 工具定义标准，兼容主流 LLM 直接调度。
-- **测试与质量保障**:
-  - `Playwright v1.57`：E2E 自动化测试，覆盖核心用户流程。
-  - `Bun Test`：后端单元测试与集成测试。
+| Topic | File |
+|---|---|
+| Data Dictionary (28 models) | [docs/03_Database/01_完整数据字典.md](./docs/03_Database/01_完整数据字典.md) |
+| Security Architecture | [docs/02_Architecture/04_安全架构设计.md](./docs/02_Architecture/04_安全架构设计.md) |
+| Multi-Model Router | [docs/04_Modules/02_AI生成能力/多模型路由.md](./docs/04_Modules/02_AI生成能力/多模型路由.md) |
+| Credits System | [docs/04_Modules/04_用户增值服务/积分系统.md](./docs/04_Modules/04_用户增值服务/积分系统.md) |
+| API Reference | [docs/05_API/01_REST_API/核心接口文档.md](./docs/05_API/01_REST_API/核心接口文档.md) |
+| Error Codes | [docs/05_API/03_错误码规范.md](./docs/05_API/03_错误码规范.md) |
+| Deployment Guide | [docs/06_Guides/02_部署指南/生产环境部署.md](./docs/06_Guides/02_部署指南/生产环境部署.md) |
+| Troubleshooting | [docs/06_Guides/03_运维指南/故障排查手册.md](./docs/06_Guides/03_运维指南/故障排查手册.md) |
+| Test Plan | [docs/07_Testing/测试计划.md](./docs/07_Testing/测试计划.md) |
+| Full Doc Index | [docs/00_Meta/文档阅读指南.md](./docs/00_Meta/文档阅读指南.md) |
 
 ---
 
-## 🚀 部署与极速启动 (Quick Start)
+## Star History
 
-### 1. 预备环境
+[![Star History Chart](https://api.star-history.com/svg?repos=466852675/YH-AI-PPT&type=Date)](https://star-history.com/#466852675/YH-AI-PPT&Date)
 
-- **Node.js**: v18.x 或以上版本（推荐 v22+）。
-- **API Key**: 准备好 [Gemini API Key](https://aistudio.google.com/) (必填) 或 火山引擎 API Key。
+## Contributors
 
-### 2. 配置文件 (`server/.env`)
-
-> 根据你的使用场景选择配置方案：
-> - **个人模式**: 参见上方 [🏠 个人轻量部署](#个人轻量部署-personal-mode) 章节 — 5 项必填即可启动
-> - **企业模式**: 参见上方 [🏢 企业商业化运营](#企业商业化运营-enterprise-mode) 章节 — 含支付/VIP/积分完整配置
->
-> 也可直接复制 `server/.env.example` 并按需填写。
-
-### 3. 三步启动
-
-- **安装依赖**: `npm install && cd server && npm install`
-- **初始化数据库**: `npx prisma db push`
-- **一键运行**:
-  - `start_app.bat` (Windows 推荐)
-  - 或 `npm run dev` (前端) + `npm run dev:server` (后端)
+[![Contributors](https://contrib.rocks/image?repo=466852675/YH-AI-PPT)](https://github.com/466852675/YH-AI-PPT/graphs/contributors)
 
 ---
 
-## 📈 未来演进路线 (Roadmap)
+## License
 
-- [ ] **原生可编辑 PPTX 导出**: 当前导出为图片嵌入模式，未来将支持真正的原生可编辑 PPTX 格式，保留文本层和矢量图形。
-- [ ] **可视化排版增强**: 智能感知文字重心，自动决定图文对齐策略。
-- [ ] **高阶运动引擎**: 输出支持 PowerPoint 动画切页路径的物理文件。
-- [ ] **共享创意云**: 团队实时协作光标，共同打磨每一页细节。
-- [x] **Agent 对话式生成模式**: AI 意图识别、9 大工具(Function Calling)、引导/自动双模式、SSE + WebSocket 实时进度、对话分支、积分闭环 ✅
-- [x] **商业化基础设施**: 支付、积分、VIP、退款、消息中心完整实现 ✅
-- [x] **企业级权限体系**: RBAC 权限管理、审计日志、风控系统 ✅
-- [x] **增长运营工具**: 邀请返利、签到系统、线索管理(CRM) ✅
+[GNU AGPL-3.0-or-later](./LICENSE)
+
+If you use this project in a public SaaS product, please attribute **"Based on YH-AI PPT"** with a link to the original repository.
 
 ---
 
-*YH-AI PPT: 让每一场演示都能直抵人心。*
-
----
-
-## 📚 附录：全维度深度指南 (Deep Dive Guides)
-
-为了保持项目资产的结构化，我们为您提供了 30+ 篇覆盖技术架构、业务规约、操作实战与测试保障的详细指南：
-
-### 🔰 开始使用
-- **[📖 文档阅读指南](./docs/00_Meta/文档阅读指南.md)**: 如何快速找到所需文档，按角色导航。
-- **[🛠️ 开发环境搭建](./docs/06_Guides/01_开发指南/开发环境搭建.md)**: 5分钟启动项目开发环境。
-- **[⚡ 性能优化手册](./docs/06_Guides/01_开发指南/性能优化手册.md)**: 前端/后端/AI调优最佳实践。
-
-### 🏗️ 架构与设计
-- **[🗄️ 完整数据字典](./docs/03_Database/01_完整数据字典.md)**: 28个数据模型详细说明、字段定义、关系图谱。
-- **[🛡️ 安全架构设计](./docs/02_Architecture/04_安全架构设计.md)**: Prompt防护、内容过滤、风控体系、安全加固。
-
-### 💼 功能模块
-
-#### AI生成能力
-- **[🔀 多模型路由](./docs/04_Modules/02_AI生成能力/多模型路由.md)**: 7种AI提供商适配架构，混合路由协议。
-- **[🎨 图片生成技术细节](./docs/04_Modules/02_AI生成能力/图片生成技术细节.md)**: 分辨率适配、Seed锁定、并发优化。
-- **[📋 大纲生成](./docs/04_Modules/02_AI生成能力/大纲生成.md)**: 结构化大纲生成逻辑、页面占比公式、智能页面序列算法。
-
-#### Agent 对话模式
-
-#### 商业化系统
-- **[💰 积分系统](./docs/04_Modules/04_用户增值服务/积分系统.md)**: 积分获取、消耗规则、VIP专属价格。
-- **[👑 VIP会员体系](./docs/04_Modules/04_用户增值服务/VIP会员体系.md)**: 6级会员权益、自动发放、到期降级。
-- **[🛒 订单管理](./docs/04_Modules/08_订单管理/订单管理系统.md)**: 订单状态机、支付对接、权益发放。
-- **[🛡️ 退款风控与边缘Case](./docs/04_Modules/11_退款审核/退款风控与边缘Case处理.md)**: 7项风控规则、自动审批机制。
-
-#### 增长运营
-- **[📅 签到系统](./docs/04_Modules/04_用户增值服务/签到系统.md)**: 阶梯奖励机制、连续签到逻辑。
-- **[🤝 邀请返利](./docs/04_Modules/04_用户增值服务/邀请返利.md)**: 裂变增长策略、返利计算规则。
-
-#### 消息与权限
-- **[📨 消息中心系统规范](./docs/04_Modules/04_用户增值服务/消息中心.md)**: 9大消息类型、轮询机制、业务关联。
-- **[🔐 权限体系现状报告](./docs/04_Modules/05_认证与权限/权限体系现状报告.md)**: RBAC权限系统、6级角色、审计日志。
-
-### 🔌 API与接口
-- **[⚡ 核心接口文档](./docs/05_API/01_REST_API/核心接口文档.md)**: REST API完整参考、请求/响应示例。
-- **[🚨 错误码规范](./docs/05_API/03_错误码规范.md)**: 60+错误码定义、处理建议。
-
-### 🔧 开发与运维
-- **[🚀 生产环境部署](./docs/06_Guides/02_部署指南/生产环境部署.md)**: Docker一键部署、环境配置。
-- **[🔧 故障排查手册](./docs/06_Guides/03_运维指南/故障排查手册.md)**: 10+故障场景诊断与解决方案。
-
-### 🧪 测试与质量保障
-- **[📋 测试计划](./docs/07_Testing/测试计划.md)**: 测试策略、覆盖范围与执行计划。
-- **[🔑 测试账号清单](./docs/07_Testing/测试账号清单.md)**: 各环境测试账号与权限配置。
-- **[✅ 用户验收用例集](./docs/07_Testing/用户验收用例集.md)**: UAT测试场景与验收标准。
-
-### 📋 规范与参考
-- **[🔤 术语表](./docs/00_Meta/术语表.md)**: 项目术语、缩写、技术名词解释。
-- **[📊 文档同步检查清单](./docs/00_Meta/文档同步检查清单.md)**: 文档维护与代码同步的检查项。
-
----
-*YH-AI PPT: 让每一场演示都能直抵人心。*
+*YH-AI PPT: Let every presentation resonate.*
