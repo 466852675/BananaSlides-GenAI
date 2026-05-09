@@ -196,6 +196,8 @@ export const syncProjectSlides = async (req: Request, res: Response) => {
             return;
         }
 
+        console.log('[SyncSlides]', { projectId: id, slideCount: slides.length });
+
         const result = await projectService.syncSlides(id, ownerId, slides, isAdmin);
         if (!result) {
             res.status(404).json({ error: 'Project not found' });

@@ -1,3 +1,4 @@
+import ReactMarkdown from 'react-markdown';
 import React, { useState, useRef, useEffect, useCallback, useMemo, ClipboardEvent, lazy, Suspense } from "react";
 import { PointsBadge } from './components/PointsBadge';
 import { createPortal } from 'react-dom';
@@ -189,11 +190,11 @@ const DEFAULT_STYLE_CONFIG: StyleConfig = {
   pageStructure: {
     cover: 1,
     directory: 1,
-    transition: 2,
-    content: 5,
+    transition: 0,
+    content: 7,
     end: 1,
   },
-  defaultVariantCount: 4,
+  defaultVariantCount: 1,
   requirements: "",
 };
 
@@ -614,6 +615,7 @@ const App: React.FC = () => {
 
   const [items, setItems] = useState<GeneratedSlide[]>([]);
   const [hasUserInteraction, setHasUserInteraction] = useState(false); // 标记用户是否进行了操作
+  const [isRequirementsPreview, setIsRequirementsPreview] = useState(false); // 全局设计要求 MD 预览模式
 
 
   // Multi-Project State (Replaced with React Query)
@@ -1597,6 +1599,9 @@ const App: React.FC = () => {
           projectId: createdProject.id,
           slides: slides
         });
+        // 立即刷新项目列表缓存，确保 dashboard 看到最新的 slide 数据
+        // 只在项目创建时做此操作（低频），避免 auto-save 场景的性能问题
+        await queryClient.invalidateQueries({ queryKey: ['projects'] });
       }
 
       // 3. Switch Context & Navigate
@@ -2393,6 +2398,7 @@ const App: React.FC = () => {
 
   // Generation Logic
   const processItem = async (item: GeneratedSlide, triggerTime?: string) => {
+    const originalVariants = item.variants; // 保存原始 variants，失败时恢复
     try {
       const contentSource =
         item.contentType === "text"
@@ -2461,7 +2467,7 @@ const App: React.FC = () => {
       setItems((prev) =>
         prev.map((res) =>
           res.id === item.id
-            ? { ...res, status: "error", errorMessage: error.message }
+            ? { ...res, status: "error", errorMessage: error.message, variants: originalVariants }
             : res
         )
       );
@@ -2539,21 +2545,19 @@ const App: React.FC = () => {
 
     // Sync all generated slides to database
     if (currentProjectId && generatedResults.length > 0) {
+      let slidesToSync: any[] = [];
       setItems((currentItems) => {
-        // Create a map of generated results for quick lookup
         const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
 
-        const slidesToSync = currentItems.map(slide => {
+        slidesToSync = currentItems.map(slide => {
           const result = resultsMap.get(slide.id);
           if (result) {
-            // Use the generated variants for this item
             return {
               ...slide,
               variants: result.variants,
               previewUrl: result.previewUrl
             };
           }
-          // For other slides, ensure previewUrl is in variants
           if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
             return {
               ...slide,
@@ -2563,11 +2567,25 @@ const App: React.FC = () => {
           return slide;
         });
 
-
         return slidesToSync;
       });
+
+      // 等待数据库同步完成后再刷新缓存
+      try {
+        await syncSlidesMutation.mutateAsync({
+          projectId: currentProjectId,
+          slides: slidesToSync
+        });
+      } catch (e) {
+        console.error('[handleGenerateBatch] Sync failed:', e);
+      }
     } else {
       console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
+    }
+
+    // 批量生成完成，刷新项目列表缓存，确保退出重入时数据一致
+    if (currentProjectId) {
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
     }
 
     // 检查是否所有幻灯片都已完成并更新项目状态
@@ -2598,8 +2616,11 @@ const App: React.FC = () => {
   const handleSingleGenerate = async (id: string) => {
     const triggerTime = new Date().toISOString();
     const item = items.find((i) => i.id === id);
-    if (item) {
-      const providerName = getProviderName("image");
+    if (!item) return;
+
+    setIsProcessing(true);
+    const providerName = getProviderName("image");
+    try {
       try {
         const count = item.variantCount || 1;
         const [unitCost, balance] = await Promise.all([
@@ -2616,18 +2637,15 @@ const App: React.FC = () => {
 
         // Sync to database after successful generation
         if (currentProjectId && result) {
+          let slidesToSync: any[] = [];
           setItems((currentItems) => {
-            const slidesToSync = currentItems.map(slide => {
-              // Use the returned variants for the generated item
-              // DO NOT overwrite previewUrl - keep the original uploaded image on the left side
+            slidesToSync = currentItems.map(slide => {
               if (slide.id === result.itemId) {
                 return {
                   ...slide,
                   variants: result.variants
-                  // previewUrl is intentionally NOT updated here to preserve the original upload
                 };
               }
-              // For other slides, ensure previewUrl is in variants
               if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
                 return {
                   ...slide,
@@ -2636,14 +2654,19 @@ const App: React.FC = () => {
               }
               return slide;
             });
+            return slidesToSync;
+          });
 
-            syncSlidesMutation.mutate({
+          // 等待数据库同步完成后再刷新缓存，确保退出重入时数据一致
+          try {
+            await syncSlidesMutation.mutateAsync({
               projectId: currentProjectId,
               slides: slidesToSync
             });
-
-            return slidesToSync;
-          });
+            await queryClient.invalidateQueries({ queryKey: ['projects'] });
+          } catch (e) {
+            console.error('[handleSingleGenerate] Sync failed:', e);
+          }
         }
 
         // 检查是否所有幻灯片都已完成并更新项目状态
@@ -2664,6 +2687,8 @@ const App: React.FC = () => {
       } catch (error: any) {
         showToast(`调用 ${providerName} API 失败: ${error.message}`, "error");
       }
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -4342,40 +4367,68 @@ const App: React.FC = () => {
                           <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
                             <LinkIcon size={14} className="text-slate-500" />{" "}
                             全局设计要求
+                            <button
+                              onClick={() => setIsRequirementsPreview(!isRequirementsPreview)}
+                              className={`ml-auto flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors ${isRequirementsPreview ? 'bg-indigo-100 text-indigo-600 font-medium' : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-50'}`}
+                              title={isRequirementsPreview ? "切换编辑" : "切换预览"}
+                            >
+                              {isRequirementsPreview ? <Edit3 size={11} /> : <Eye size={11} />}
+                              {isRequirementsPreview ? '编辑' : '预览'}
+                            </button>
                           </h3>
                           <div className="relative w-full">
-                            <textarea
-                              value={config.requirements}
-                              onChange={(e) =>
-                                handleConfigChange("requirements", e.target.value)
-                              }
-                              placeholder={`例如：封面使用极简科技风格，主色调为深蓝与白色，标题使用无衬线字体，正文排版清晰，强调商务专业感...`}
-                              disabled={!!previewSnapshot}
-                              className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px] ${previewSnapshot ? 'opacity-70 cursor-not-allowed' : ''}`}
-                            />
-                            <button
-                              onClick={handleRefineRequirements}
-                              disabled={
-                                !!previewSnapshot || isRefiningRequirements || !(config.requirements || '').trim()
-                              }
-                              className={`absolute bottom-3 right-3 p-1.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-all shadow-sm
-                                        ${!(config.requirements || '').trim()
-                                  ? "bg-slate-100 text-slate-300 cursor-not-allowed opacity-50"
-                                  : isRefiningRequirements
-                                    ? "bg-indigo-50 text-indigo-400 cursor-wait"
-                                    : "bg-white text-indigo-600 hover:bg-indigo-50 border border-indigo-100 hover:shadow-md"
+                            {isRequirementsPreview && !previewSnapshot ? (
+                              <div className="w-full p-4 bg-slate-50 border border-slate-200 rounded-lg min-h-[140px] overflow-y-auto custom-scrollbar prose prose-sm prose-slate max-w-none">
+                                <ReactMarkdown
+                                  components={{
+                                    h1: ({ children }) => <h1 className="text-lg font-bold text-slate-800 mb-3 pb-2 border-b border-slate-200">{children}</h1>,
+                                    h2: ({ children }) => <h2 className="text-base font-bold text-slate-700 mt-4 mb-2">{children}</h2>,
+                                    h3: ({ children }) => <h3 className="text-sm font-bold text-slate-700 mt-3 mb-1">{children}</h3>,
+                                    p: ({ children }) => <p className="text-slate-600 mb-2 leading-relaxed text-sm">{children}</p>,
+                                    ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-2 text-slate-600 text-sm">{children}</ul>,
+                                    ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-2 text-slate-600 text-sm">{children}</ol>,
+                                    code: ({ children }) => <code className="bg-slate-100 text-rose-500 px-1 py-0.5 rounded text-xs">{children}</code>,
+                                  }}
+                                >
+                                  {config.requirements || '*暂无设计要求*'}
+                                </ReactMarkdown>
+                              </div>
+                            ) : (
+                              <textarea
+                                value={config.requirements}
+                                onChange={(e) =>
+                                  handleConfigChange("requirements", e.target.value)
                                 }
-                                    `}
-                              title="AI 智能修饰设计要求"
-                            >
-                              {isRefiningRequirements ? (
-                                <Loader2 size={14} className="animate-spin" />
-                              ) : (
-                                <Sparkles size={14} />
-                              )}
-                              {isRefiningRequirements ? "修饰中..." : "AI 修饰"}
-                              {!isRefiningRequirements && <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-1" />}
-                            </button>
+                                placeholder={`例如：封面使用极简科技风格，主色调为深蓝与白色，标题使用无衬线字体，正文排版清晰，强调商务专业感...`}
+                                disabled={!!previewSnapshot}
+                                className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px] ${previewSnapshot ? 'opacity-70 cursor-not-allowed' : ''}`}
+                              />
+                            )}
+                            {!isRequirementsPreview && (
+                              <button
+                                onClick={handleRefineRequirements}
+                                disabled={
+                                  !!previewSnapshot || isRefiningRequirements || !(config.requirements || '').trim()
+                                }
+                                className={`absolute bottom-3 right-3 p-1.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-all shadow-sm
+                                          ${!(config.requirements || '').trim()
+                                    ? "bg-slate-100 text-slate-300 cursor-not-allowed opacity-50"
+                                    : isRefiningRequirements
+                                      ? "bg-indigo-50 text-indigo-400 cursor-wait"
+                                      : "bg-white text-indigo-600 hover:bg-indigo-50 border border-indigo-100 hover:shadow-md"
+                                  }
+                                      `}
+                                title="AI 智能修饰设计要求"
+                              >
+                                {isRefiningRequirements ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Sparkles size={14} />
+                                )}
+                                {isRefiningRequirements ? "修饰中..." : "AI 修饰"}
+                                {!isRefiningRequirements && <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-1" />}
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

@@ -249,12 +249,6 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                     {isPreviewMode ? '编辑' : '预览'}
                                 </button>
                             )}
-
-                            {!readOnly && (
-                                <span className="text-xs text-slate-300 flex items-center gap-1">
-                                    {isTextType ? '可编辑' : '可替换'} <Edit size={10} />
-                                </span>
-                            )}
                         </div>
                     </div>
 

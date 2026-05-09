@@ -199,6 +199,46 @@ export const generateSlideVariant = async (
     }
 };
 
+/**
+ * 生成幻灯片 SVG 代码（可编辑模式）
+ * 调用后端 /ai/generate-slide-svg 端点
+ * 返回 { svgUrl, svgContent }
+ */
+export const generateSlideSvg = async (
+    title: string,
+    content: string,
+    pageType: string,
+    configStyle: StyleConfig,
+    allSlideTitles?: string[],
+    slideIndex?: number,
+    totalSlides?: number,
+    styleKeywords?: string,
+    triggerTime?: string,
+    projectId?: string
+): Promise<{ svgUrl: string; svgContent: string }> => {
+    try {
+        const response = await client.post<{
+            success: boolean;
+            data: { svgUrl: string; svgContent: string };
+        }>('/ai/generate-slide-svg', {
+            title,
+            content,
+            pageType,
+            configStyle,
+            allSlideTitles,
+            slideIndex,
+            totalSlides,
+            styleKeywords,
+            triggerTime,
+            projectId
+        });
+        return (response as any).data;
+    } catch (error) {
+        console.error("Generate Slide SVG Error:", error);
+        throw error;
+    }
+};
+
 export const analyzeTemplateConcept = async (input: string | File, triggerTime?: string): Promise<StyleConfig> => {
     const payload: any = { triggerTime };
     if (typeof input === 'string') {

@@ -13,8 +13,7 @@ call "scripts\备份数据库.bat" --silent
 echo.
 
 echo [2/5] Cleaning up ports (1111, 1000)...
-echo    - Killing all Node.js processes first...
-taskkill /F /IM node.exe >nul 2>&1
+:: 只清理占用目标端口的进程，不杀所有 Node 进程
 timeout /t 2 /nobreak >nul
 
 :: 清理端口 1111
@@ -33,7 +32,9 @@ timeout /t 2 /nobreak >nul
 netstat -ano | findstr :1111 | findstr LISTENING >nul 2>&1
 if not errorlevel 1 (
     echo    [WARNING] Port 1111 still in use! Retrying...
-    taskkill /F /IM node.exe >nul 2>&1
+    for /f "tokens=5" %%b in ('netstat -ano ^| findstr :1111 ^| findstr LISTENING 2^>nul') do (
+        taskkill /F /PID %%b >nul 2>&1
+    )
     timeout /t 3 /nobreak >nul
 )
 

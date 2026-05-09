@@ -37,6 +37,9 @@ export interface GeneratedSlide {
   status: 'idle' | 'generating' | 'success' | 'error';
   errorMessage?: string;
   createdAt: number;
+  // SVG 可编辑模式字段
+  svgContent?: string | null;       // SVG 文件 URL（如 /uploads/svg/proj/0_abc.svg）
+  generationMode?: 'image' | 'svg'; // 项目生成模式
 }
 
 export interface GenerationRequest {

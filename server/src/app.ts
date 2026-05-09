@@ -27,6 +27,7 @@ import leadRoutes from './routes/lead.routes';
 import agentRoutes from './routes/agent.routes';
 import resourceRoutes from './routes/resource.routes';
 import trashRoutes from './routes/trash.routes';
+import exportRoutes from './routes/export.routes';
 import { websocketService } from './services/websocket.service';
 import { startScheduledJobs } from './jobs/cron';
 
@@ -143,6 +144,7 @@ app.use('/api/leads', leadRoutes);
 app.use('/api/growth', growthRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/trash', trashRoutes);
+app.use('/api/export', exportRoutes);
 
 import { SettingService } from './services/setting.service';
 

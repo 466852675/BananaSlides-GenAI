@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { AIService } from '../services/ai.service';
 import { SettingService } from '../services/setting.service';
 import * as PointsService from '../services/points.service';
+import { SvgStorageService } from '../services/svg-storage.service';
 
 // Helper to get settings from database (API keys never leave server)
 const getServerSettings = async () => {
@@ -704,6 +705,91 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
         res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
     } catch (error: any) {
         console.error('[handleGenerateSlideVariant] Error:', error.message);
+        if (req.user && (res as any).deductedPoints > 0) {
+            await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
+        }
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+/**
+ * 生成幻灯片 SVG 代码（可编辑模式）
+ * POST /api/ai/generate-slide-svg
+ */
+export const handleGenerateSlideSvg = async (req: Request, res: Response) => {
+    const {
+        title,
+        content,
+        pageType,
+        configStyle,
+        allSlideTitles,
+        projectId,
+        slideIndex,
+        totalSlides,
+        styleKeywords,
+        triggerTime
+    } = req.body;
+
+    try {
+        // 积分扣除（SVG 生成使用 slide_content 类别，成本低于图像生成）
+        if (req.user && !isMockAiMode()) {
+            const deductResult = await PointsService.deductPoints(
+                req.user.id,
+                'slide_content',
+                projectId,
+                `SVG生成: ${title || `第${(slideIndex ?? 0) + 1}页`}`,
+                1,
+                {
+                    module: '创作室',
+                    category: 'SVG生成',
+                    subcategory: '可编辑模式',
+                    triggerTime: triggerTime ? new Date(triggerTime) : undefined
+                }
+            );
+
+            if (!deductResult.success) {
+                res.status(402).json({
+                    success: false,
+                    error: { code: 'INSUFFICIENT_POINTS', message: deductResult.message }
+                });
+                return;
+            }
+            (res as any).deductedPoints = deductResult.deductedAmount;
+            (res as any).transactionId = deductResult.transactionId;
+        }
+
+        const settings = await getServerSettings();
+        const svgContent = await AIService.generateSlideSvg(
+            title,
+            content,
+            pageType,
+            configStyle,
+            styleKeywords,
+            allSlideTitles,
+            slideIndex,
+            totalSlides,
+            settings
+        );
+
+        // 保存 SVG 文件
+        const svgUrl = await SvgStorageService.save(
+            projectId || 'temp',
+            slideIndex ?? 0,
+            svgContent
+        );
+
+        // 完成积分事务
+        if ((res as any).transactionId) {
+            await PointsService.completeTransaction((res as any).transactionId);
+        }
+
+        res.json({
+            success: true,
+            data: { svgUrl, svgContent },
+            pointsDeducted: (res as any).deductedPoints
+        });
+    } catch (error: any) {
+        console.error('[handleGenerateSlideSvg] Error:', error.message);
         if (req.user && (res as any).deductedPoints > 0) {
             await PointsService.refundPoints(req.user.id, (res as any).deductedPoints, (res as any).transactionId);
         }

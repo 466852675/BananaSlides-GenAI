@@ -120,3 +120,31 @@ export const exportToPptx = async (items: GeneratedSlide[], filename: string = '
     await pptx.writeFile({ fileName: `${filename}.pptx` });
 };
 
+/**
+ * 服务端 SVG→PPTX 可编辑导出（仅 SVG 模式）
+ * 调用后端 Python Bridge 将 SVG 转换为可编辑的 DrawingML PPTX
+ */
+export const exportSvgToPptx = async (
+    projectId: string,
+    filename: string = 'presentation',
+    mode: 'native' | 'legacy' = 'native'
+): Promise<void> => {
+    const token = localStorage.getItem('bananaslides_token');
+    const response = await fetch('/api/export/pptx', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ projectId, mode })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Export failed (${response.status})`);
+    }
+
+    const blob = await response.blob();
+    saveBlob(blob, `${filename}.pptx`);
+};
+

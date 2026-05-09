@@ -24,6 +24,7 @@ import * as pointsService from './points.service';
 import { snapshotService } from './snapshot.service';
 import { websocketService } from './websocket.service';
 import { resourceService } from './resource.service';
+import { SvgStorageService } from './svg-storage.service';
 import {
   AgentToolCall,
   AgentMessageCreateInput,
@@ -2264,6 +2265,12 @@ ${contextInfo}
     });
     if (!project) throw new Error('项目不存在');
 
+    // === SVG 模式分支：检查 generationMode ===
+    const generationMode = (project as any).generationMode || 'image';
+    if (generationMode === 'svg') {
+      return this.executeSvgGeneration(taskId, sessionId, params, userId);
+    }
+
     // 获取指定幻灯片或所有幻灯片
     let slides;
     if (params.slideIndexes && Array.isArray(params.slideIndexes) && params.slideIndexes.length > 0) {
@@ -2421,6 +2428,168 @@ ${contextInfo}
         }
       }
 
+      throw error;
+    }
+  }
+
+  /**
+   * SVG 模式：生成幻灯片 SVG 代码（可编辑模式）
+   * 由 executeImage 在检测到 generationMode === 'svg' 时调用
+   */
+  private async executeSvgGeneration(taskId: string, sessionId: string, params: any, userId: string) {
+    const session = await this.getSession(sessionId);
+    if (!session) throw new Error('会话不存在');
+
+    const project = await prisma.project.findUnique({ where: { id: session.projectId } });
+    if (!project) throw new Error('项目不存在');
+
+    // 获取幻灯片
+    let slides;
+    if (params.slideIndexes && Array.isArray(params.slideIndexes) && params.slideIndexes.length > 0) {
+      slides = await prisma.slide.findMany({
+        where: { projectId: session.projectId, index: { in: params.slideIndexes } },
+        orderBy: { index: 'asc' }
+      });
+    } else if (params.slideIndex !== undefined) {
+      slides = await prisma.slide.findMany({
+        where: { projectId: session.projectId, index: params.slideIndex }
+      });
+    } else {
+      slides = await prisma.slide.findMany({
+        where: { projectId: session.projectId },
+        orderBy: { index: 'asc' }
+      });
+    }
+
+    if (slides.length === 0) throw new Error('没有幻灯片，请先生成大纲');
+
+    // 积分预扣（SVG 生成使用 slide_content 类别，低于 image 成本）
+    const pageCount = slides.length;
+    const deductResult = await pointsService.deductPoints(
+      userId,
+      'slide_content',
+      session.projectId,
+      `Agent SVG 生成 (${pageCount}页)`,
+      pageCount,
+      { module: 'Agent', category: 'SVG生成', subcategory: '可编辑模式' }
+    );
+
+    if (!deductResult.success) {
+      throw new Error(`积分不足: ${deductResult.message}`);
+    }
+    logger.info(`[Agent] SVG 生成预扣积分: ${deductResult.deductedAmount}, 交易ID: ${deductResult.transactionId}`);
+
+    // 解析风格配置
+    let styleConfig: any = {
+      styleName: 'default',
+      colorPalette: '#0052D4,#4FC3F7,#FFFFFF,#1A1A2E',
+      requirements: '',
+      aspectRatio: '16:9',
+      targetPageCount: 10,
+      pageStructure: { cover: 1, directory: 1, transition: 0, content: 7, end: 1 }
+    };
+    try {
+      if (project.styleMap) {
+        const parsed = JSON.parse(project.styleMap);
+        styleConfig = { ...styleConfig, ...parsed };
+      }
+    } catch (e) { /* use defaults */ }
+
+    const defaultSettings: any = {
+      ai: {
+        provider: 'Gemini' as const,
+        baseUrl: '',
+        apiKey: '',
+        models: { text: '', image: '', vision: '' }
+      },
+    };
+
+    const projectId = session.projectId;
+    const allSlideTitles = slides.map(s => s.title);
+    const totalSlides = slides.length;
+
+    let processedCount = 0;
+    let lastError: Error | null = null;
+
+    try {
+      // 逐页生成 SVG
+      for (const slide of slides) {
+        try {
+          await this.updateTaskProgress(taskId, processedCount, String(pageCount));
+          logger.info(`[Agent] SVG 生成第 ${slide.index + 1}/${pageCount} 页: ${slide.title || ''}`);
+
+          const svgContent = await AIService.generateSlideSvg(
+            slide.title || '',
+            slide.content || '',
+            slide.pageType || 'content',
+            styleConfig,
+            undefined,            // styleKeywords
+            allSlideTitles,
+            slide.index || 0,
+            totalSlides,
+            (defaultSettings as any)
+          );
+
+          const svgUrl = await SvgStorageService.save(projectId, slide.index || 0, svgContent);
+
+          await prisma.slide.update({
+            where: { id: slide.id },
+            data: { svgContent: svgUrl, status: 'success' }
+          });
+
+          processedCount++;
+        } catch (slideError: any) {
+          logger.error(`[Agent] SVG 生成第 ${slide.index + 1} 页失败: ${slideError.message}`);
+          await prisma.slide.update({
+            where: { id: slide.id },
+            data: { status: 'error' }
+          }).catch(() => {});
+          lastError = slideError;
+        }
+      }
+
+      // 广播更新
+      websocketService.broadcastSlidesUpdate(projectId, slides.map(s => s.id), 'agent');
+
+      // 完成积分事务
+      if (deductResult.transactionId) {
+        try {
+          await pointsService.completeTransaction(deductResult.transactionId);
+        } catch (e: any) {
+          logger.error(`[Agent] SVG 生成积分事务完成失败: ${e.message}`);
+        }
+      }
+
+      // 更新任务状态
+      await prisma.agentTask.update({
+        where: { id: taskId },
+        data: {
+          status: 'completed',
+          result: JSON.stringify({
+            svgGenerated: processedCount,
+            totalSlides: pageCount,
+            imagesGenerated: 0,
+            images: [],
+          })
+        }
+      });
+
+      if (lastError) {
+        logger.warn(`[Agent] SVG 生成部分完成: ${processedCount}/${pageCount}`);
+      }
+    } catch (error: any) {
+      // 部分失败：退还未完成积分
+      if (deductResult.transactionId) {
+        const actualPointsPerPage = deductResult.deductedAmount / pageCount;
+        const unusedPages = slides.length - processedCount;
+        const refundAmount = Math.round(unusedPages * actualPointsPerPage * 100) / 100;
+        if (refundAmount > 0) {
+          await pointsService.refundPoints(userId, refundAmount, deductResult.transactionId,
+            `Agent SVG 生成部分失败: ${error.message}`
+          );
+          logger.info(`[Agent] SVG 生成退还未完成积分: ${refundAmount} 给用户 ${userId}`);
+        }
+      }
       throw error;
     }
   }
@@ -2942,8 +3111,30 @@ ${contextInfo}
   }
 
   private async executeExport(sessionId: string, params: any) {
-    // 导出功能需要调用现有的导出服务
-    // 这里返回导出信息，实际导出由前端或专门的导出服务处理
+    // 检查是否为 SVG 模式
+    const session = await prisma.agentSession.findUnique({
+      where: { id: sessionId },
+      select: { projectId: true }
+    });
+
+    if (session?.projectId) {
+      const project = await prisma.project.findUnique({
+        where: { id: session.projectId },
+        select: { generationMode: true }
+      });
+      const generationMode = (project as any)?.generationMode || 'image';
+
+      if (generationMode === 'svg') {
+        return {
+          exportReady: true,
+          format: params.format || 'pptx',
+          svgMode: true,
+          downloadUrl: `/api/export/pptx?projectId=${session.projectId}&mode=native`
+        };
+      }
+    }
+
+    // 图像模式：使用现有的客户端导出路径
     return {
       exportReady: true,
       format: params.format || 'pptx',

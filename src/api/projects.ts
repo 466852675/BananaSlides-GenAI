@@ -176,7 +176,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
             originalFile, // string | null
             title: slide.title,
             textContent: slide.content, // Map content -> textContent
-            // Priority for left-side display: 
+            // Priority for left-side display:
             // 1. Database previewUrl (user's original upload)
             // 2. originalFile (also user's upload)
             // 3. Empty string (no image on left side if nothing uploaded)
@@ -188,6 +188,9 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
             // This prevents "Stuck in AI Design" if the user refreshed during generation.
             status: slide.status === 'completed' ? 'success' : (slide.status === 'generating' ? 'idle' : slide.status as any),
             createdAt: new Date(slide.createdAt).getTime(),
+            // SVG 可编辑模式字段
+            svgContent: (slide as any).svgContent || null,
+            generationMode: (dto as any).generationMode || 'image',
         }
     });
 

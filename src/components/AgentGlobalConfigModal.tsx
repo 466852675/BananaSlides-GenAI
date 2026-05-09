@@ -115,7 +115,7 @@ export default function AgentGlobalConfigModal({
       aspectRatio: '16:9',
       colorPalette: '',
       targetPageCount: 10,
-      defaultVariantCount: 4,
+      defaultVariantCount: 1,
       pageStructure: {
         cover: 1,
         directory: 1,
