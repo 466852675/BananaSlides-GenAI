@@ -417,11 +417,14 @@ scripts/*.sh
 # 保留脚本说明文档
 !scripts/脚本使用说明.md
 
-# 文档归档 (已完成的功能文档)
-# 归档文档
-docs/archive/
-# 已完成的任务文档
-docs/completed-tasks/
+# 文档目录 (全部忽略)
+docs/
+
+# 展示截图 (已迁移至 assets 分支 CDN)
+image/
+
+# 展示截图 (已迁移至 assets 分支 CDN)
+public/assets/showcase/
 
 # 个人开发笔记 (可选)
 # 个人待办事项
