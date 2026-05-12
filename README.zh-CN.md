@@ -203,23 +203,6 @@ graph TD
 
 ---
 
-## 文档
-
-| 主题 | 文件 |
-|---|---|
-| 数据字典（28 个模型） | [docs/03_Database/01_完整数据字典.md](./docs/03_Database/01_完整数据字典.md) |
-| 安全架构设计 | [docs/02_Architecture/04_安全架构设计.md](./docs/02_Architecture/04_安全架构设计.md) |
-| 多模型路由 | [docs/04_Modules/02_AI生成能力/多模型路由.md](./docs/04_Modules/02_AI生成能力/多模型路由.md) |
-| 积分系统 | [docs/04_Modules/04_用户增值服务/积分系统.md](./docs/04_Modules/04_用户增值服务/积分系统.md) |
-| API 接口文档 | [docs/05_API/01_REST_API/核心接口文档.md](./docs/05_API/01_REST_API/核心接口文档.md) |
-| 错误码规范 | [docs/05_API/03_错误码规范.md](./docs/05_API/03_错误码规范.md) |
-| 生产环境部署 | [docs/06_Guides/02_部署指南/生产环境部署.md](./docs/06_Guides/02_部署指南/生产环境部署.md) |
-| 故障排查手册 | [docs/06_Guides/03_运维指南/故障排查手册.md](./docs/06_Guides/03_运维指南/故障排查手册.md) |
-| 测试计划 | [docs/07_Testing/测试计划.md](./docs/07_Testing/测试计划.md) |
-| 完整文档索引 | [docs/00_Meta/文档阅读指南.md](./docs/00_Meta/文档阅读指南.md) |
-
----
-
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=466852675/YH-AI-PPT&type=Date)](https://star-history.com/#466852675/YH-AI-PPT&Date)

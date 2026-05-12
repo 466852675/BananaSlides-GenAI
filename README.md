@@ -203,23 +203,6 @@ graph TD
 
 ---
 
-## Documentation
-
-| Topic | File |
-|---|---|
-| Data Dictionary (28 models) | [docs/03_Database/01_完整数据字典.md](./docs/03_Database/01_完整数据字典.md) |
-| Security Architecture | [docs/02_Architecture/04_安全架构设计.md](./docs/02_Architecture/04_安全架构设计.md) |
-| Multi-Model Router | [docs/04_Modules/02_AI生成能力/多模型路由.md](./docs/04_Modules/02_AI生成能力/多模型路由.md) |
-| Credits System | [docs/04_Modules/04_用户增值服务/积分系统.md](./docs/04_Modules/04_用户增值服务/积分系统.md) |
-| API Reference | [docs/05_API/01_REST_API/核心接口文档.md](./docs/05_API/01_REST_API/核心接口文档.md) |
-| Error Codes | [docs/05_API/03_错误码规范.md](./docs/05_API/03_错误码规范.md) |
-| Deployment Guide | [docs/06_Guides/02_部署指南/生产环境部署.md](./docs/06_Guides/02_部署指南/生产环境部署.md) |
-| Troubleshooting | [docs/06_Guides/03_运维指南/故障排查手册.md](./docs/06_Guides/03_运维指南/故障排查手册.md) |
-| Test Plan | [docs/07_Testing/测试计划.md](./docs/07_Testing/测试计划.md) |
-| Full Doc Index | [docs/00_Meta/文档阅读指南.md](./docs/00_Meta/文档阅读指南.md) |
-
----
-
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=466852675/YH-AI-PPT&type=Date)](https://star-history.com/#466852675/YH-AI-PPT&Date)
