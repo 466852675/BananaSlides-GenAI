@@ -24,7 +24,7 @@ cd server && npx prisma db push
 
 # 4. 启动开发服务
 # 方式一：Windows 一键启动
-start_app.bat
+一键启动.bat
 # 方式二：分别启动
 npm run dev          # 前端 localhost:1000
 cd server && npm run dev  # 后端 localhost:1111

@@ -1,451 +1,96 @@
 # =============================================================================
-# BananaSlides-GenAI 项目 .gitignore
-# 说明: 此文件定义 Git 应忽略的文件模式，保持仓库整洁
-# 分类: 按功能模块组织，从上到下依次为依赖→构建→配置→数据→工具→系统
+# BananaSlides-GenAI .gitignore (精简版)
 # =============================================================================
 
-
-# =============================================================================
-# 第一部分: 依赖管理 (Dependencies)
-# 说明: 第三方依赖和包管理器相关文件，这些内容应通过 package.json 重建
-# =============================================================================
-
-# Node.js 依赖目录
+# --- 依赖 ---
 node_modules/
-
-# 包管理器锁定文件 (根据项目主要使用的包管理器选择性保留)
-# npm (保留 package-lock.json，忽略其他)
-yarn.lock
-pnpm-lock.yaml
-bun.lockb
-
-# pnpm 存储目录
 .pnpm-store/
-
-# Yarn 零安装模式相关
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.yarn/install-state.gz
+.yarn/
 .pnp.*
 
-
-# =============================================================================
-# 第二部分: 构建产物和缓存 (Build Outputs & Caches)
-# 说明: 编译/构建生成的文件和各种工具的缓存，均可重新生成
-# =============================================================================
-
-# 前端构建输出
-# Vite 生产构建输出
+# --- 构建产物 & 缓存 ---
 dist/
-# SSR 构建输出
 dist-ssr/
-
-# TypeScript 编译缓存
-# TS 增量编译信息文件
-*.tsbuildinfo
-
-# 构建工具缓存
-# Vite 本地缓存
 .vite/
-# Turbo 缓存
 .turbo/
-# Parcel 缓存
 .parcel-cache/
-# Rollup 缓存
 .rollup.cache/
-# Webpack 缓存
 .webpack/
+*.tsbuildinfo
+*.eslintcache
 
-# 代码检查工具缓存
-# ESLint 缓存
-.eslintcache
-# Prettier 缓存
-.prettiercache
-# Stylelint 缓存
-.stylelintcache
-
-
-# =============================================================================
-# 第三部分: 环境和配置 (Environment & Config)
-# 说明: 包含敏感信息或本地特定的配置文件
-# 原则: .example 文件作为模板保留，实际配置忽略
-# =============================================================================
-
-# 环境变量文件 (包含 API 密钥、数据库密码等敏感信息)
-# 主环境文件
+# --- 环境配置 (API密钥等敏感信息) ---
 .env
-# 所有环境变体 (.env.local, .env.production 等)
 .env.*
-# 保留示例文件作为模板
 !.env.example
-# 保留各环境的示例文件
 !.env.*.example
-
-# 本地特定配置
-# 本地配置文件
 *.local
 
-
-# =============================================================================
-# 第四部分: 数据库和文件存储 (Database & Storage)
-# 说明: SQLite 数据库文件、上传的文件、备份数据
-# 原则: 数据库通过迁移重建，上传文件存储在对象存储服务
-# =============================================================================
-
-# SQLite 数据库文件
-# 所有 SQLite 数据库文件
-*.db
-# SQLite 日志文件
-*.db-journal
-# SQLite 共享内存文件
-*.db-shm
-# SQLite 预写日志文件
-*.db-wal
-
-# 开发数据库 (特定路径)
-# 开发数据库
-server/prisma/dev.db
-# 测试数据库
-server/prisma/test.db
-
-# 数据库备份和恢复文件
-# 一般备份文件
-*.bak
-# 带版本号的备份
-*.bak.*
-# 恢复的数据库
-*.recovered
-# 珍贵数据备份标记
-*.precious
-# 修复前的备份
-*.before_fix
-server/prisma/*.bak
-server/prisma/*.bak.*
-server/prisma/*.recovered
-server/prisma/*.precious
-server/prisma/*.before_fix
-
-# 用户上传文件 (开发环境)
-# 上传目录内容
+# --- 数据库 & 存储 ---
+*.db*
+*.bak*
+*.backup
 server/uploads/*
-# 保留目录占位文件
 !server/uploads/.gitkeep
 
-
-# =============================================================================
-# 第五部分: 测试和覆盖率 (Testing & Coverage)
-# 说明: 测试生成的报告、截图、覆盖率数据
-# =============================================================================
-
-# 覆盖率报告
-# 测试覆盖率输出目录
+# --- 测试产物 ---
 coverage/
-# LCOV 覆盖率格式文件
-*.lcov
-# NYC 覆盖率临时文件
 .nyc_output/
-
-# Playwright E2E 测试产物
-# 测试结果目录
 test-results/
-# Playwright 报告
 playwright-report/
-# Blob 格式报告
-blob-report/
-# 临时测试图片
-tests/e2e/.tmp_test_image.png
-# 失败测试截图
-tests/e2e/fail_*.png
 
-
-# =============================================================================
-# 第六部分: 编辑器/IDE (Editors & IDEs)
-# 说明: 编辑器配置文件，每个开发者环境不同
-# 原则: 共享的编辑器配置保留在个人设置或 .vscode/extensions.json
-# =============================================================================
-
-# Visual Studio Code
-# VS Code 配置目录
+# --- 编辑器/IDE ---
 .vscode/*
-# 保留推荐的扩展列表
 !.vscode/extensions.json
-# 个人调试配置
-.vscode/launch.json
-
-# JetBrains 系列 (WebStorm, IntelliJ 等)
-# JetBrains 配置目录
 .idea/
-
-# Sublime Text
-# Sublime 工作区
-*.sublime-workspace
-# Sublime 项目文件
-*.sublime-project
-
-# Vim/Neovim
-# 交换文件
-*.swp
-*.swo
-# 备份文件
+*.sw[op]
 *~
-
-# Eclipse
-# Eclipse 项目文件
-.project
-# Eclipse 类路径
-.classpath
-# Eclipse 设置
-.settings/
-
-# 其他编辑器
-# Visual Studio
-*.suo
-# Node Tools for Visual Studio
-*.ntvs*
-# Node.js 项目文件
-*.njsproj
-# Visual Studio 解决方案
-*.sln
-# Cloud9 IDE
-.c9/
-# 启动配置
-*.launch
-
-# 本地历史记录插件
-# 文件历史记录
 .history/
-# Ionide (VS Code F# 扩展)
 .ionide/
 
-
-# =============================================================================
-# 第七部分: AI 工具和工作流 (AI Tools & Workflows)
-# 说明: AI 助手生成的上下文、工作流状态和个人工作文件
-# 原则: 这些是工具运行时文件，不应共享
-# =============================================================================
-
-# Claude Code
-# Claude 上下文和历史
+# --- AI 工具 & 工作流 ---
 .claude/
-# Claude 个人开发配置 (包含 AI 工具指令，非项目共享)
 CLAUDE.md
-# Claude Agent 目录
 .agent/
-
-# Sisyphus (OpenCode)
-# Sisyphus 工作流状态
-.sisyphus/
-
-# Trae (字节跳动 AI IDE)
-# Trae 配置和缓存
 .trae/
-
-# ReCode
-# ReCode 本地数据库
 .recode/
-
-# OpenCode
-# OpenCode 运行时文件
 .opencode/
-
-# oh-my-claudecode (OMC)
-# OMC 会话状态和本地运行时文件
 .omc/
-
-# OpenSpec
-# OpenSpec 工作流本地文件 (proposal/design/spec/tasks)
 openspec/
-
-# 通用 AI 上下文目录
-# AI 上下文文件
 contexts/
+.spec-workflow/
 
-
-# =============================================================================
-# 第八部分: 规范工作流个人文件 (Spec Workflow Personal)
-# 说明: 规范驱动开发中的个人草稿和工作文件
-# 原则: 只保留模板，个人的草稿和计划不提交
-# =============================================================================
-
-# 个人草稿
-.spec-workflow/drafts/
-# 个人笔记
-.spec-workflow/notepads/
-# 个人计划
-.spec-workflow/plans/
-
-
-# =============================================================================
-# 第九部分: 日志和临时文件 (Logs & Temp)
-# 说明: 运行时生成的日志和临时文件
-# =============================================================================
-
-# 日志文件
-# 日志目录
+# --- 日志 & 临时文件 ---
 logs/
-# 所有日志文件
-*.log
-# npm 调试日志
-npm-debug.log*
-# Yarn 调试日志
-yarn-debug.log*
-# Yarn 错误日志
-yarn-error.log*
-# pnpm 调试日志
-pnpm-debug.log*
-# Lerna 调试日志
-lerna-debug.log*
-
-# 临时文件
-# 临时文件
-*.tmp
-*.temp
-# 临时目录
-.tmp/
-.temp/
-
-# 通用备份标记
-# 备份文件标记
-*.backup
-
-# 进程文件
-# 进程 ID 文件
+*.log*
+*.tmp*
+.tmp*/
 *.pid
-# 种子文件
-*.seed
-# 进程锁文件
-*.pid.lock
 
-
-# =============================================================================
-# 第十部分: 部署和运维 (Deployment & Ops)
-# 说明: 云平台配置、Docker 本地覆盖、部署产物
-# =============================================================================
-
-# Vercel 部署
-# Vercel CLI 配置
+# --- 部署 & Docker ---
 .vercel/
-# Vercel 构建输出
 .vercel_build_output/
-
-# Netlify
-# Netlify 配置
 .netlify/
-
-# Cloudflare Wrangler
-# Wrangler CLI 配置
 .wrangler/
-
-# Docker
-# 本地 Docker 覆盖配置 (含敏感信息)
 docker-compose.override.yml
-# Docker 相关临时文件
 .docker/
 
-
-# =============================================================================
-# 第十一部分: 安全相关 - 证书和密钥 (Security)
-# 说明: 绝对不能提交到版本控制的敏感文件
-# ⚠️ 警告: 如意外提交，视为安全事件，需轮换密钥
-# =============================================================================
-
-# 证书文件
-# PEM 格式证书
+# --- 安全 (证书/密钥) ---
 *.pem
-# 私钥文件
 *.key
-# 证书文件
-*.cert
-*.crt
 
-# PKCS 格式
-# PKCS#12 证书存储
-*.p12
-# PFX 格式证书
-*.pfx
-
-
-# =============================================================================
-# 第十二部分: 操作系统文件 (OS Generated)
-# 说明: 各操作系统自动生成的文件
-# =============================================================================
-
-# macOS
-# 目录元数据文件
+# --- 操作系统文件 ---
 .DS_Store
-# 资源分支
-.AppleDouble
-# 图标覆盖
-.LSOverride
-
-# Windows
-# 缩略图缓存
 Thumbs.db
-ehthumbs.db
-# 桌面配置
 Desktop.ini
-# 回收站
 $RECYCLE.BIN/
 
-# Windows 保留设备名 (不要创建这些文件)
-# 空设备
-nul
-NUL
-# 项目内的 nul 文件
-server/nul
-server/NUL
-
-# Linux
-# 备份文件
-*~
-
-
-# =============================================================================
-# 第十三部分: 项目特定 - 本地脚本 (Project Specific)
-# 说明: BananaSlides 项目特定的本地文件
-# 原则: 团队共享的脚本保留，个人脚本忽略
-# =============================================================================
-
-# 本地开发的批处理/PowerShell/Shell 脚本
-# Windows 批处理脚本
+# --- 项目特定 ---
 scripts/*.bat
-# PowerShell 脚本
 scripts/*.ps1
-# Shell 脚本
 scripts/*.sh
-# 保留脚本说明文档
-!scripts/脚本使用说明.md
-
-# 文档目录 (全部忽略)
 docs/
-
-# 展示截图 (已迁移至 assets 分支 CDN)
 image/
-
-# 展示截图 (已迁移至 assets 分支 CDN)
 public/assets/showcase/
-
-# 个人开发笔记 (可选)
-# 个人待办事项
-TODO.local.md
-# 个人笔记
-NOTES.local.md
-
-
-# =============================================================================
-# 第十四部分: 调试配置 (Debug)
-# 说明: 本地调试配置，个人特定
-# =============================================================================
-
-# 调试目录
 .debug/
-
-
-# =============================================================================
-# 文件结束
-# 维护提示: 添加新规则时，请归入对应分类，保持分类清晰
-# =============================================================================
-
-# Playwright MCP 缓存
 .playwright-mcp/

@@ -42,7 +42,7 @@ npx prisma studio    # 数据库 GUI
 
 ### 快捷启动
 ```bash
-start_app.bat        # Windows 一键启动前后端
+一键启动.bat        # Windows 一键启动前后端
 ```
 
 ### 运行单个测试

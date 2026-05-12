@@ -152,7 +152,7 @@ cd server && npx prisma db push
 
 # 4. Start development servers
 # Option A: Windows one-click
-start_app.bat
+一键启动.bat
 # Option B: Separate terminals
 npm run dev              # Frontend → localhost:1000
 cd server && npm run dev # Backend  → localhost:1111
