@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { NotificationBell } from '../message/NotificationBell';
+import { CommercialGuard } from '../CommercialGuard';
 
 interface UserWidgetProps {
     /** compact 模式：在落地页等场景只显示登录按钮，登录后显示简洁的"进入创作室"按钮 */
@@ -113,6 +114,7 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
 
             {/* 2. 剩余积分标签 (Points Label) - 点击可查看明细 */}
             {/* 低积分预警：≤50 红色闪烁 / ≤100 橙色 / >100 正常 */}
+            <CommercialGuard module="points">
             <button
                 onClick={onPointsClick}
                 className={`flex items-center gap-1.5 rounded-lg transition-all group ${isScrolled
@@ -137,6 +139,7 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
                         }`}>积分</span>
                 )}
             </button>
+            </CommercialGuard>
 
             {/* 3. 用户信息下拉菜单 (User Info & Dropdown) */}
             <div className="relative">
@@ -198,9 +201,11 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
                                 <div className="mt-4 flex flex-wrap gap-2">
                                     <UserRoleTag user={user} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} compact />
                                     {user.vipLevel > 0 && (
+                                        <CommercialGuard module="points">
                                         <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[10px] font-black border border-indigo-100/50">
                                             LV. {user.vipLevel}
                                         </span>
+                                        </CommercialGuard>
                                     )}
                                 </div>
                             </div>
@@ -209,10 +214,10 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
                             <div className="p-1.5">
                                 <div className="text-[10px] font-bold text-slate-400 px-3 py-1.5 uppercase tracking-wider">个人中心</div>
                                 <MenuButton icon={<User size={16} />} label="资料设置" onClick={() => { setIsOpen(false); onProfileClick?.(); }} />
-                                <MenuButton icon={<History size={16} />} label="积分明细" onClick={() => { setIsOpen(false); onPointsClick?.(); }} />
-                                <MenuButton icon={<ShoppingBag size={16} />} label="我的订单" onClick={() => { setIsOpen(false); onOrdersClick?.(); }} />
-                                <MenuButton icon={<CalendarCheck size={16} />} label="每日签到" onClick={() => { setIsOpen(false); onCheckInClick?.(); }} highlight />
-                                <MenuButton icon={<Gift size={16} />} label="邀请有礼" onClick={() => { setIsOpen(false); onInviteClick?.(); }} />
+                                <CommercialGuard module="points"><MenuButton icon={<History size={16} />} label="积分明细" onClick={() => { setIsOpen(false); onPointsClick?.(); }} /></CommercialGuard>
+                                <CommercialGuard module="points"><MenuButton icon={<ShoppingBag size={16} />} label="我的订单" onClick={() => { setIsOpen(false); onOrdersClick?.(); }} /></CommercialGuard>
+                                <CommercialGuard module="checkin"><MenuButton icon={<CalendarCheck size={16} />} label="每日签到" onClick={() => { setIsOpen(false); onCheckInClick?.(); }} highlight /></CommercialGuard>
+                                <CommercialGuard module="invite"><MenuButton icon={<Gift size={16} />} label="邀请有礼" onClick={() => { setIsOpen(false); onInviteClick?.(); }} /></CommercialGuard>
 
                                 {isAdmin && (
                                     <>

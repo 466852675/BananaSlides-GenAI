@@ -14,6 +14,7 @@ import StreamingOutlineDisplay from './StreamingOutlineDisplay';
 import ImagePlaceholderGrid from './ImagePlaceholderGrid';
 import SlideThumbnailOverview from './SlideThumbnailOverview';
 import type { AgentTask, AgentTaskType } from '../types/agent';
+import { CommercialGuard } from './CommercialGuard';
 
 // 移动端断点
 const MOBILE_BREAKPOINT = 768;
@@ -355,23 +356,25 @@ export default function ConfirmationCard({
     if (estimatedPoints === undefined) return null;
 
     return (
-      <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg ${
-        estimatedPoints === 0
-          ? 'bg-green-50 text-green-700'
-          : isVip
-            ? 'bg-purple-50 text-purple-700'
-            : 'bg-blue-50 text-blue-700'
-      }`}>
-        <Coins className="h-4 w-4" />
-        <span className="text-sm font-medium">
-          预计消耗：{formatPoints(estimatedPoints)}
-        </span>
-        {isVip && estimatedPoints > 0 && (
-          <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded">
-            VIP优惠
+      <CommercialGuard module="points">
+        <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg ${
+          estimatedPoints === 0
+            ? 'bg-green-50 text-green-700'
+            : isVip
+              ? 'bg-purple-50 text-purple-700'
+              : 'bg-blue-50 text-blue-700'
+        }`}>
+          <Coins className="h-4 w-4" />
+          <span className="text-sm font-medium">
+            预计消耗：{formatPoints(estimatedPoints)}
           </span>
-        )}
-      </div>
+          {isVip && estimatedPoints > 0 && (
+            <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded">
+              VIP优惠
+            </span>
+          )}
+        </div>
+      </CommercialGuard>
     );
   };
 

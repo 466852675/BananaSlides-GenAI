@@ -36,6 +36,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { getProducts, Product } from '../api/admin';
 import { PurchaseModal } from './PurchaseModal';
 import { LeadFormModal } from './LeadFormModal';
+import { CommercialGuard } from './CommercialGuard';
+import { useCommercial } from '../hooks/useCommercial';
 
 const TESTIMONIALS = [
     { name: "Alex Chen", role: "科技博主", comment: "YH-AI PPT 是我见过的最懂'结构'的 PPT 工具。它不是在堆砌素材，而是在帮你梳理逻辑。Router-Adapter 架构让我在不同模型间切换自如。", avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" },
@@ -53,6 +55,7 @@ interface LandingPageProps {
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate }) => {
     const { user } = useAuth(); // 获取当前用户
+    const { isModuleDisabled } = useCommercial();
     const [isScrolled, setIsScrolled] = useState(false);
     const [navCursor, setNavCursor] = useState({ left: 0, width: 0, opacity: 0 });
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
@@ -366,9 +369,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                                 { name: '交付结果', id: 'delivery' },
                                 { name: '解决方案', id: 'solutions' },
                                 { name: '用户评价', id: 'testimonials' },
-                                { name: '价格方案', id: 'pricing' },
+                                ...(!isModuleDisabled('pricing') ? [{ name: '价格方案', id: 'pricing' }] : []),
                                 { name: '常见问题', id: 'faq' }
-                            ].map((item) => (
+                            ].filter(Boolean).map((item: any) => (
                                 <button
                                     key={item.id}
                                     onMouseEnter={handleNavHover}
@@ -725,6 +728,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
             </section>
 
             {/* 4. Pricing Matrix Section */}
+            <CommercialGuard module="pricing">
             <section id="pricing" className="py-32 bg-white">
                 <div className="max-w-7xl mx-auto px-6">
                     <div className="text-center max-w-3xl mx-auto mb-20 space-y-4">
@@ -863,6 +867,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                     </div>
                 </div>
             </section>
+            </CommercialGuard>
 
 
             {/* --- FAQ Section --- */}
@@ -877,10 +882,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                             { q: "支持自定义企业模版吗？", a: "支持。在团队版中，您可以上传企业的 VI 规范（Logo、配色、字体），系统会自动生成符合您品牌调性的专属模版。" },
                             { q: "订阅后可以退款吗？", a: "我们支持 7 天无理由退款。如果您对服务不满意，随时可以联系客服取消订阅并申请全额退款。" }
                         ].map((item, i) => (
-                            <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                            <React.Fragment key={i}>
+                            {i === 4 ? (
+                                <CommercialGuard module="pricing">
+                                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                                    <h4 className="text-lg font-bold text-slate-800 mb-2 truncate">{item.q}</h4>
+                                    <p className="text-slate-500 text-sm leading-relaxed">{item.a}</p>
+                                </div>
+                                </CommercialGuard>
+                            ) : (
+                            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                                 <h4 className="text-lg font-bold text-slate-800 mb-2 truncate">{item.q}</h4>
                                 <p className="text-slate-500 text-sm leading-relaxed">{item.a}</p>
                             </div>
+                            )}
+                            </React.Fragment>
                         ))}
                     </div>
                 </div>
@@ -992,6 +1008,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                 </div>
             </footer>
             {/* Purchase Modal */}
+            <CommercialGuard module="purchase">
             <PurchaseModal
                 isOpen={!!purchaseProduct}
                 onClose={() => setPurchaseProduct(null)}
@@ -1001,11 +1018,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onNavigate })
                     onEnter(); // 支付成功后进入应用
                 }}
             />
+            </CommercialGuard>
             {/* Sales Lead Form Modal */}
+            <CommercialGuard module="leads">
             <LeadFormModal
                 isOpen={showLeadForm}
                 onClose={() => setShowLeadForm(false)}
             />
+            </CommercialGuard>
         </div>
     );
 };

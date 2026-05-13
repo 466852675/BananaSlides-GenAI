@@ -20,6 +20,8 @@ import { ProfileCenter } from '../user/ProfileCenter';
 import { PointsHistory } from '../user/PointsHistory';
 import { InviteModal } from '../InviteModal';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCommercial } from '../../hooks/useCommercial';
+import { Lock } from 'lucide-react';
 
 interface AdminLayoutProps {
     onBack: () => void;
@@ -44,6 +46,10 @@ const pageTitles: Record<AdminPage, { title: string; subtitle?: string }> = {
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack, initialPage }) => {
     const [currentPage, setCurrentPage] = useState<AdminPage>(initialPage || 'dashboard');
     const { isAdmin, isLoading } = useAuth();
+    const commercial = useCommercial();
+
+    // 商业化模块对应的页面列表
+    const commercialPages = ['orders', 'refunds', 'leads', 'points-rules', 'growth'] as AdminPage[];
 
     // Sync prop changes
     useEffect(() => {
@@ -87,6 +93,23 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ onBack, initialPage })
 
     // 渲染当前页面内容
     const renderPageContent = () => {
+        // 商业化页面守卫
+        if (commercialPages.includes(currentPage) && commercial.isModuleDisabled(currentPage as any)) {
+            return (
+                <div className="h-full flex items-center justify-center">
+                    <div className="text-center p-12">
+                        <div className="w-20 h-20 rounded-3xl bg-slate-100 flex items-center justify-center mx-auto mb-6">
+                            <Lock size={36} className="text-slate-400" />
+                        </div>
+                        <h2 className="text-xl font-black text-slate-700 mb-2">功能未开启</h2>
+                        <p className="text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
+                            该功能已关闭，如需使用请在系统设置中开启。
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+
         switch (currentPage) {
             case 'dashboard':
                 return <SystemStats />;

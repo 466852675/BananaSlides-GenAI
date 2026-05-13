@@ -534,6 +534,50 @@ export interface SystemConfig {
     REG_MODE: 'OPEN' | 'INVITE_ONLY' | 'CLOSED';
 }
 
+// ============================================================
+// 商业化功能配置
+// ============================================================
+
+export interface CommercialAuditEntry {
+    time: string;
+    operatorId: string;
+    operatorName: string;
+    action: 'enable' | 'disable';
+    modulesAffected: string[];
+    modulesExcluded: string[];
+}
+
+export interface CommercialConfig {
+    enabled: boolean;
+    disabledModules: string[];
+    auditLog: CommercialAuditEntry[];
+}
+
+/**
+ * 获取商业化功能配置
+ */
+export async function getCommercialConfig(): Promise<CommercialConfig> {
+    const result = await client.get('/admin/commercial') as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取商业化配置失败');
+}
+
+/**
+ * 更新商业化功能配置
+ */
+export async function updateCommercialConfig(data: {
+    enabled: boolean;
+    disabledModules: string[];
+}): Promise<CommercialConfig> {
+    const result = await client.put('/admin/commercial', data) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '更新商业化配置失败');
+}
+
 /**
  * 获取系统运行配置 (Status/RegMode)
  */

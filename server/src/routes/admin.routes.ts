@@ -278,4 +278,10 @@ router.get('/refunds/metrics', authenticate, requireAdmin, requirePermission('ad
     }
 });
 
+// ============================================================
+// 商业化功能配置
+// ============================================================
+router.get('/commercial', AdminController.getCommercialConfig);
+router.put('/commercial', authenticate, requireSuperAdmin, AdminController.updateCommercialConfig);
+
 export default router;

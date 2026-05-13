@@ -30,6 +30,7 @@ import {
 import { STYLE_PRESETS, COLOR_PRESETS, RATIO_PRESETS } from '../constants';
 import { exportToZip, exportToPdf, exportToPptx } from '../services/exportService';
 import { consumeAction, getActionCost } from '../api/points';
+import { useCommercial } from '../hooks/useCommercial';
 import type { ProjectSession } from '../types';
 
 // ============================================================
@@ -228,6 +229,7 @@ const HistoryProjectCard: React.FC<{
 }> = ({ session, isSelectionMode, isSelected, onToggleSelection, onOpen, onDelete, onViewImage, showToast, onShowConfirm }) => {
   const [thumbPage, setThumbPage] = useState(0);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const { isModuleDisabled } = useCommercial();
 
   const handleExport = async (type: 'zip' | 'pdf' | 'pptx') => {
     setIsExportMenuOpen(false);
@@ -250,6 +252,12 @@ const HistoryProjectCard: React.FC<{
     };
 
     if (type === 'pptx') {
+      // [商业化] 关闭时跳过积分确认
+      if (isModuleDisabled('points')) {
+        await performExport();
+        return;
+      }
+
       try {
         const cost = await getActionCost('export_pptx');
 

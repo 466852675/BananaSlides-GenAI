@@ -31,6 +31,7 @@ import { exportToZip, exportToPdf, exportToPptx } from '../services/exportServic
 import { getActionCost, consumeAction, getBalance } from '../api/points';
 import type { GeneratedSlide } from '../types';
 import type { ToastType } from './Toast';
+import { useCommercial } from '../hooks/useCommercial';
 
 interface AgentPreviewProps {
   items: GeneratedSlide[];
@@ -61,6 +62,8 @@ export default function AgentPreview({
   const [exportError, setExportError] = useState<string | null>(null);
   const [lastExportType, setLastExportType] = useState<ExportType | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  const { isModuleDisabled } = useCommercial();
 
   // 编辑模式状态
   const [isEditMode, setIsEditMode] = useState(false);
@@ -137,6 +140,14 @@ export default function AgentPreview({
 
       // 先检查积分是否足够（仅 PPTX，避免导出成功后扣费失败）
       if (type === 'pptx') {
+        // [商业化] 关闭时跳过积分确认
+        if (isModuleDisabled('points')) {
+          await performExport();
+          showToast?.(`${exportName} 导出成功`, 'success');
+          setExporting(false);
+          return;
+        }
+
         const cost = await getActionCost('export_pptx');
         if (cost > 0) {
           const balance = await getBalance();

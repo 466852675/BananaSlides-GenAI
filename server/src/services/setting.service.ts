@@ -60,6 +60,76 @@ export class SettingService {
         this.settingsCache = null;
     }
 
+    // ============================================================
+    // 商业化功能开关
+    // ============================================================
+
+    /**
+     * 检查商业化功能是否启用
+     */
+    static async isCommercialEnabled(): Promise<boolean> {
+        const settings = await this.getSettings();
+        return settings?.commercial?.enabled === true;
+    }
+
+    /**
+     * 获取商业化配置（含审计日志）
+     */
+    static async getCommercialConfig(): Promise<{
+        enabled: boolean;
+        disabledModules: string[];
+        auditLog: Array<{
+            time: string;
+            operatorId: string;
+            operatorName: string;
+            action: 'enable' | 'disable';
+            modulesAffected: string[];
+            modulesExcluded: string[];
+        }>;
+    }> {
+        const settings = await this.getSettings();
+        return {
+            enabled: settings?.commercial?.enabled === true,
+            disabledModules: settings?.commercial?.disabledModules || [],
+            auditLog: settings?.commercial?.auditLog || [],
+        };
+    }
+
+    /**
+     * 更新商业化配置（写入 + 清除缓存 + 追加审计日志）
+     */
+    static async updateCommercialConfig(
+        enabled: boolean,
+        disabledModules: string[],
+        operator: { id: string; name: string }
+    ): Promise<void> {
+        const settings = await this.getSettings();
+        const current = settings?.commercial || { enabled: false, disabledModules: [], auditLog: [] };
+
+        // 追加审计日志条目
+        const auditEntry = {
+            time: new Date().toISOString(),
+            operatorId: operator.id,
+            operatorName: operator.name,
+            action: enabled ? 'enable' as const : 'disable' as const,
+            modulesAffected: disabledModules,
+            modulesExcluded: enabled ? [] : ['points', 'checkin', 'invite', 'purchase', 'orders', 'refunds', 'leads', 'points-rules', 'growth', 'pricing'].filter(
+                m => !disabledModules.includes(m)
+            ),
+        };
+
+        const updatedSettings = {
+            ...(settings || {}),
+            commercial: {
+                enabled,
+                disabledModules,
+                auditLog: [...(current.auditLog || []), auditEntry],
+            },
+        };
+
+        await this.updateSettings(updatedSettings);
+    }
+
     // Get masked settings (for frontend display)
     static async getMaskedSettings() {
         const fullSettings = await this.getSettings();
@@ -180,7 +250,12 @@ export class SettingService {
                 textConcurrency: getEnvNum('PERF_TEXT_CONCURRENCY') || 1,
                 imageConcurrency: getEnvNum('PERF_IMAGE_CONCURRENCY') || 1
             },
-            language: getEnv('OUTPUT_LANGUAGE') || 'zh'
+            language: getEnv('OUTPUT_LANGUAGE') || 'zh',
+            commercial: {
+                enabled: getEnv('COMMERCIAL_ENABLED') === 'true',
+                disabledModules: [],
+                auditLog: []
+            }
         };
 
         return defaultSettings;

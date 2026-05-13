@@ -28,6 +28,8 @@ import agentRoutes from './routes/agent.routes';
 import resourceRoutes from './routes/resource.routes';
 import trashRoutes from './routes/trash.routes';
 import exportRoutes from './routes/export.routes';
+import { commercialGuard } from './middleware/commercialGuard';
+import { SettingService } from './services/setting.service';
 import { websocketService } from './services/websocket.service';
 import { startScheduledJobs } from './jobs/cron';
 
@@ -135,18 +137,16 @@ app.use('/api/templates', templateRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/points', pointsRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/refunds', refundRoutes);
+app.use('/api/points', commercialGuard('points'), pointsRoutes);
+app.use('/api/orders', commercialGuard('orders'), orderRoutes);
+app.use('/api/refunds', commercialGuard('refunds'), refundRoutes);
 app.use('/webhooks', webhookRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/leads', leadRoutes);
-app.use('/api/growth', growthRoutes);
+app.use('/api/products', commercialGuard('purchase'), productRoutes);
+app.use('/api/leads', commercialGuard('leads'), leadRoutes);
+app.use('/api/growth', commercialGuard('checkin'), growthRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/trash', trashRoutes);
 app.use('/api/export', exportRoutes);
-
-import { SettingService } from './services/setting.service';
 
 // Watch for .env changes (Hot Reload)
 const envPath = path.join(process.cwd(), '.env');

@@ -2,6 +2,7 @@
 // 积分服务：积分扣除、查询和记录
 
 import { prisma } from '../db';
+import { SettingService } from './setting.service';
 
 // 积分操作类型
 export type PointsActionCode =
@@ -180,6 +181,17 @@ export async function deductPoints(
         templateId?: string; // Add templateId to options
     }
 ): Promise<DeductResult> {
+    // [商业化] 关闭时跳过积分扣除
+    const commercialEnabled = await SettingService.isCommercialEnabled();
+    if (!commercialEnabled) {
+        return {
+            success: true,
+            remainingPoints: 0,
+            deductedAmount: 0,
+            message: '免费操作（商业化已关闭）',
+        };
+    }
+
     // 获取规则
     const rule = await prisma.pointsRule.findUnique({
         where: { code: actionCode },

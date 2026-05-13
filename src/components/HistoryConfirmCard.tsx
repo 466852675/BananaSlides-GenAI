@@ -37,6 +37,8 @@ import {
   FileText as FileTextIcon
 } from 'lucide-react';
 
+import { CommercialGuard } from './CommercialGuard';
+
 interface HistoryConfirmCardProps {
   task: {
     id: string;
@@ -237,10 +239,12 @@ export default function HistoryConfirmCard({ task }: HistoryConfirmCardProps) {
 
         {/* 积分消耗 */}
         {task.pointsCost > 0 && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <Coins className="w-4 h-4" />
-            <span>消耗积分：{task.pointsCost}</span>
-          </div>
+          <CommercialGuard module="points">
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Coins className="w-4 h-4" />
+              <span>消耗积分：{task.pointsCost}</span>
+            </div>
+          </CommercialGuard>
         )}
       </div>
     );
@@ -585,9 +589,11 @@ export default function HistoryConfirmCard({ task }: HistoryConfirmCardProps) {
           </div>
           <div className="text-left">
             <div className="font-medium text-gray-900">{taskInfo.title}</div>
-            <div className="text-xs text-gray-500">
-              {task.pointsCost > 0 ? `消耗 ${task.pointsCost} 积分` : '已确认'}
-            </div>
+            <CommercialGuard module="points">
+              <div className="text-xs text-gray-500">
+                {task.pointsCost > 0 ? `消耗 ${task.pointsCost} 积分` : '已确认'}
+              </div>
+            </CommercialGuard>
           </div>
         </div>
         <div className="flex items-center gap-2">

@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMessages, useUnreadCount, useMarkAsRead, useMarkAllAsRead } from '../../hooks/useMessages';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCommercial } from '../../hooks/useCommercial';
 import { MessageItem } from './MessageItem';
 import { batchDeleteMessages } from '../../api/message';
 import type { Message, MessageType } from '../../api/message';
@@ -40,15 +41,25 @@ interface MessagePanelProps {
 export const MessagePanel: React.FC<MessagePanelProps> = ({ onClose }) => {
     // const navigate = useNavigate();
     const { isAdmin, isSuperAdmin } = useAuth();
+    const { isModuleDisabled } = useCommercial();
     const [activeTabKey, setActiveTabKey] = useState<string>('all');
 
     // 计算当前可用的 Tabs
     const tabs = useMemo(() => {
+        let baseTabs: { key: string; label: string; type?: MessageType; bizType?: string; excludeBizType?: string }[];
         if (isAdmin || isSuperAdmin) {
-            return ADMIN_TABS;
+            baseTabs = ADMIN_TABS;
+        } else {
+            baseTabs = USER_TABS;
         }
-        return USER_TABS;
-    }, [isAdmin, isSuperAdmin]);
+        // [商业化] 过滤掉被禁用的模块对应的 Tab
+        return baseTabs.filter(tab => {
+            if (tab.type === 'ORDER' && isModuleDisabled('orders')) return false;
+            if (tab.type === 'REFUND' && isModuleDisabled('refunds')) return false;
+            if (tab.key === 'lead' && isModuleDisabled('leads')) return false;
+            return true;
+        });
+    }, [isAdmin, isSuperAdmin, isModuleDisabled]);
 
     // 计算查询参数
     const queryParams = useMemo(() => {

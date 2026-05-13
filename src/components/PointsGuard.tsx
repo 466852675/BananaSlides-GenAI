@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Crown, Coins, X, Sparkles, ArrowRight, Zap } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useCommercial } from '../hooks/useCommercial';
 
 interface PointsGuardProps {
     /** 预警阈值，默认 50 */
@@ -27,6 +28,7 @@ export const PointsGuard: React.FC<PointsGuardProps> = ({
     const [alertLevel, setAlertLevel] = useState<AlertLevel>('none');
     const [dismissed, setDismissed] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const { isModuleDisabled } = useCommercial();
 
     // 判断用户层级
     const getUserTier = (): UserTier => {
@@ -120,6 +122,11 @@ export const PointsGuard: React.FC<PointsGuardProps> = ({
             setShowModal(false);
         }
     };
+
+    // [商业化] 关闭时隐藏积分预警
+    if (isModuleDisabled('points')) {
+        return null;
+    }
 
     if (!showModal || alertLevel === 'none') return null;
 

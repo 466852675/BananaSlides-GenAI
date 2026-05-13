@@ -111,6 +111,8 @@ import { CheckInModal } from './components/CheckInModal';
 import { InviteModal } from './components/InviteModal';
 import { PointsGuard } from './components/PointsGuard';
 import { PurchaseSuccessModal } from './components/PurchaseSuccessModal';
+import { CommercialGuard } from './components/CommercialGuard';
+import { useCommercial } from './hooks/useCommercial';
 import { AdminPage } from "./components/admin/AdminSidebar";
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from './api/projects';
 import { useTemplates, useSaveTemplate } from './api/templates';
@@ -389,6 +391,7 @@ const App: React.FC = () => {
 
   // --- State ---
   const { user, isAuthenticated, isAdmin, isSuperAdmin, refreshUser } = useAuth();
+  const commercial = useCommercial();
   const [adminInitialPage, setAdminInitialPage] = useState<AdminPage | undefined>(undefined);
 
   const [viewMode, setViewMode] = useState<
@@ -2238,6 +2241,33 @@ const App: React.FC = () => {
   };
 
   const handleApplyPresetRequest = (preset: StylePreset) => {
+    // [商业化] 关闭时跳过积分确认和扣除，直接应用
+    if (commercial.isModuleDisabled('points')) {
+      setConfig({ ...preset.config });
+      configRef.current = { ...preset.config };
+      let nextStyleMap: GlobalStyleMap;
+      if (preset.styleMap) {
+        nextStyleMap = { ...preset.styleMap };
+      } else {
+        nextStyleMap = {
+          cover: preset.styleFile || null,
+          directory: preset.styleFile || null,
+          transition: preset.styleFile || null,
+          content: preset.styleFile || null,
+          end: preset.styleFile || null,
+          custom: null,
+        };
+      }
+      setStyleMap(nextStyleMap);
+      styleMapRef.current = nextStyleMap;
+      setIsPresetSaved(true);
+      setIsFavoritesModalOpen(false);
+      setSelectedPresetForDetail(null);
+      setHasUserInteraction(true);
+      showToast("风格已应用到全局设置", "success");
+      return;
+    }
+
     // 1. 获取积分成本
     getActionCost('style_apply').then(cost => {
       showConfirm(
@@ -2803,6 +2833,28 @@ const App: React.FC = () => {
 
   // Export Logic
   const handleBatchExport = async (type: "zip" | "pdf" | "pptx") => {
+    // [商业化] 关闭时跳过积分确认弹窗，直接导出
+    if (commercial.isModuleDisabled('points')) {
+      const title = config.styleName || "bananaslides-genai";
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `${title}_${timestamp}`;
+      showToast("正在准备并下载导出文件...", "loading");
+      try {
+        if (type === "zip") {
+          await exportToZip(items, filename);
+        } else if (type === "pdf") {
+          await exportToPdf(items, filename);
+        } else if (type === "pptx") {
+          await exportToPptx(items, filename);
+        }
+        showToast("导出成功", "success");
+      } catch (e: any) {
+        console.error(e);
+        showToast(e.message || "导出失败，请重试", "error");
+      }
+      return;
+    }
+
     const triggerTime = new Date().toISOString();
     const isLocal = currentProjectId === "local-v1";
     setIsExportMenuOpen(false); // Close menu immediately
@@ -2830,6 +2882,12 @@ const App: React.FC = () => {
 
     // 1. Billing Check for PPTX
     if (type === 'pptx') {
+      // [商业化] 关闭时跳过积分确认
+      if (commercial.isModuleDisabled('points')) {
+        await performExport();
+        return;
+      }
+
       try {
         const cost = await getActionCost('export_pptx');
 
@@ -4993,52 +5051,66 @@ const App: React.FC = () => {
           highlightOrderId={targetOrderId}
           highlightRefundId={targetRefundId}
         />
-        {showPointsHistory && (
-          <Suspense fallback={null}>
-            <PointsHistory isOpen={showPointsHistory} onClose={() => setShowPointsHistory(false)} />
-          </Suspense>
-        )}
-        <CheckInModal
-          isOpen={showCheckIn}
-          onClose={() => setShowCheckIn(false)}
-          onSuccess={() => {
-            setShowCheckIn(false);
-            setToast({ id: Date.now().toString(), type: 'success', message: '签到成功！积分已到账' });
-          }}
-        />
-        <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} />
-        <PointsGuardWrapper onPurchase={() => setShowTopUp(true)} />
+        <CommercialGuard module="points">
+          {showPointsHistory && (
+            <Suspense fallback={null}>
+              <PointsHistory isOpen={showPointsHistory} onClose={() => setShowPointsHistory(false)} />
+            </Suspense>
+          )}
+        </CommercialGuard>
+        <CommercialGuard module="checkin">
+          <CheckInModal
+            isOpen={showCheckIn}
+            onClose={() => setShowCheckIn(false)}
+            onSuccess={() => {
+              setShowCheckIn(false);
+              setToast({ id: Date.now().toString(), type: 'success', message: '签到成功！积分已到账' });
+            }}
+          />
+        </CommercialGuard>
+        <CommercialGuard module="invite">
+          <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} />
+        </CommercialGuard>
+        <CommercialGuard module="points">
+          <PointsGuardWrapper onPurchase={() => setShowTopUp(true)} />
+        </CommercialGuard>
 
         {/* 全局充值与支付弹窗 */}
-        <TopUpModal
-          isOpen={showTopUp}
-          onClose={() => setShowTopUp(false)}
-          onSelectProduct={(product) => {
-            setShowTopUp(false);
-            setPurchaseProduct(product);
-          }}
-        />
-        <PurchaseModal
-          isOpen={!!purchaseProduct}
-          onClose={() => setPurchaseProduct(null)}
-          product={purchaseProduct}
-          onSuccess={() => {
-            setPurchaseProduct(null);
-            refreshUser(); // 刷新余额
-            setToast({ id: Date.now().toString(), message: '充值成功', type: 'success' });
-          }}
-        />
+        <CommercialGuard module="purchase">
+          <TopUpModal
+            isOpen={showTopUp}
+            onClose={() => setShowTopUp(false)}
+            onSelectProduct={(product) => {
+              setShowTopUp(false);
+              setPurchaseProduct(product);
+            }}
+          />
+        </CommercialGuard>
+        <CommercialGuard module="purchase">
+          <PurchaseModal
+            isOpen={!!purchaseProduct}
+            onClose={() => setPurchaseProduct(null)}
+            product={purchaseProduct}
+            onSuccess={() => {
+              setPurchaseProduct(null);
+              refreshUser(); // 刷新余额
+              setToast({ id: Date.now().toString(), message: '充值成功', type: 'success' });
+            }}
+          />
+        </CommercialGuard>
 
-        <PurchaseSuccessModal
-          isOpen={purchaseSuccess.show}
-          onClose={() => setPurchaseSuccess({ show: false, productName: '', points: 0 })}
-          productName={purchaseSuccess.productName}
-          pointsGranted={purchaseSuccess.points}
-          onContinue={() => {
-            setPurchaseSuccess({ show: false, productName: '', points: 0 });
-            setViewMode('dashboard');
-          }}
-        />
+        <CommercialGuard module="purchase">
+          <PurchaseSuccessModal
+            isOpen={purchaseSuccess.show}
+            onClose={() => setPurchaseSuccess({ show: false, productName: '', points: 0 })}
+            productName={purchaseSuccess.productName}
+            pointsGranted={purchaseSuccess.points}
+            onContinue={() => {
+              setPurchaseSuccess({ show: false, productName: '', points: 0 });
+              setViewMode('dashboard');
+            }}
+          />
+        </CommercialGuard>
 
         <StartProjectModal
           isOpen={startProjectModalData.isOpen}

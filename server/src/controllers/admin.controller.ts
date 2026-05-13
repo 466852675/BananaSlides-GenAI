@@ -677,6 +677,7 @@ export async function updateSystemConfig(req: Request, res: Response): Promise<v
 // ============================================================
 
 import { growthService } from '../services/growth.service';
+import { SettingService } from '../services/setting.service';
 
 /**
  * 获取增长运营统计
@@ -915,6 +916,60 @@ export async function deleteEngineRule(req: Request, res: Response): Promise<voi
         res.status(400).json({
             success: false,
             error: { code: 'DELETE_FAILED', message: error.message || '删除规则失败' }
+        });
+    }
+}
+
+// ============================================================
+// 商业化功能配置
+// ============================================================
+
+/**
+ * 获取商业化配置
+ * GET /api/admin/commercial
+ */
+export async function getCommercialConfig(req: Request, res: Response): Promise<void> {
+    try {
+        const config = await SettingService.getCommercialConfig();
+        res.json({ success: true, data: config });
+    } catch (error) {
+        console.error('[Admin] 获取商业化配置失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取商业化配置失败' }
+        });
+    }
+}
+
+/**
+ * 更新商业化配置
+ * PUT /api/admin/commercial
+ */
+export async function updateCommercialConfig(req: Request, res: Response): Promise<void> {
+    try {
+        const { enabled, disabledModules } = req.body;
+
+        if (typeof enabled !== 'boolean') {
+            res.status(400).json({
+                success: false,
+                error: { code: 'INVALID_PARAMS', message: 'enabled 为必填布尔值' }
+            });
+            return;
+        }
+
+        await SettingService.updateCommercialConfig(
+            enabled,
+            disabledModules || [],
+            { id: req.user!.id, name: req.user!.username || req.user!.email || '未知' }
+        );
+
+        const config = await SettingService.getCommercialConfig();
+        res.json({ success: true, data: config, message: enabled ? '商业化功能已开启' : '商业化功能已关闭' });
+    } catch (error) {
+        console.error('[Admin] 更新商业化配置失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '更新商业化配置失败' }
         });
     }
 }

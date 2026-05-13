@@ -6,6 +6,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Coins, Crown } from 'lucide-react';
 import { getPointsRule, PointsActionCode, PointsRule } from '../api/points';
 import { useAuth } from '../contexts/AuthContext';
+import { CommercialGuard } from './CommercialGuard';
 
 interface PointsBadgeProps {
     actionCode: PointsActionCode;
@@ -101,42 +102,48 @@ export const PointsBadge: React.FC<PointsBadgeProps> = ({
     // 免费显示
     if (pricing.final === 0) {
         return (
-            <span className={`inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 ${className}`} title={tooltipText}>
-                {showIcon && "FREE"}
-            </span>
+            <CommercialGuard module="points">
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 ${className}`} title={tooltipText}>
+                    {showIcon && "FREE"}
+                </span>
+            </CommercialGuard>
         );
     }
 
     if (compact) {
         return (
-            <span
-                className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${pricing.isDiscounted ? 'text-violet-600' : 'text-amber-600'} ${className}`}
-                title={tooltipText}
-            >
-                {showIcon && (pricing.isDiscounted ? <Crown size={10} className="text-violet-500" /> : <Coins size={10} />)}
-                {pricing.final}
-            </span>
+            <CommercialGuard module="points">
+                <span
+                    className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${pricing.isDiscounted ? 'text-violet-600' : 'text-amber-600'} ${className}`}
+                    title={tooltipText}
+                >
+                    {showIcon && (pricing.isDiscounted ? <Crown size={10} className="text-violet-500" /> : <Coins size={10} />)}
+                    {pricing.final}
+                </span>
+            </CommercialGuard>
         );
     }
 
     return (
-        <span
-            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border shadow-sm transition-all
-                ${pricing.isDiscounted
-                    ? 'bg-violet-50 text-violet-700 border-violet-200/50'
-                    : 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 border-amber-200/50'
-                } ${className}`}
-            title={tooltipText}
-        >
-            {showIcon && (pricing.isDiscounted ? <Crown size={11} className="text-violet-500" /> : <Coins size={11} className="text-amber-500" />)}
+        <CommercialGuard module="points">
+            <span
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border shadow-sm transition-all
+                    ${pricing.isDiscounted
+                        ? 'bg-violet-50 text-violet-700 border-violet-200/50'
+                        : 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 border-amber-200/50'
+                    } ${className}`}
+                title={tooltipText}
+            >
+                {showIcon && (pricing.isDiscounted ? <Crown size={11} className="text-violet-500" /> : <Coins size={11} className="text-amber-500" />)}
 
-            <div className="flex items-baseline gap-1">
-                <span>{pricing.final}</span>
-                {pricing.isDiscounted && (
-                    <span className="text-[9px] text-slate-400 line-through opacity-70 decoration-slate-400">{pricing.original}</span>
-                )}
-            </div>
-        </span>
+                <div className="flex items-baseline gap-1">
+                    <span>{pricing.final}</span>
+                    {pricing.isDiscounted && (
+                        <span className="text-[9px] text-slate-400 line-through opacity-70 decoration-slate-400">{pricing.original}</span>
+                    )}
+                </div>
+            </span>
+        </CommercialGuard>
     );
 };
 

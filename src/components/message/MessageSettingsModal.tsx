@@ -5,6 +5,7 @@ import { X, Mail, Bell, Globe, Save, RefreshCw } from 'lucide-react';
 import { getMessageSettings, updateMessageSettings, MessageSettings, UpdateMessageSettingsDTO } from '../../api/message';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCommercial } from '../../hooks/useCommercial';
 
 interface MessageSettingsModalProps {
     isOpen: boolean;
@@ -28,6 +29,7 @@ const ADMIN_ONLY_TYPES = [
 
 export const MessageSettingsModal: React.FC<MessageSettingsModalProps> = ({ isOpen, onClose }) => {
     const { isAdmin, isSuperAdmin } = useAuth();
+    const { isModuleDisabled } = useCommercial();
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [settings, setSettings] = useState<MessageSettings | null>(null);
@@ -166,7 +168,27 @@ export const MessageSettingsModal: React.FC<MessageSettingsModalProps> = ({ isOp
                                         <section>
                                             <h3 className="text-sm font-bold text-slate-700 mb-4 px-1">消息类型管理</h3>
                                             <div className="space-y-3">
-                                                {((isAdmin || isSuperAdmin) ? [...ADMIN_ONLY_TYPES, ...MESSAGE_TYPES] : MESSAGE_TYPES).map((item) => {
+                                                {((isAdmin || isSuperAdmin)
+                                                    ? [...ADMIN_ONLY_TYPES.filter(type => {
+                                                        if (type.type === 'LEAD' && isModuleDisabled('leads')) return false;
+                                                        return true;
+                                                    }), ...MESSAGE_TYPES.filter(type => {
+                                                        if (type.type === 'ORDER' && isModuleDisabled('orders')) return false;
+                                                        if (type.type === 'REFUND' && isModuleDisabled('refunds')) return false;
+                                                        if (type.type === 'POINTS' && isModuleDisabled('points')) return false;
+                                                        if (type.type === 'VIP' && isModuleDisabled('points')) return false;
+                                                        if (type.type === 'ACTIVITY' && isModuleDisabled('points')) return false;
+                                                        return true;
+                                                    })]
+                                                    : MESSAGE_TYPES.filter(type => {
+                                                        if (type.type === 'ORDER' && isModuleDisabled('orders')) return false;
+                                                        if (type.type === 'REFUND' && isModuleDisabled('refunds')) return false;
+                                                        if (type.type === 'POINTS' && isModuleDisabled('points')) return false;
+                                                        if (type.type === 'VIP' && isModuleDisabled('points')) return false;
+                                                        if (type.type === 'ACTIVITY' && isModuleDisabled('points')) return false;
+                                                        return true;
+                                                    })
+                                                ).map((item) => {
                                                     const prefs = settings.preferences?.[item.type] || { email: true, browser: true };
                                                     return (
                                                         <div key={item.type} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-xl hover:border-slate-200 transition-colors shadow-sm hover:shadow-md">

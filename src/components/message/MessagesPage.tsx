@@ -6,6 +6,7 @@ import { Bell, CheckCheck, Loader2, Inbox, ArrowLeft, Trash2, Settings, Search, 
 import { motion } from 'framer-motion';
 import { useMessages, useMarkAsRead, useMarkAllAsRead, useDeleteMessage, useBatchMarkAsRead, useBatchDeleteMessages, useMarkMessageAsHandled } from '../../hooks/useMessages';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCommercial } from '../../hooks/useCommercial';
 import { MessageItem } from './MessageItem';
 import type { Message, MessageType } from '../../api/message';
 
@@ -37,6 +38,7 @@ import { MessageSettingsModal } from './MessageSettingsModal';
 
 export const MessagesPage: React.FC = () => {
     const { isAdmin, isSuperAdmin } = useAuth();
+    const { isModuleDisabled } = useCommercial();
     const [activeTabKey, setActiveTabKey] = useState<string>('all');
     const [page, setPage] = useState(1);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -47,11 +49,20 @@ export const MessagesPage: React.FC = () => {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
     const tabs = useMemo(() => {
+        let baseTabs: { key: string; label: string; type?: MessageType; bizType?: string; excludeBizType?: string }[];
         if (isAdmin || isSuperAdmin) {
-            return ADMIN_TABS;
+            baseTabs = ADMIN_TABS;
+        } else {
+            baseTabs = USER_TABS;
         }
-        return USER_TABS;
-    }, [isAdmin, isSuperAdmin]);
+        // [商业化] 过滤掉被禁用的模块对应的 Tab
+        return baseTabs.filter(tab => {
+            if (tab.type === 'ORDER' && isModuleDisabled('orders')) return false;
+            if (tab.type === 'REFUND' && isModuleDisabled('refunds')) return false;
+            if (tab.key === 'lead' && isModuleDisabled('leads')) return false;
+            return true;
+        });
+    }, [isAdmin, isSuperAdmin, isModuleDisabled]);
 
     const queryParams = useMemo(() => {
         const base = { page, limit: 20, keyword: keyword || undefined };

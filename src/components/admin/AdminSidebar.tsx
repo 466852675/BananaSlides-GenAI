@@ -19,6 +19,7 @@ import {
     Database,
     Trash2
 } from 'lucide-react';
+import { useCommercial } from '../../hooks/useCommercial';
 
 export type AdminPage = 'dashboard' | 'users' | 'orders' | 'refunds' | 'leads' | 'points-rules' | 'roles' | 'ai-engine' | 'growth' | 'resources' | 'settings';
 
@@ -28,21 +29,30 @@ interface AdminSidebarProps {
     onBack: () => void;
 }
 
-const menuItems: { id: AdminPage; label: string; icon: React.ReactNode }[] = [
-    { id: 'dashboard', label: '控制台', icon: <LayoutDashboard size={18} /> },
-    { id: 'users', label: '用户管理', icon: <Users size={18} /> },
-    { id: 'orders', label: '订单管理', icon: <Receipt size={18} /> },
-    { id: 'refunds', label: '退款管理', icon: <RefreshCcw size={18} /> },
-    { id: 'leads', label: '销售线索', icon: <MessageSquare size={18} /> },
-    { id: 'points-rules', label: '积分规则', icon: <Coins size={18} /> },
-    { id: 'growth', label: '产品管理', icon: <TrendingUp size={18} /> },
-    { id: 'roles', label: '角色权限', icon: <Shield size={18} /> },
-    { id: 'ai-engine', label: '模型引擎', icon: <Bot size={18} /> },
-    { id: 'resources', label: '资源管理', icon: <Database size={18} /> },
-    { id: 'settings', label: '系统设置', icon: <Settings size={18} /> },
-];
-
 export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentPage, onPageChange, onBack }) => {
+    const { isModuleDisabled } = useCommercial();
+
+    const menuItems: { id: AdminPage; label: string; icon: React.ReactNode }[] = [
+        { id: 'dashboard', label: '控制台', icon: <LayoutDashboard size={18} /> },
+        { id: 'users', label: '用户管理', icon: <Users size={18} /> },
+        { id: 'orders', label: '订单管理', icon: <Receipt size={18} /> },
+        { id: 'refunds', label: '退款管理', icon: <RefreshCcw size={18} /> },
+        { id: 'leads', label: '销售线索', icon: <MessageSquare size={18} /> },
+        { id: 'points-rules', label: '积分规则', icon: <Coins size={18} /> },
+        { id: 'growth', label: '产品管理', icon: <TrendingUp size={18} /> },
+        { id: 'roles', label: '角色权限', icon: <Shield size={18} /> },
+        { id: 'ai-engine', label: '模型引擎', icon: <Bot size={18} /> },
+        { id: 'resources', label: '资源管理', icon: <Database size={18} /> },
+        { id: 'settings', label: '系统设置', icon: <Settings size={18} /> },
+    ];
+
+    const commercialDisabledModules = ['orders', 'refunds', 'leads', 'points-rules', 'growth'];
+    const filteredMenuItems = menuItems.filter(item => {
+        if (commercialDisabledModules.includes(item.id) && isModuleDisabled(item.id as any)) {
+            return false;
+        }
+        return true;
+    });
     return (
         <aside className="w-72 bg-slate-900/95 backdrop-blur-xl text-white flex flex-col h-full border-r border-white/5 relative overflow-hidden transition-all duration-300 shadow-2xl shadow-black/20">
             {/* Ambient Glow Effects */}
@@ -70,7 +80,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ currentPage, onPageC
             {/* Menu */}
             <nav className="flex-1 px-4 py-6 overflow-y-auto space-y-1.5 relative z-10 custom-scrollbar">
                 <div className="text-xs font-bold text-slate-500 uppercase tracking-wider px-4 mb-2">Main Menu</div>
-                {menuItems.map((item) => (
+                {filteredMenuItems.map((item) => (
                     <button
                         key={item.id}
                         onClick={() => onPageChange(item.id)}

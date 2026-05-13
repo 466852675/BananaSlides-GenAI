@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
-import { Settings, Save, Server, Globe, Shield, Bot, Database, AlertCircle } from 'lucide-react';
+import { Settings, Save, Server, Globe, Shield, Bot, Database, AlertCircle, Clock, DollarSign } from 'lucide-react';
 import { useAppSettingsMasked, useUpdateAppSettings } from '../../api/settings';
 import { GlobalSettingsModal } from '../GlobalSettingsModal';
 import { AppSettings } from '../../types';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as AdminApi from '../../api/admin';
+import { useCommercial, COMMERCIAL_MODULES } from '../../hooks/useCommercial';
+import type { CommercialModuleId } from '../../hooks/useCommercial';
+import { CommercialDisableModal } from './CommercialDisableModal';
 
 export const SystemSettings: React.FC = () => {
     const { data: currentSettings, isLoading } = useAppSettingsMasked();
     const updateSettingsMutation = useUpdateAppSettings();
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+    const commercial = useCommercial();
+    const [showCommercialModal, setShowCommercialModal] = useState(false);
+    const [commercialModalMode, setCommercialModalMode] = useState<'disable' | 'enable'>('disable');
     const queryClient = useQueryClient();
 
     // 系统运行配置 (原 ConfigCenter逻辑)
@@ -211,6 +217,99 @@ export const SystemSettings: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* 商业化功能开关 */}
+                    <div className="bg-white/80 backdrop-blur-xl p-6 rounded-3xl border border-white/60 shadow-[0_4px_20px_rgb(0,0,0,0.03)] flex flex-col shrink-0">
+                        <div className="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
+                            <DollarSign className="text-amber-500" size={20} />
+                            <div>
+                                <h3 className="text-base font-bold text-slate-800">商业化功能</h3>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none mt-0.5">Commercial</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            {commercial.loading ? (
+                                <div className="flex justify-center py-4">
+                                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-amber-500 border-t-transparent" />
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex items-center justify-between group px-2 py-1.5 hover:bg-slate-50 rounded-xl transition-colors">
+                                        <div className="space-y-0.5">
+                                            <label className="block text-xs font-black text-slate-700 leading-tight">功能总开关</label>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">
+                                                {commercial.enabled ? '已开启' : '已关闭'}
+                                            </p>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={commercial.enabled}
+                                                onChange={() => {
+                                                    if (commercial.enabled) {
+                                                        // 开启 → 关闭：弹出模块选择弹窗（默认全选）
+                                                        setCommercialModalMode('disable');
+                                                        setShowCommercialModal(true);
+                                                    } else {
+                                                        // 关闭 → 开启：也弹出模块选择弹窗（默认全选），让管理员选择开启哪些模块
+                                                        setCommercialModalMode('enable');
+                                                        setShowCommercialModal(true);
+                                                    }
+                                                }}
+                                                className="sr-only peer"
+                                            />
+                                            <div className="w-12 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-[18px] after:w-[18px] after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-amber-500 peer-checked:to-red-600"></div>
+                                        </label>
+                                    </div>
+
+                                    {/* 已关闭的模块列表 */}
+                                    {!commercial.enabled && commercial.disabledModules.length > 0 && (
+                                        <div className="px-2 py-2">
+                                            <p className="text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">已关闭的模块：</p>
+                                            <div className="flex flex-wrap gap-1">
+                                                {commercial.disabledModules.map((modId: string) => (
+                                                    <span key={modId} className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-lg font-medium">
+                                                        {COMMERCIAL_MODULES[modId as keyof typeof COMMERCIAL_MODULES]?.label || modId}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 审计日志 */}
+                                    {commercial.auditLog.length > 0 && (
+                                        <details className="group px-2">
+                                            <summary className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-700 transition-colors">
+                                                <Clock size={12} />
+                                                操作记录（{commercial.auditLog.length} 条）
+                                            </summary>
+                                            <div className="mt-2 space-y-1.5 max-h-[120px] overflow-y-auto">
+                                                {commercial.auditLog.slice().reverse().map((entry, idx) => (
+                                                    <div key={idx} className="text-[10px] p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className={`font-bold ${entry.action === 'disable' ? 'text-red-600' : 'text-green-600'}`}>
+                                                                {entry.action === 'disable' ? '关闭' : '开启'}
+                                                            </span>
+                                                            <span className="text-slate-400">{new Date(entry.time).toLocaleString('zh-CN')}</span>
+                                                        </div>
+                                                        <div className="text-slate-500 mt-0.5">
+                                                            操作人：{entry.operatorName}
+                                                        </div>
+                                                        {entry.modulesAffected.length > 0 && (
+                                                            <div className="text-slate-400 mt-0.5">
+                                                                影响模块：{entry.modulesAffected.length} 个
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </details>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="flex-[2] bg-slate-900 text-slate-300 rounded-3xl p-6 shadow-xl shadow-slate-900/10 relative overflow-hidden flex flex-col min-h-0 shrink-0">
                         <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-[30px] pointer-events-none -mr-6 -mt-6" />
                         <div className="relative z-10 flex flex-col h-full">
@@ -245,6 +344,24 @@ export const SystemSettings: React.FC = () => {
                     onSave={handleSaveAISettings}
                 />
             )}
+            <CommercialDisableModal
+                isOpen={showCommercialModal}
+                isEnableMode={commercialModalMode === 'enable'}
+                onClose={() => setShowCommercialModal(false)}
+                onConfirm={(modules) => {
+                    const isEnable = commercialModalMode === 'enable';
+                    if (isEnable) {
+                        // 开启模式：勾选的模块开启，未勾选的保持关闭
+                        const allModuleIds = Object.keys(COMMERCIAL_MODULES) as CommercialModuleId[];
+                        const keepDisabled = allModuleIds.filter((m) => !modules.includes(m));
+                        commercial.update(true, keepDisabled);
+                    } else {
+                        // 关闭模式：勾选的模块关闭
+                        commercial.update(false, modules);
+                    }
+                    setShowCommercialModal(false);
+                }}
+            />
         </div>
     );
 };

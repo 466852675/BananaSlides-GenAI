@@ -4,6 +4,7 @@
 import { UserRole, UserStatus } from '../types/user.types';
 import { hashPassword } from '../utils/password.util';
 import { prisma } from '../db';
+import { SettingService } from '../services/setting.service';
 
 /**
  * 默认管理员配置
@@ -179,6 +180,29 @@ export async function bootstrapPermissions(): Promise<void> {
 }
 
 /**
+ * 初始化商业化配置
+ */
+async function bootstrapCommercialConfig(): Promise<void> {
+    try {
+        const config = await SettingService.getCommercialConfig();
+        if (config.auditLog.length === 0) {
+            const enabled = process.env.COMMERCIAL_ENABLED === 'true';
+            const settings = await SettingService.getSettings();
+            if (!settings?.commercial) {
+                console.log(`[Bootstrap] 初始化商业化配置: COMMERCIAL_ENABLED=${enabled}`);
+                await SettingService.updateCommercialConfig(
+                    enabled,
+                    [],
+                    { id: 'SYSTEM', name: '系统初始化' }
+                );
+            }
+        }
+    } catch (error) {
+        console.error('[Bootstrap] 初始化商业化配置失败:', error);
+    }
+}
+
+/**
  * 执行所有初始化任务
  */
 export async function runBootstrap(): Promise<void> {
@@ -187,6 +211,9 @@ export async function runBootstrap(): Promise<void> {
     await bootstrapAdmin();
     await bootstrapPointsRules();
     await bootstrapPermissions();
+
+    // 初始化商业化配置（如果尚未初始化）
+    await bootstrapCommercialConfig();
 
     console.log('[Bootstrap] ========== 系统初始化完成 ==========');
 }
