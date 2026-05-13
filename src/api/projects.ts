@@ -184,9 +184,9 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
             previewUrl: slide.previewUrl || (slide.contentType === 'image' && originalFile ? originalFile : ''),
             variants,
             variantCount: slide.variantCount || 2, // Use database value, not variants.length
-            // Reset 'generating' status to 'idle' on load.
-            // This prevents "Stuck in AI Design" if the user refreshed during generation.
-            status: slide.status === 'completed' ? 'success' : (slide.status === 'generating' ? 'idle' : slide.status as any),
+            // Keep original status: 'generating' stays 'generating' so the user sees loading animation
+            // when re-entering the workbench. 'completed' maps to 'success' for UI rendering.
+            status: slide.status === 'completed' ? 'success' : slide.status as any,
             createdAt: new Date(slide.createdAt).getTime(),
             // SVG 可编辑模式字段
             svgContent: (slide as any).svgContent || null,
@@ -407,10 +407,10 @@ export const useSyncProjectSlides = () => {
             return response;
         },
         onSuccess: (data: any, variables) => {
-            // 只更新单个项目的缓存，避免刷新整个项目列表导致的 UI 闪烁
-            // 这对于自动保存场景非常重要
+            // 更新单个项目缓存 + 项目列表缓存，确保回仪表盘再进入时数据最新
+            // 安全：后端 syncSlides 和前端 auto-save 均有空数组保护，不会因刷新覆盖数据
             queryClient.invalidateQueries({ queryKey: ['project', variables.projectId] });
-            // 不再 invalidate ['projects']，因为这会导致 Dashboard 每次自动保存后都刷新
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
         },
         onError: (error) => {
             console.error('[useSyncProjectSlides] Sync failed:', error);

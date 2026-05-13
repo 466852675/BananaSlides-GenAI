@@ -115,20 +115,27 @@ export const UserWidget: React.FC<UserWidgetProps> = ({ compact = false, mode = 
             {/* 低积分预警：≤50 红色闪烁 / ≤100 橙色 / >100 正常 */}
             <button
                 onClick={onPointsClick}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all group ${user.points <= 50
+                className={`flex items-center gap-1.5 rounded-lg transition-all group ${isScrolled
+                    ? 'p-1.5'
+                    : 'px-2.5 py-1.5'
+                } ${user.points <= 50
                     ? 'bg-gradient-to-r from-red-100 to-orange-100 border border-red-200/50 hover:from-red-200 hover:to-orange-200 animate-pulse'
                     : user.points <= 100
                         ? 'bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/50 hover:bg-orange-100'
                         : 'bg-amber-50 border border-amber-100/50 hover:bg-amber-100 hover:border-amber-200'
                     }`}
-                title="点击查看积分明细"
+                title={isScrolled ? `${user.points} 积分` : '点击查看积分明细'}
             >
                 <Coins size={14} className={`group-hover:scale-110 transition-transform ${user.points <= 50 ? 'text-red-500' : user.points <= 100 ? 'text-orange-500' : 'text-amber-500'
                     }`} />
-                <span className={`text-xs font-bold ${user.points <= 50 ? 'text-red-700' : user.points <= 100 ? 'text-orange-700' : 'text-amber-700'
-                    }`}>{user.points}</span>
-                {!isScrolled && <span className={`text-[10px] font-medium ${user.points <= 50 ? 'text-red-600/70' : user.points <= 100 ? 'text-orange-600/70' : 'text-amber-600/70'
-                    }`}>积分</span>}
+                {!isScrolled && (
+                    <span className={`text-xs font-bold ${user.points <= 50 ? 'text-red-700' : user.points <= 100 ? 'text-orange-700' : 'text-amber-700'
+                        }`}>{user.points}</span>
+                )}
+                {!isScrolled && (
+                    <span className={`text-[10px] font-medium ${user.points <= 50 ? 'text-red-600/70' : user.points <= 100 ? 'text-orange-600/70' : 'text-amber-600/70'
+                        }`}>积分</span>
+                )}
             </button>
 
             {/* 3. 用户信息下拉菜单 (User Info & Dropdown) */}

@@ -374,10 +374,12 @@ const App: React.FC = () => {
     isOpen: boolean;
     project: ProjectSession | null;
     pendingItems: GeneratedSlide[];
+    allItems: GeneratedSlide[];
   }>({
     isOpen: false,
     project: null,
-    pendingItems: []
+    pendingItems: [],
+    allItems: []
   });
   const [pendingAutoBatch, setPendingAutoBatch] = useState<string | null>(null);
 
@@ -393,14 +395,24 @@ const App: React.FC = () => {
     "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "agent" | "admin" | "login" | "messages" | "trash"
   >(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    // 检查是否访问管理后台
-    if (window.location.pathname === '/admin') return 'admin';
-    if (window.location.pathname === '/login') return 'login';
-    if (window.location.pathname === '/messages') return 'messages';
-    if (window.location.pathname === '/messages') return 'messages';
-    // Admin Deep Linking
-    if (window.location.pathname.startsWith('/admin/')) return 'admin';
-    return urlParams.get('project') ? 'workbench' : 'landing';
+    const path = window.location.pathname;
+    // 项目工作台优先：如果有 ?project=xxx，无论 pathname 是什么都进 workbench
+    if (urlParams.get('project')) return 'workbench';
+    // 从 URL pathname 恢复 viewMode（刷新时保持当前页面）
+    const routeMap: Record<string, typeof viewMode> = {
+      '/admin': 'admin',
+      '/login': 'login',
+      '/messages': 'messages',
+      '/dashboard': 'dashboard',
+      '/history': 'history',
+      '/templates': 'templates',
+      '/trash': 'trash',
+      '/agent': 'agent',
+    };
+    if (routeMap[path]) return routeMap[path];
+    // Admin Deep Linking: /admin/:page
+    if (path.startsWith('/admin/')) return 'admin';
+    return 'landing';
   });
 
   // 登录后自动跳转逻辑
@@ -895,15 +907,33 @@ const App: React.FC = () => {
         url.searchParams.set('project', currentProjectId);
         window.history.pushState({}, '', url.toString());
       }
-    } else if (viewMode === 'dashboard' || viewMode === 'landing') {
-      if (url.searchParams.has('project')) {
-        url.searchParams.delete('project');
-        window.history.pushState({}, '', url.toString());
-      }
-    } else if (viewMode === 'messages') {
-      if (window.location.pathname !== '/messages') {
-        window.history.pushState({}, '', '/messages');
-      }
+      return;
+    }
+
+    // 非 workbench 模式：清除 ?project 参数
+    if (url.searchParams.has('project')) {
+      url.searchParams.delete('project');
+    }
+
+    // 为每个 viewMode 写入对应的 pathname，刷新时能恢复
+    const pathMap: Partial<Record<typeof viewMode, string>> = {
+      dashboard: '/dashboard',
+      history: '/history',
+      'history-detail': '/history',
+      templates: '/templates',
+      trash: '/trash',
+      messages: '/messages',
+      admin: '/admin',
+      agent: '/agent',
+      landing: '/',
+    };
+    const targetPath = pathMap[viewMode];
+    if (targetPath !== undefined) {
+      url.pathname = targetPath;
+    }
+    // 只要最终 URL 有变化（pathname 或 searchParams），就写入浏览器地址栏
+    if (url.href !== window.location.href) {
+      window.history.pushState({}, '', url.toString());
     }
   }, [viewMode, currentProjectId]);
 
@@ -938,13 +968,16 @@ const App: React.FC = () => {
     }
   }, [currentProjectId, currentProject, viewMode, syncProjectDataIntoWorkspace]);
 
-  // 当回到仪表盘时，我们不再重置 prevProjectIdRef.current
-  // 这样如果用户立即重新进入同一个项目，由于 prevProjectIdRef.current 已经匹配，
-  // 我们就不会触发 useEffect 来从后端重新加载（可能过时的）数据，从而保留了本地最新的状态。
-
+  // 离开工作台时重置 prevProjectIdRef，确保下次进入时从后端重新加载最新数据
+  useEffect(() => {
+    if (viewMode !== 'workbench' && viewMode !== 'agent') {
+      prevProjectIdRef.current = null;
+    }
+  }, [viewMode]);
 
   // Refs for Auto-Save
   const isLoadingDataRef = useRef(false); // 防止加载数据时触发用户交互检测
+  const isBatchGeneratingRef = useRef(false); // 防止批量生成期间 auto-save 重复 sync
   const itemsRef = useRef(items);
   const configRef = useRef(config);
   const styleMapRef = useRef(styleMap);
@@ -1338,18 +1371,26 @@ const App: React.FC = () => {
   // --- Auto-save Interval (Duplicate removed) ---
   // The primary auto-save is handled by the useEffect near line 1700 using mutations.
 
+  // 存上一次 sync 的内容序列化值，用于检测真正的内容变化（而非引用变化）
+  const lastSyncedItemsRef = useRef('');
+
   // Auto-save items changes (for delete/add operations)
   // CRITICAL: Must use syncSlidesMutation, NOT updateProjectMutation
   // updateProjectMutation doesn't support items update (see projects.ts line 281-283)
   useEffect(() => {
-    if (!currentProjectId || isPreviewMode || !hasUserInteraction || isProcessing) return; // Wait until processing finishes
+    if (!currentProjectId || isPreviewMode || !hasUserInteraction || isBatchGeneratingRef.current) return;
+
+    // 比较实际内容，引用变化但内容不变（如 React Query 缓存刷新）则跳过，切断循环
+    const itemsJson = JSON.stringify(items);
+    if (itemsJson === lastSyncedItemsRef.current) return;
+    lastSyncedItemsRef.current = itemsJson;
 
     const timer = setTimeout(() => {
       syncSlidesMutation.mutate({
         projectId: currentProjectId,
         slides: items
       });
-    }, 200); // 缩短防抖时间至 200ms,减少数据丢失风险
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [items, currentProjectId, syncSlidesMutation, isPreviewMode, hasUserInteraction]);
@@ -2478,11 +2519,13 @@ const App: React.FC = () => {
 
 
   const handleGenerateBatch = async () => {
-    const triggerTime = new Date().toISOString();
-    const itemsToProcess = items.filter(
-      (item) => item.status === "idle" || item.status === "error"
-    );
-    if (itemsToProcess.length === 0) return;
+    isBatchGeneratingRef.current = true;
+    try {
+      const triggerTime = new Date().toISOString();
+      const itemsToProcess = items.filter(
+        (item) => item.status === "idle" || item.status === "error"
+      );
+      if (itemsToProcess.length === 0) return;
 
     setIsProcessing(true);
     const providerName = getProviderName("image");
@@ -2513,6 +2556,7 @@ const App: React.FC = () => {
           : item
       )
     );
+    setHasUserInteraction(true);
 
     // Use Concurrency from Settings, default high if undefined (unlimited)
     const CONCURRENCY_LIMIT = appSettings.performance.imageConcurrency || 99;
@@ -2545,32 +2589,32 @@ const App: React.FC = () => {
 
     // Sync all generated slides to database
     if (currentProjectId && generatedResults.length > 0) {
-      let slidesToSync: any[] = [];
-      setItems((currentItems) => {
-        const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
+      const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
 
-        slidesToSync = currentItems.map(slide => {
-          const result = resultsMap.get(slide.id);
-          if (result) {
-            return {
-              ...slide,
-              variants: result.variants,
-              previewUrl: result.previewUrl
-            };
-          }
-          if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-            return {
-              ...slide,
-              variants: [slide.previewUrl, ...slide.variants]
-            };
-          }
-          return slide;
-        });
-
-        return slidesToSync;
+      // 直接从 items 同步计算 slidesToSync，避免 setItems 回调闭包陷阱
+      const slidesToSync = items.map(slide => {
+        const result = resultsMap.get(slide.id);
+        if (result) {
+          return {
+            ...slide,
+            variants: result.variants,
+            previewUrl: result.previewUrl,
+            status: 'success' as const
+          };
+        }
+        if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
+          return {
+            ...slide,
+            variants: [slide.previewUrl, ...slide.variants]
+          };
+        }
+        return slide;
       });
 
-      // 等待数据库同步完成后再刷新缓存
+      // 立即更新 UI
+      setItems(slidesToSync);
+
+      // 等待数据库同步完成
       try {
         await syncSlidesMutation.mutateAsync({
           projectId: currentProjectId,
@@ -2586,6 +2630,8 @@ const App: React.FC = () => {
     // 批量生成完成，刷新项目列表缓存，确保退出重入时数据一致
     if (currentProjectId) {
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      // 强制立即重新拉取项目列表，确保 handleOpenProject 拿到最新数据
+      await queryClient.refetchQueries({ queryKey: ['projects'] });
     }
 
     // 检查是否所有幻灯片都已完成并更新项目状态
@@ -2611,6 +2657,9 @@ const App: React.FC = () => {
     } else {
       showToast(`调用 ${providerName} API 服务成功`, "success");
     }
+  } finally {
+    isBatchGeneratingRef.current = false;
+  }
   };
 
   const handleSingleGenerate = async (id: string) => {
@@ -2619,6 +2668,7 @@ const App: React.FC = () => {
     if (!item) return;
 
     setIsProcessing(true);
+    setHasUserInteraction(true);
     const providerName = getProviderName("image");
     try {
       try {
@@ -2637,27 +2687,28 @@ const App: React.FC = () => {
 
         // Sync to database after successful generation
         if (currentProjectId && result) {
-          let slidesToSync: any[] = [];
-          setItems((currentItems) => {
-            slidesToSync = currentItems.map(slide => {
-              if (slide.id === result.itemId) {
-                return {
-                  ...slide,
-                  variants: result.variants
-                };
-              }
-              if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-                return {
-                  ...slide,
-                  variants: [slide.previewUrl, ...slide.variants]
-                };
-              }
-              return slide;
-            });
-            return slidesToSync;
+          // 直接从 items 计算 slidesToSync，避免 setItems 回调闭包陷阱
+          const slidesToSync = items.map(slide => {
+            if (slide.id === result.itemId) {
+              return {
+                ...slide,
+                variants: result.variants,
+                status: 'success' as const
+              };
+            }
+            if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
+              return {
+                ...slide,
+                variants: [slide.previewUrl, ...slide.variants]
+              };
+            }
+            return slide;
           });
 
-          // 等待数据库同步完成后再刷新缓存，确保退出重入时数据一致
+          // 立即更新 UI
+          setItems(slidesToSync);
+
+          // 等待数据库同步完成
           try {
             await syncSlidesMutation.mutateAsync({
               projectId: currentProjectId,
@@ -3269,7 +3320,7 @@ const App: React.FC = () => {
     const validItems = project.items.filter(i => i.title || i.textContent || i.originalFile || i.previewUrl);
 
     if (validItems.length === 0) {
-      showToast("项目没有有效的待生成任务", "info");
+      showToast("项目没有有效的页面任务", "info");
       return;
     }
 
@@ -3283,7 +3334,8 @@ const App: React.FC = () => {
     setStartProjectModalData({
       isOpen: true,
       project,
-      pendingItems
+      pendingItems,
+      allItems: validItems // 传入全部有效项
     });
   };
 
@@ -3885,7 +3937,7 @@ const App: React.FC = () => {
                 >
 
                   {/* LEFT SECTION: Logo + Context Navigation */}
-                  <div className={`flex items-center ${isScrolled ? 'gap-3' : 'gap-6'} z-10 shrink-0 ${(viewMode === 'workbench' || viewMode === 'history-detail') ? '' : 'w-auto xl:w-[300px]'}`}>
+                  <div className={`flex items-center ${isScrolled ? 'gap-3' : 'gap-6'} z-10 ${(viewMode === 'workbench' || viewMode === 'history-detail') ? 'flex-1 min-w-0' : 'shrink-0 w-auto xl:w-[300px]'}`}>
                     <div
                       className="flex items-center gap-2.5 cursor-pointer group"
                       onClick={() => setViewMode('landing')}
@@ -3942,18 +3994,19 @@ const App: React.FC = () => {
                       <>
                         <div className="h-8 w-px bg-slate-200/80"></div>
 
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
                           <button
                             onClick={() => {
                               setViewMode(viewMode === 'history-detail' ? 'history' : 'dashboard');
                               setIsHistoryOpen(false);
                             }}
-                            className="flex items-center gap-1.5 pl-2 pr-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all text-xs font-bold whitespace-nowrap"
+                            className={`flex items-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all text-xs font-bold whitespace-nowrap ${isScrolled ? 'p-1.5' : 'gap-1.5 pl-2 pr-3 py-1.5'}`}
+                            title={isScrolled ? '返回' : undefined}
                           >
                             <div className="bg-white p-1 rounded-lg shadow-sm">
                               <ArrowLeft size={12} />
                             </div>
-                            返回
+                            {!isScrolled && <span>返回</span>}
                           </button>
 
                           {/* ID Badge - Moved before title */}
@@ -3965,7 +4018,7 @@ const App: React.FC = () => {
                           )}
 
                           {/* Project Title Input/Display - Optimized */}
-                          <div className="relative group">
+                          <div className="relative group flex-1 min-w-0">
                             {viewMode === 'workbench' ? (
                               <div className="flex items-center gap-2">
                                 <input
@@ -3975,7 +4028,7 @@ const App: React.FC = () => {
                                   onBlur={handleTitleBlur}
                                   onKeyDown={handleTitleKeyDown}
                                   className={`text-sm font-bold text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 hover:bg-slate-50 focus:bg-white rounded-lg px-3 py-1.5 outline-none transition-all placeholder:text-slate-400
-                                    ${isScrolled ? 'w-[180px] sm:w-[220px] md:w-[300px]' : 'w-full max-w-[400px]'}
+                                    ${isScrolled ? 'w-[180px] sm:w-[220px] md:w-[300px]' : 'w-full'}
                                   `}
                                   placeholder="输入项目名称..."
                                 />
@@ -4992,6 +5045,7 @@ const App: React.FC = () => {
           onClose={() => setStartProjectModalData(prev => ({ ...prev, isOpen: false }))}
           project={startProjectModalData.project}
           pendingItems={startProjectModalData.pendingItems}
+          allItems={startProjectModalData.allItems}
           onConfirmBatch={handleConfirmBatchStart}
           onOpenProject={() => {
             if (startProjectModalData.project) {

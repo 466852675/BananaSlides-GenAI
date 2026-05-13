@@ -270,6 +270,15 @@ export class ProjectService {
             const currentProject = await tx.project.findUnique({ where: { id: projectId } });
             if (!isAdmin && (!currentProject || currentProject.userId !== userId)) return null;
 
+            // SAFETY: If slides array is empty, do nothing - prevent accidental data wipe
+            if (slides.length === 0) {
+                const unchanged = await tx.project.findUnique({
+                    where: { id: projectId },
+                    include: { Slide: { orderBy: { index: 'asc' } } }
+                });
+                return unchanged;
+            }
+
             // Get existing slides to determine which to delete
             const existingSlides = await tx.slide.findMany({
                 where: { projectId },
