@@ -235,9 +235,8 @@ const buildImageGenerationPrompt = (params: {
     allSlideTitles?: string[]; // 新增: 所有页面标题,用于目录页生成参考
     styleKeywords?: string;  // 新增: Vision 模型解析出的风格特征
     designSuggestion?: string; // 新增: 用户明确的设计建议
-    isZhipu?: boolean; // 新增: 是否为智谱模型，用于 Prompt 复杂度优化
 }): string => {
-    const { pageType, title, content, styleName, colorPalette, requirements, aspectRatio, styleMatchType, allSlideTitles, styleKeywords, designSuggestion, isZhipu } = params;
+    const { pageType, title, content, styleName, colorPalette, requirements, aspectRatio, styleMatchType, allSlideTitles, styleKeywords, designSuggestion } = params;
 
     let prompt = '';
 
@@ -245,28 +244,12 @@ const buildImageGenerationPrompt = (params: {
     const effectiveRequirements = extractPageSpecificRequirements(requirements, pageType);
 
     // ============================================================
-    // 🚨 核心指令：严禁显示技术规格
+    // 核心指令：内容隔离
     // ============================================================
-    if (isZhipu) {
-        // 智谱版精简指令：减少嵌套，防止 StackOverflow
-        prompt += `【🚨 重要指令】图片中严禁出现任何颜色代码、字体名称、宽高比等技术参数。文字结尾严禁使用标点符号。图片中只能出现【业务内容】部分的标题和正文！\n\n`;
-    } else {
-        prompt += `【🚨 最高优先级指令 - 内容隔离规则】\n`;
-        prompt += `以下规则必须严格遵守，否则视为生成失败：\n`;
-        prompt += `1. [禁止渲染区] 本 Prompt 中的所有"技术规格"和"风格参数"仅供您内部处理参考，严禁在图片中渲染！\n`;
-        prompt += `2. [禁止渲染清单] 以下内容绝对不能出现在生成的图片中：\n`;
-        prompt += `   - 任何颜色代码（如 #0052D4, #1C1C1, #0A192B, RGB值等）\n`;
-        prompt += `   - 任何字体名称（如 思源体, Arial, 微软雅黑等）\n`;
-        prompt += `   - 任何宽高比标注（如 16:9, 4:3, 1:1等）\n`;
-        prompt += `   - 任何调色板名称（如 琥珀金, 冷色调, 渐变等）\n`;
-        prompt += `   - 任何风格术语（如 扁平化, 极简主义,科技感等）\n`;
-        prompt += `   - 任何设计规范文档中的术语和描述\n`;
-        prompt += `3. [PPT标点规范] PPT不是文档，文字结尾严禁使用中文句末标点：\n`;
-        prompt += `   - 禁止使用：。；，！？、\n`;
-        prompt += `   - 列表项结尾不加任何标点\n`;
-        prompt += `   - 标题结尾不加任何标点\n`;
-        prompt += `4. [唯一可渲染内容] 图片中只能出现【业务任务内容】部分的标题和正文！\n\n`;
-    }
+    prompt += `【内容隔离】\n`;
+    prompt += `图片中只能出现业务标题和正文。\n`;
+    prompt += `禁止在画面中出现技术参数(#hex、字体名、比例数字等)。\n`;
+    prompt += `文字结尾禁用中文标点(。！？)\n\n`;
 
     // 第一部分: 视觉调性定义 (Visual Language - "HOW to draw")
     // 注意：这部分是内部风格参考，不渲染到图片
@@ -288,9 +271,12 @@ const buildImageGenerationPrompt = (params: {
 
     // Inject filtered requirements here (作为风格参考，不作为内容)
     if (effectiveRequirements) {
-        const requirementsToUse = isZhipu ? (effectiveRequirements.length > 500 ? effectiveRequirements.substring(0, 500) + '...' : effectiveRequirements) : effectiveRequirements;
-        prompt += `- 详细设计规范(仅供风格参考):\n${requirementsToUse}\n`;
+        prompt += `- 详细设计规范:\n${effectiveRequirements}\n`;
     }
+    prompt += `- 输出比例: ${aspectRatio} (仅控制画布)\n`;
+    if (styleName) prompt += `- 风格: ${styleName}\n`;
+    if (colorPalette) prompt += `- 配色: ${colorPalette}\n`;
+    prompt += `- 基调: 专业商业演示, 4K 高画质, 文字清晰\n`;
 
     // 第二部分: 业务任务核心 (Business Core - "WHAT to draw")
     // 这是唯一可以渲染的内容
@@ -300,50 +286,30 @@ const buildImageGenerationPrompt = (params: {
     if (pageType === 'directory' && (!content || content.length < 20) && allSlideTitles && allSlideTitles.length > 0) {
         prompt += `- 大纲参考: "${allSlideTitles.join('、')}"\n`;
     } else if (content) {
-        const contentPreview = content.length > 800 ? content.substring(0, 800) + '...' : content;
-        prompt += `- 详细业务描述: "${contentPreview}"\n`;
+        const MAX_CONTENT = 600;
+        let contentPreview = content;
+        if (content.length > MAX_CONTENT) {
+            const t = content.substring(0, MAX_CONTENT);
+            const p = t.lastIndexOf('。');
+            contentPreview = (p > MAX_CONTENT * 0.5 ? t.substring(0, p + 1) : t) + '...';
+        }
+        prompt += `- 正文: "${contentPreview}"\n`;
 
-        // 针对内容页的特殊优化指令
+        // 针对内容页的排版指令
         if (pageType === 'content') {
-            if (isZhipu) {
-                // 智谱版精简指令：仅保留核心逻辑
-                prompt += `\n【🌟 排版增强指令】\n`;
-                prompt += `- 信息密度：增加模块对比，每个核心板块展示“图标+标题+短句”。\n`;
-                prompt += `- 装饰细节：增加微型标签和状态胶囊填补空隙。列表带序号。\n`;
-                prompt += `- 逻辑连接：使用箭头或环形展示逻辑，页面留白处提炼一句核心金句。\n`;
-            } else {
-                prompt += `\n【🌟 内容页排版与文案提炼指令 (CRITICAL)】\n`;
-                prompt += `- [文案适度丰富]: 画面不仅仅是标题堆砌！请增加信息密度，通过多层级结构展示内容的丰富度。\n`;
-                prompt += `- [智能提炼与细化]: 对每个核心板块，除标题外，必须展示 1-2 行简短说明（约 15-20 字）或关键数据，不能只有空洞的大字。\n`;
-                prompt += `- [视觉层级增强]:\n`;
-                prompt += `    1. 核心模块 (Main): 必须包含“主图标 (Hero Icon) + 标题 + 关键句 + 数据展示”。\n`;
-                prompt += `    2. 装饰元素 (Decor): 必须在每个模块内部及其周边，增加 2-3 个装饰性小标签 (Tags)、状态胶囊 (Capsules) 或数据角标 (Badges)。\n`;
-                prompt += `    3. 微型图标 (Micro-Icons): 在关键词旁自动配对微型含义图标（如：齿轮、闪电、对钩、Wifi信号），让画面细节极其丰富。\n`;
-                prompt += `    4. 子级列表 (Sub-items): 列表项必须带有 Bullet Icon 或数字序号。\n`;
-                prompt += `    5. 具象化枚举 (Concrete Items): 如果内容提到多个具体对象（如"图片、音频、视频"），严禁只画一个通用图标！必须在卡片内平行罗列这几个对象，形式可选【小图标矩阵 (Icon Row)】或【关键词标签 (Text Capsules)】。\n`;
-                prompt += `- [排版规范]: 保持模块化卡片布局，但卡片内部内容要充实。避免大片空白，用微小的 UI 元素（线条、点阵、小字）填充视觉空隙。\n`;
-                prompt += `- [逻辑可视化]: 继续保持清晰的逻辑连接（箭头/流程），但节点本身要内容丰富。\n`;
-                prompt += `- [核心金句 (One-liner)]: 必须在画面留白处（如标题下方、底部或侧边栏）展示一句【核心总结】。\n`;
-                prompt += `    - 内容: 从业务描述中提炼出最有价值的一个观点（不超过 15 字）。\n`;
-                prompt += `    - 样式: 使用引用样式 (Quote)、高亮背景条或从主视觉中独立出来的醒目文字。\n`;
-                prompt += `    - 目的: 用户看一眼这句话就知道本页想表达什么\n`;
-                prompt += `- [参考范式]: 类似于高密度的科技仪表盘或商业分析报告，信息量充足但井井有条。\n`;
-            }
+            prompt += `\n排版要求:\n`;
+            prompt += `- 每个核心板块展示"图标+标题+短句"，不能只有大字\n`;
+            prompt += `- 增加微型标签、状态胶囊填补空隙，列表带序号\n`;
+            prompt += `- 多个对象必须平行罗列(图标矩阵/关键词标签)\n`;
+            prompt += `- 从内容提炼一句核心金句，放在页面留白处\n`;
         }
     }
 
-    // 第三部分: 形神兼备合成指令 (Synthesized Meta-Instruction)
-    prompt += `\n【3. 合成指令】\n`;
-    prompt += `- 任务使命: 请使用第一部分的【视觉语言】风格去渲染第二部分的【业务任务内容】。\n`;
-    prompt += `- 深度要求: 生成的图像在视觉风格上参考设计规范，但内容只能是业务标题和业务正文。\n`;
-    prompt += `- [CRITICAL] 再次强调：颜色代码、字体名称、比例数字、调色板名称等技术参数严禁出现在画面中！\n`;
-
-    // 第四部分: 技术规格 (内部处理参数，不渲染)
-    prompt += `\n【4. 技术规格 (内部处理参数，禁止渲染到画面)】\n`;
-    prompt += `- 输出宽高比: ${aspectRatio} (仅控制画布比例，不要在图中显示此数字)\n`;
-    if (styleName) prompt += `- 风格流派: ${styleName} (仅供风格参考，不要在图中显示此文字)\n`;
-    if (colorPalette) prompt += `- 配色方案: ${colorPalette} (仅供配色参考，不要在图中显示调色板名称或颜色代码)\n`;
-    prompt += `- 画面基调: 专业商业演示, 4K 高画质, 文字清晰。\n`;
+    if (pageType === 'cover') {
+        prompt += `\n封面要求:\n`;
+        prompt += `- 主标题醒目居中或偏左，副标题在下方\n`;
+        prompt += `- 底部显示日期或装饰性分割线，整体大气体面\n`;
+    }
 
     return prompt;
 };
@@ -863,8 +829,10 @@ async function callOpenAIImageGeneration(
     while (retries > 0) {
         try {
             console.log(`[OpenAI Image] Calling: ${url}, Model: ${config.model}, Size: ${size} (Attempts left: ${retries})`);
-            console.log(`[OpenAI Image] Body:`, JSON.stringify(body));
-            console.log(`[OpenAI Image] Headers:`, JSON.stringify(headers));
+            // 不输出完整 Body（含超大 base64 图片），只输出关键字段
+            console.log(`[OpenAI Image] Request: model=${body.model}, n=${body.n}, size=${body.size}, prompt_len=${body.prompt?.length || 0}, has_image=${!!body.image}`);
+            const safeHeaders = { ...headers, Authorization: headers.Authorization ? `${(headers.Authorization as string).slice(0, 22)}...` : undefined };
+            console.log(`[OpenAI Image] Headers:`, JSON.stringify(safeHeaders));
 
             // Standard Sync Call (or Async Initiation for ModelScope)
             const response = await axios.post(url, body, { headers, timeout: 600000 });
@@ -1720,10 +1688,6 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             allSlideTitles: allSlideTitles,
             styleKeywords: styleKeywords,
             designSuggestion: designSuggestion,
-            isZhipu: config.baseUrl.toLowerCase().includes('bigmodel.cn') ||
-                config.model.toLowerCase().includes('glm') ||
-                config.model.toLowerCase().includes('cogview') ||
-                config.model.toLowerCase().includes('zhipu')
         });
 
         // 4. 执行模型请求
