@@ -3,6 +3,7 @@ import { prisma } from '../db';
 import { saveBase64Image, isBase64Image } from '../utils/imageSaver';
 import { resourceService } from './resource.service';
 import { sanitizeStyleMap } from '../utils/file';
+import { AuditService } from './audit.service';
 
 export class ProjectService {
     private async sanitizeProjectStyleMap<T extends { id: string; styleMap: string | null }>(project: T): Promise<T> {
@@ -415,17 +416,14 @@ export class ProjectService {
                     status: 'TRASHED'
                 }
             });
-
-            // 4. 记录操作日志
-            await tx.auditLog.create({
-                data: {
-                    userId,
-                    type: 'PROJECT_SOFT_DELETE',
-                    content: id,
-                    reason: `deletedBy: ${isAdmin ? 'admin' : 'user'}`,
-                    severity: 'INFO'
-                }
-            });
+        });
+        // 4. 记录操作日志
+        AuditService.log({
+            userId,
+            type: 'PROJECT_SOFT_DELETE',
+            content: id,
+            reason: `deletedBy: ${isAdmin ? 'admin' : 'user'}`,
+            severity: 'info'
         });
 
         return project;
@@ -478,16 +476,13 @@ export class ProjectService {
                     status: 'ACTIVE'
                 }
             });
-
-            // 4. 记录操作日志
-            await tx.auditLog.create({
-                data: {
-                    userId,
-                    type: 'PROJECT_RESTORE',
-                    content: id,
-                    severity: 'INFO'
-                }
-            });
+        });
+        // 4. 记录操作日志
+        AuditService.log({
+            userId,
+            type: 'PROJECT_RESTORE',
+            content: id,
+            severity: 'info'
         });
 
         // 返回恢复后的项目
@@ -566,17 +561,14 @@ export class ProjectService {
             await tx.project.delete({
                 where: { id }
             });
-
-            // 6. 记录操作日志
-            await tx.auditLog.create({
-                data: {
-                    userId,
-                    type: 'PROJECT_PERMANENT_DELETE',
-                    content: id,
-                    reason: `title: ${project.title}`,
-                    severity: 'WARNING'
-                }
-            });
+        });
+        // 6. 记录操作日志
+        AuditService.log({
+            userId,
+            type: 'PROJECT_PERMANENT_DELETE',
+            content: id,
+            reason: `title: ${project.title}`,
+            severity: 'high'
         });
 
         return project;

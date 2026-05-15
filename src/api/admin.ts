@@ -578,6 +578,61 @@ export async function updateCommercialConfig(data: {
     throw new Error(result.error?.message || '更新商业化配置失败');
 }
 
+// ============================================================
+// 审计日志 API
+// ============================================================
+
+export interface AuditLogEntry {
+    id: string;
+    userId: string | null;
+    userName: string | null;
+    type: string;
+    content: string | null;
+    reason: string | null;
+    severity: string;
+    metadata: string | null;
+    ip: string | null;
+    createdAt: string;
+}
+
+export interface AuditLogResult {
+    items: AuditLogEntry[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+}
+
+/**
+ * 获取审计日志列表
+ */
+export async function getAuditLogs(params: {
+    page?: number;
+    limit?: number;
+    type?: string;
+    severity?: string;
+    startDate?: string;
+    endDate?: string;
+    keyword?: string;
+} = {}): Promise<AuditLogResult> {
+    const query = new URLSearchParams();
+    if (params.page) query.set('page', String(params.page));
+    if (params.limit) query.set('limit', String(params.limit));
+    if (params.type) query.set('type', params.type);
+    if (params.severity) query.set('severity', params.severity);
+    if (params.startDate) query.set('startDate', params.startDate);
+    if (params.endDate) query.set('endDate', params.endDate);
+    if (params.keyword) query.set('keyword', params.keyword);
+    const qs = query.toString();
+    const result = await client.get(`/admin/audit-logs${qs ? '?' + qs : ''}`) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取审计日志失败');
+}
+
 /**
  * 获取系统运行配置 (Status/RegMode)
  */

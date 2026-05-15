@@ -4,6 +4,7 @@
 import { Request, Response } from 'express';
 import * as AuthService from '../services/auth.service';
 import { getClientIp } from '../middlewares/auth.middleware';
+import { auditLogger } from '../services/audit.service';
 
 /**
  * 用户注册
@@ -22,6 +23,9 @@ export async function register(req: Request, res: Response): Promise<void> {
         }
 
         const result = await AuthService.register({ email, password, nickname, inviteCode });
+
+        // 记录注册审计日志
+        auditLogger(req, 'AUTH_REGISTER', `用户注册: ${email}`, 'info');
 
         res.status(201).json({
             success: true,
@@ -62,6 +66,9 @@ export async function login(req: Request, res: Response): Promise<void> {
 
         const clientIp = getClientIp(req);
         const result = await AuthService.login(identity, password, clientIp);
+
+        // 记录登录审计日志
+        auditLogger(req, 'AUTH_LOGIN', `用户登录: ${identity}`, 'info');
 
         res.status(200).json({
             success: true,

@@ -5,6 +5,7 @@ import { Router } from 'express';
 import * as AdminController from '../controllers/admin.controller';
 import { authenticate, requireAdmin, requireSuperAdmin, requirePermission } from '../middlewares/auth.middleware';
 import * as RefundService from '../services/refund.service';
+import { auditLogger } from '../services/audit.service';
 
 const router = Router();
 
@@ -170,6 +171,7 @@ router.post('/refunds/:id/audit', authenticate, requireAdmin, requirePermission(
         const result = await RefundService.auditRefund(id, adminId, { approved, remark });
 
         if (result.success) {
+            auditLogger(req, 'ADMIN_REFUND_AUDIT', `审核退款 ${id}: ${approved ? '通过' : '拒绝'}，备注: ${remark || '无'}`, 'high');
             res.json({ success: true, data: result });
         } else {
             res.status(400).json({
@@ -283,5 +285,10 @@ router.get('/refunds/metrics', authenticate, requireAdmin, requirePermission('ad
 // ============================================================
 router.get('/commercial', AdminController.getCommercialConfig);
 router.put('/commercial', authenticate, requireSuperAdmin, AdminController.updateCommercialConfig);
+
+// ============================================================
+// 审计日志
+// ============================================================
+router.get('/audit-logs', requirePermission('admin.system.read'), AdminController.getAuditLogs);
 
 export default router;

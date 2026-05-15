@@ -62,9 +62,9 @@ export function useCommercial(): UseCommercialReturn {
             cacheRef.current = { data, timestamp: Date.now() };
             setConfig(data);
         } catch {
-            // 失败时使用缓存或默认值
+            // 失败时使用缓存或默认值：默认所有功能可用（保守模式）
             if (!cacheRef.current) {
-                setConfig({ enabled: false, disabledModules: [], auditLog: [] });
+                setConfig({ enabled: true, disabledModules: [], auditLog: [] });
             }
         } finally {
             setLoading(false);
@@ -78,9 +78,11 @@ export function useCommercial(): UseCommercialReturn {
     const isModuleDisabled = useCallback(
         (moduleId: CommercialModuleId): boolean => {
             if (!config) return false;
-            // 商业化关闭 = 全部禁用（disabledModules 为空数组时为全量关闭）
-            // 商业化开启 = 仅 disabledModules 中的模块禁用（用于选择性关闭个别模块）
-            if (!config.enabled) return true;
+            // 商业化关闭 = disabledModules 为空时全关，有列表时按列表匹配
+            // 商业化开启 = 仅 disabledModules 中的模块禁用
+            if (!config.enabled) {
+                return config.disabledModules.length === 0 || config.disabledModules.includes(moduleId);
+            }
             return config.disabledModules.includes(moduleId);
         },
         [config]

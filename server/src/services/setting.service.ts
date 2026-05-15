@@ -123,7 +123,7 @@ export class SettingService {
             commercial: {
                 enabled,
                 disabledModules,
-                auditLog: [...(current.auditLog || []), auditEntry],
+                auditLog: [...(current.auditLog || []), auditEntry].slice(-500),
             },
         };
 

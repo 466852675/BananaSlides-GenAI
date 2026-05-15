@@ -13,6 +13,7 @@
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { resourceService, CleanupReport } from './resource.service';
+import { AuditService } from './audit.service';
 import fs from 'fs';
 import path from 'path';
 
@@ -188,17 +189,14 @@ export class ResourceCleanupService {
       await tx.project.delete({
         where: { id: projectId }
       });
-
-      // 6. 记录操作日志
-      await tx.auditLog.create({
-        data: {
-          userId: null,
-          type: 'PROJECT_AUTO_DELETE',
-          content: projectId,
-          reason: `title: ${title}, reason: expired`,
-          severity: 'WARNING'
-        }
-      });
+    });
+    // 6. 记录操作日志
+    AuditService.log({
+      userId: undefined,
+      type: 'PROJECT_AUTO_DELETE',
+      content: projectId,
+      reason: `title: ${title}, reason: expired`,
+      severity: 'high'
     });
   }
 

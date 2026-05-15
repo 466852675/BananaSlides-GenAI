@@ -143,7 +143,7 @@ app.use('/api/refunds', commercialGuard('refunds'), refundRoutes);
 app.use('/webhooks', webhookRoutes);
 app.use('/api/products', commercialGuard('purchase'), productRoutes);
 app.use('/api/leads', commercialGuard('leads'), leadRoutes);
-app.use('/api/growth', commercialGuard('checkin'), growthRoutes);
+app.use('/api/growth', commercialGuard('growth'), growthRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/trash', trashRoutes);
 app.use('/api/export', exportRoutes);

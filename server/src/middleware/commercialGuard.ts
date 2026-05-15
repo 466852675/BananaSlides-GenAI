@@ -61,7 +61,10 @@ export function commercialGuard(moduleId: CommercialModule, isAdminRoute: boolea
             next();
         } catch (error) {
             console.error('[CommercialGuard] 检查失败:', error);
-            next();
+            res.status(500).json({
+                success: false,
+                error: { code: 'GUARD_ERROR', message: '系统内部错误' }
+            });
         }
     };
 }

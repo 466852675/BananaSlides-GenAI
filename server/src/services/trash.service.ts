@@ -6,6 +6,7 @@
 
 import { prisma } from '../db';
 import { resourceService } from './resource.service';
+import { AuditService } from './audit.service';
 
 // ============================================================
 // 配置
@@ -536,17 +537,14 @@ class TrashService {
           status: 'TRASHED'
         }
       });
-
-      // 4. 记录操作日志
-      await tx.auditLog.create({
-        data: {
-          userId: operatorId || project.userId,
-          type: 'PROJECT_SOFT_DELETE',
-          content: projectId,
-          reason: `deletedBy: ${deletedBy}`,
-          severity: 'INFO'
-        }
-      });
+    });
+    // 4. 记录操作日志
+    AuditService.log({
+      userId: operatorId || project.userId || undefined,
+      type: 'PROJECT_SOFT_DELETE',
+      content: projectId,
+      reason: `deletedBy: ${deletedBy}`,
+      severity: 'info'
     });
 
     return {
@@ -606,16 +604,13 @@ class TrashService {
           status: 'ACTIVE'
         }
       });
-
-      // 4. 记录操作日志
-      await tx.auditLog.create({
-        data: {
-          userId: operatorId || project.userId,
-          type: 'PROJECT_RESTORE',
-          content: projectId,
-          severity: 'INFO'
-        }
-      });
+    });
+    // 4. 记录操作日志
+    AuditService.log({
+      userId: operatorId || project.userId || undefined,
+      type: 'PROJECT_RESTORE',
+      content: projectId,
+      severity: 'info'
     });
 
     return {
@@ -669,17 +664,14 @@ class TrashService {
       await tx.project.delete({
         where: { id: projectId }
       });
-
-      // 6. 记录操作日志
-      await tx.auditLog.create({
-        data: {
-          userId: operatorId || project.userId,
-          type: 'PROJECT_PERMANENT_DELETE',
-          content: projectId,
-          reason: `title: ${project.title}`,
-          severity: 'WARNING'
-        }
-      });
+    });
+    // 6. 记录操作日志
+    AuditService.log({
+      userId: operatorId || project.userId || undefined,
+      type: 'PROJECT_PERMANENT_DELETE',
+      content: projectId,
+      reason: `title: ${project.title}`,
+      severity: 'high'
     });
 
     return {
@@ -809,13 +801,12 @@ class TrashService {
     });
 
     // 记录操作日志
-    await prisma.auditLog.create({
-      data: {
-        userId: operatorId || template.userId,
-        type: 'TEMPLATE_RESTORE',
-        content: templateId,
-        severity: 'INFO'
-      }
+    AuditService.log({
+      userId: operatorId,
+      type: 'TEMPLATE_RESTORE',
+      content: templateId,
+      reason: `restoredBy: admin`,
+      severity: 'info'
     });
 
     return {
@@ -843,14 +834,12 @@ class TrashService {
     });
 
     // 记录操作日志
-    await prisma.auditLog.create({
-      data: {
-        userId: operatorId || template.userId,
-        type: 'TEMPLATE_PERMANENT_DELETE',
-        content: templateId,
-        reason: `name: ${template.name}`,
-        severity: 'WARNING'
-      }
+    AuditService.log({
+      userId: operatorId,
+      type: 'TEMPLATE_PERMANENT_DELETE',
+      content: templateId,
+      reason: `deletedBy: admin`,
+      severity: 'high'
     });
 
     return {

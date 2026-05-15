@@ -6,6 +6,7 @@ import * as AdminService from '../services/admin.service';
 import * as OrderService from '../services/order.service';
 import * as PointsService from '../services/points.service';
 import { productService } from '../services/product.service';
+import { AuditService, auditLogger } from '../services/audit.service';
 import { UserRole, UserStatus, OrderStatus, UserRoleType, UserStatusType, OrderStatusType } from '../types/user.types';
 
 // ============================================================
@@ -32,6 +33,8 @@ export async function createUser(req: Request, res: Response): Promise<void> {
             { email, password, nickname, role, vipLevel, points },
             req.user!.id
         );
+
+        auditLogger(req, 'ADMIN_USER_CREATE', `创建用户: ${req.body.email}`, 'info');
 
         res.json({ success: true, data: user });
     } catch (error: any) {
@@ -159,6 +162,15 @@ export async function updateUser(req: Request, res: Response): Promise<void> {
             req.user!.id
         );
 
+        const changedFields: string[] = [];
+        const before: any = {};
+        const after: any = {};
+        if (req.body.role) { changedFields.push('role'); before.role = '旧值'; after.role = req.body.role; }
+        if (req.body.status) { changedFields.push('status'); before.status = '旧值'; after.status = req.body.status; }
+        if (req.body.vipLevel !== undefined) { changedFields.push('vipLevel'); before.vipLevel = '旧值'; after.vipLevel = req.body.vipLevel; }
+        if (req.body.points !== undefined) { changedFields.push('points'); before.points = '旧值'; after.points = req.body.points; }
+        auditLogger(req, 'ADMIN_USER_UPDATE', `更新用户 ${id}: ${changedFields.join(', ')}`, 'medium', { before, after });
+
         res.json({ success: true, data: updated });
     } catch (error: any) {
         console.error('[Admin] 更新用户失败:', error);
@@ -188,6 +200,8 @@ export async function resetUserPassword(req: Request, res: Response): Promise<vo
 
         await AdminService.resetUserPassword(id, newPassword);
 
+        auditLogger(req, 'ADMIN_USER_RESET_PWD', `重置用户 ${id} 密码`, 'high');
+
         res.json({ success: true, message: '密码已重置' });
     } catch (error) {
         console.error('[Admin] 重置密码失败:', error);
@@ -216,6 +230,8 @@ export async function deleteUser(req: Request, res: Response): Promise<void> {
         }
 
         await AdminService.deleteUserById(id);
+
+        auditLogger(req, 'ADMIN_USER_DELETE', `删除用户 ${id}`, 'critical');
 
         res.json({ success: true, message: '用户已永久删除' });
     } catch (error: any) {
@@ -255,6 +271,8 @@ export async function batchUserAction(req: Request, res: Response): Promise<void
         const filteredIds = userIds.filter((id: string) => id !== req.user?.id);
 
         const result = await AdminService.batchUserAction(action, filteredIds, req.user!.id, reason);
+
+        auditLogger(req, `ADMIN_USER_BATCH_${action.toUpperCase()}`, `批量${action}用户: ${userIds.join(', ')}，理由: ${reason}`, action === 'delete' ? 'critical' : 'high');
 
         res.json({ success: true, data: result });
     } catch (error) {
@@ -349,6 +367,8 @@ export async function updateOrder(req: Request, res: Response): Promise<void> {
 
         const updated = await OrderService.updateOrderStatus(id, status);
 
+        auditLogger(req, 'ADMIN_ORDER_UPDATE', `更新订单 ${id}: 状态=${req.body.status}`, 'medium');
+
         res.json({ success: true, data: updated });
     } catch (error) {
         console.error('[Admin] 更新订单失败:', error);
@@ -369,6 +389,8 @@ export async function refundOrder(req: Request, res: Response): Promise<void> {
         const { reason } = req.body;
 
         await OrderService.refundOrder(id, reason);
+
+        auditLogger(req, 'ADMIN_ORDER_REFUND', `订单退款 ${id}`, 'high');
 
         res.json({ success: true, message: '退款成功' });
     } catch (error: any) {
@@ -446,6 +468,7 @@ export async function createPointsRule(req: Request, res: Response): Promise<voi
             effectiveAt: effectiveAt ? new Date(effectiveAt) : undefined,
             createdById: req.user!.id
         });
+        auditLogger(req, 'ADMIN_POINTS_RULE_CREATE', `创建积分规则: ${req.body.code}(${req.body.name})，消耗 ${req.body.costPoints} 积分`, 'info');
         res.status(201).json({ success: true, data: rule });
     } catch (error) {
         console.error('[Admin] 创建积分规则失败:', error);
@@ -476,6 +499,7 @@ export async function updatePointsRule(req: Request, res: Response): Promise<voi
             deductionLogic,
             effectiveAt: effectiveAt ? new Date(effectiveAt) : undefined
         });
+        auditLogger(req, 'ADMIN_POINTS_RULE_UPDATE', `更新积分规则 ${id}`, 'info', { before: { costPoints: '旧值' }, after: { costPoints: req.body.costPoints } });
         res.json({ success: true, data: rule });
     } catch (error) {
         console.error('[Admin] 更新积分规则失败:', error);
@@ -494,6 +518,7 @@ export async function deletePointsRule(req: Request, res: Response): Promise<voi
     try {
         const id = req.params.id as string;
         await PointsService.deletePointsRule(id);
+        auditLogger(req, 'ADMIN_POINTS_RULE_DELETE', `删除积分规则 ${id}`, 'medium');
         res.json({ success: true, message: '规则已删除' });
     } catch (error) {
         console.error('[Admin] 删除积分规则失败:', error);
@@ -588,6 +613,7 @@ export async function updateRolePermissions(req: Request, res: Response): Promis
         const { permissionIds } = req.body;
 
         await AdminService.updateRolePermissions(role, permissionIds);
+        auditLogger(req, 'ADMIN_ROLE_PERM_UPDATE', `更新角色 ${req.params.role} 权限: ${req.body.permissionIds?.length || 0} 个权限`, 'critical');
         res.json({ success: true, message: '权限更新成功' });
     } catch (error) {
         console.error('[Admin] 更新角色权限失败:', error);
@@ -662,6 +688,7 @@ export async function updateSystemConfig(req: Request, res: Response): Promise<v
         }
 
         console.log('[Admin] 系统配置已更新:', systemConfig);
+        auditLogger(req, 'ADMIN_SYSTEM_CONFIG_UPDATE', `更新系统配置: SYSTEM_STATUS=${req.body.SYSTEM_STATUS || '不变'}, REG_MODE=${req.body.REG_MODE || '不变'}`, 'high', { before: { SYSTEM_STATUS: '旧值', REG_MODE: '旧值' }, after: { SYSTEM_STATUS: req.body.SYSTEM_STATUS, REG_MODE: req.body.REG_MODE } });
         res.json({ success: true, data: systemConfig });
     } catch (error) {
         console.error('[Admin] 更新系统配置失败:', error);
@@ -749,6 +776,8 @@ export async function createProduct(req: Request, res: Response): Promise<void> 
             period
         });
 
+        auditLogger(req, 'ADMIN_PRODUCT_CREATE', `创建商品: ${req.body.name}(${req.body.type})，价格 ${req.body.price}`, 'info');
+
         res.json({ success: true, data: product });
     } catch (error) {
         console.error('[Admin] 创建商品失败:', error);
@@ -777,6 +806,7 @@ export async function updateProduct(req: Request, res: Response): Promise<void> 
         if (updateData.effectiveAt) updateData.effectiveAt = new Date(updateData.effectiveAt);
 
         const product = await productService.updateProduct(id, updateData);
+        auditLogger(req, 'ADMIN_PRODUCT_UPDATE', `更新商品 ${id}`, 'info', { before: { price: '旧值' }, after: { price: req.body.price } });
         res.json({ success: true, data: product });
     } catch (error) {
         console.error('[Admin] 更新商品失败:', error);
@@ -795,6 +825,7 @@ export async function deleteProduct(req: Request, res: Response): Promise<void> 
     try {
         const id = req.params.id as string;
         await productService.deleteProduct(id);
+        auditLogger(req, 'ADMIN_PRODUCT_DELETE', `删除商品 ${id}`, 'medium');
         res.json({ success: true, message: '商品已删除' });
     } catch (error) {
         console.error('[Admin] 删除商品失败:', error);
@@ -849,6 +880,8 @@ export async function createEngineRule(req: Request, res: Response): Promise<voi
             description
         });
 
+        auditLogger(req, 'ADMIN_ENGINE_RULE_CREATE', `创建引擎规则: ${req.body.name}(${req.body.provider})`, 'info');
+
         res.json({ success: true, data: rule });
     } catch (error: any) {
         console.error('[Admin] 创建引擎规则失败:', error);
@@ -874,6 +907,7 @@ export async function updateEngineRule(req: Request, res: Response): Promise<voi
         }
 
         const rule = await AdminService.updateEngineRule(id, updateData);
+        auditLogger(req, 'ADMIN_ENGINE_RULE_UPDATE', `更新引擎规则 ${id}`, 'info');
         res.json({ success: true, data: rule });
     } catch (error: any) {
         console.error('[Admin] 更新引擎规则失败:', error);
@@ -892,6 +926,7 @@ export async function activateEngineRule(req: Request, res: Response): Promise<v
     try {
         const id = req.params.id as string;
         const rule = await AdminService.activateEngineRule(id);
+        auditLogger(req, 'ADMIN_ENGINE_RULE_ACTIVATE', `激活引擎规则 ${id}`, 'medium');
         res.json({ success: true, data: rule, message: '规则已激活' });
     } catch (error: any) {
         console.error('[Admin] 激活引擎规则失败:', error);
@@ -910,6 +945,7 @@ export async function deleteEngineRule(req: Request, res: Response): Promise<voi
     try {
         const id = req.params.id as string;
         await AdminService.deleteEngineRule(id);
+        auditLogger(req, 'ADMIN_ENGINE_RULE_DELETE', `删除引擎规则 ${id}`, 'medium');
         res.json({ success: true, message: '规则已删除' });
     } catch (error: any) {
         console.error('[Admin] 删除引擎规则失败:', error);
@@ -964,12 +1000,45 @@ export async function updateCommercialConfig(req: Request, res: Response): Promi
         );
 
         const config = await SettingService.getCommercialConfig();
+        auditLogger(req, 'ADMIN_COMMERCIAL_CONFIG_UPDATE', `商业化功能: ${req.body.enabled ? '开启' : '关闭'}，影响 ${req.body.disabledModules?.length || 0} 个模块`, 'high', { before: { enabled: '旧值' }, after: { enabled: req.body.enabled, disabledModules: req.body.disabledModules } });
         res.json({ success: true, data: config, message: enabled ? '商业化功能已开启' : '商业化功能已关闭' });
     } catch (error) {
         console.error('[Admin] 更新商业化配置失败:', error);
         res.status(500).json({
             success: false,
             error: { code: 'INTERNAL_ERROR', message: '更新商业化配置失败' }
+        });
+    }
+}
+
+// ============================================================
+// 审计日志查询
+// ============================================================
+
+/**
+ * 获取审计日志列表
+ * GET /api/admin/audit-logs
+ */
+export async function getAuditLogs(req: Request, res: Response): Promise<void> {
+    try {
+        const { page, limit, type, severity, startDate, endDate, keyword } = req.query;
+
+        const result = await AuditService.queryLogs({
+            page: parseInt(page as string) || 1,
+            limit: Math.min(parseInt(limit as string) || 20, 100),
+            type: type as string,
+            severity: severity as string,
+            startDate: startDate as string,
+            endDate: endDate as string,
+            keyword: keyword as string,
+        });
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        console.error('[Admin] 获取审计日志失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取审计日志失败' }
         });
     }
 }

@@ -5,6 +5,7 @@ import { UserRole, UserStatus, OrderStatus, UserRoleType, UserStatusType, OrderS
 import { hashPassword } from '../utils/password.util';
 import { prisma } from '../db';
 import { notifyVipChange } from './vip-notification.service';
+import { AuditService } from './audit.service';
 
 // ============================================================
 // 用户管理
@@ -394,10 +395,7 @@ export async function batchUserAction(
     operatorId: string,
     reason?: string // [V9.0] 增加操作理由
 ) {
-    // 记录审计日志 (简单 console，实际应写入 AuditLog 表)
-    if (reason) {
-        console.log(`[Audit] Operator ${operatorId} performed ${action} on users [${userIds.join(', ')}]. Reason: ${reason}`);
-    }
+    // 去掉重复的审计日志记录（已在 Controller 层通过 auditLogger 记录）
 
     switch (action) {
         case 'disable':
