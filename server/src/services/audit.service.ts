@@ -1,5 +1,6 @@
 import { prisma } from '../db';
 import { Request } from 'express';
+import { getClientIp } from '../middlewares/auth.middleware';
 
 export interface AuditLogEntry {
   userId?: string;
@@ -157,6 +158,6 @@ export function auditLogger(
     content,
     severity,
     metadata,
-    ip: req.ip || req.socket?.remoteAddress,
+    ip: getClientIp(req),
   });
 }

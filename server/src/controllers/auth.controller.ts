@@ -350,3 +350,21 @@ export async function loginWithPhone(req: Request, res: Response): Promise<void>
     }
 }
 
+/**
+ * 退出登录
+ * POST /api/auth/logout
+ */
+export async function logout(req: Request, res: Response): Promise<void> {
+    try {
+        await AuthService.logout(req.user!.id);
+        auditLogger(req, 'AUTH_LOGOUT', `用户退出登录`, 'info');
+        res.status(200).json({ success: true });
+    } catch (error: any) {
+        console.error('[Auth] 退出登录失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '退出登录失败' }
+        });
+    }
+}
+

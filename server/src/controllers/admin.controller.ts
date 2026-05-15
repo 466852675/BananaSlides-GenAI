@@ -7,6 +7,7 @@ import * as OrderService from '../services/order.service';
 import * as PointsService from '../services/points.service';
 import { productService } from '../services/product.service';
 import { AuditService, auditLogger } from '../services/audit.service';
+import { prisma } from '../db';
 import { UserRole, UserStatus, OrderStatus, UserRoleType, UserStatusType, OrderStatusType } from '../types/user.types';
 
 // ============================================================
@@ -156,6 +157,12 @@ export async function updateUser(req: Request, res: Response): Promise<void> {
             return;
         }
 
+        // 先查询当前用户值，用于审计日志
+        const currentUser = await prisma.user.findUnique({
+            where: { id },
+            select: { role: true, status: true, vipLevel: true, points: true }
+        });
+
         const updated = await AdminService.updateUser(
             id,
             { nickname, role, status, points, vipLevel },
@@ -165,10 +172,10 @@ export async function updateUser(req: Request, res: Response): Promise<void> {
         const changedFields: string[] = [];
         const before: any = {};
         const after: any = {};
-        if (req.body.role) { changedFields.push('role'); before.role = '旧值'; after.role = req.body.role; }
-        if (req.body.status) { changedFields.push('status'); before.status = '旧值'; after.status = req.body.status; }
-        if (req.body.vipLevel !== undefined) { changedFields.push('vipLevel'); before.vipLevel = '旧值'; after.vipLevel = req.body.vipLevel; }
-        if (req.body.points !== undefined) { changedFields.push('points'); before.points = '旧值'; after.points = req.body.points; }
+        if (req.body.role) { changedFields.push('role'); before.role = currentUser?.role; after.role = req.body.role; }
+        if (req.body.status) { changedFields.push('status'); before.status = currentUser?.status; after.status = req.body.status; }
+        if (req.body.vipLevel !== undefined) { changedFields.push('vipLevel'); before.vipLevel = currentUser?.vipLevel; after.vipLevel = req.body.vipLevel; }
+        if (req.body.points !== undefined) { changedFields.push('points'); before.points = currentUser?.points; after.points = req.body.points; }
         auditLogger(req, 'ADMIN_USER_UPDATE', `更新用户 ${id}: ${changedFields.join(', ')}`, 'medium', { before, after });
 
         res.json({ success: true, data: updated });
@@ -488,6 +495,9 @@ export async function updatePointsRule(req: Request, res: Response): Promise<voi
         const id = req.params.id as string;
         const { name, costPoints, description, isActive, module, category, calculationMethod, deductionLogic, effectiveAt } = req.body;
 
+        // 先查询当前规则值，用于审计日志
+        const currentRule = costPoints !== undefined ? await prisma.pointsRule.findUnique({ where: { id }, select: { costPoints: true } }) : null;
+
         const rule = await PointsService.updatePointsRule(id, {
             name,
             costPoints,
@@ -499,7 +509,7 @@ export async function updatePointsRule(req: Request, res: Response): Promise<voi
             deductionLogic,
             effectiveAt: effectiveAt ? new Date(effectiveAt) : undefined
         });
-        auditLogger(req, 'ADMIN_POINTS_RULE_UPDATE', `更新积分规则 ${id}`, 'info', { before: { costPoints: '旧值' }, after: { costPoints: req.body.costPoints } });
+        auditLogger(req, 'ADMIN_POINTS_RULE_UPDATE', `更新积分规则 ${id}`, 'info', { before: { costPoints: currentRule?.costPoints }, after: { costPoints: req.body.costPoints } });
         res.json({ success: true, data: rule });
     } catch (error) {
         console.error('[Admin] 更新积分规则失败:', error);
@@ -688,7 +698,7 @@ export async function updateSystemConfig(req: Request, res: Response): Promise<v
         }
 
         console.log('[Admin] 系统配置已更新:', systemConfig);
-        auditLogger(req, 'ADMIN_SYSTEM_CONFIG_UPDATE', `更新系统配置: SYSTEM_STATUS=${req.body.SYSTEM_STATUS || '不变'}, REG_MODE=${req.body.REG_MODE || '不变'}`, 'high', { before: { SYSTEM_STATUS: '旧值', REG_MODE: '旧值' }, after: { SYSTEM_STATUS: req.body.SYSTEM_STATUS, REG_MODE: req.body.REG_MODE } });
+        auditLogger(req, 'ADMIN_SYSTEM_CONFIG_UPDATE', `更新系统配置: SYSTEM_STATUS=${req.body.SYSTEM_STATUS || '不变'}, REG_MODE=${req.body.REG_MODE || '不变'}`, 'high', { before: { SYSTEM_STATUS: systemConfig.SYSTEM_STATUS, REG_MODE: systemConfig.REG_MODE }, after: { SYSTEM_STATUS: req.body.SYSTEM_STATUS, REG_MODE: req.body.REG_MODE } });
         res.json({ success: true, data: systemConfig });
     } catch (error) {
         console.error('[Admin] 更新系统配置失败:', error);
@@ -805,8 +815,11 @@ export async function updateProduct(req: Request, res: Response): Promise<void> 
         if (updateData.discountEnd) updateData.discountEnd = new Date(updateData.discountEnd);
         if (updateData.effectiveAt) updateData.effectiveAt = new Date(updateData.effectiveAt);
 
+        // 先查询当前商品价格，用于审计日志
+        const currentProduct = updateData.price !== undefined ? await prisma.product.findUnique({ where: { id }, select: { price: true } }) : null;
+
         const product = await productService.updateProduct(id, updateData);
-        auditLogger(req, 'ADMIN_PRODUCT_UPDATE', `更新商品 ${id}`, 'info', { before: { price: '旧值' }, after: { price: req.body.price } });
+        auditLogger(req, 'ADMIN_PRODUCT_UPDATE', `更新商品 ${id}`, 'info', { before: { price: currentProduct?.price }, after: { price: req.body.price } });
         res.json({ success: true, data: product });
     } catch (error) {
         console.error('[Admin] 更新商品失败:', error);
@@ -1000,7 +1013,7 @@ export async function updateCommercialConfig(req: Request, res: Response): Promi
         );
 
         const config = await SettingService.getCommercialConfig();
-        auditLogger(req, 'ADMIN_COMMERCIAL_CONFIG_UPDATE', `商业化功能: ${req.body.enabled ? '开启' : '关闭'}，影响 ${req.body.disabledModules?.length || 0} 个模块`, 'high', { before: { enabled: '旧值' }, after: { enabled: req.body.enabled, disabledModules: req.body.disabledModules } });
+        auditLogger(req, 'ADMIN_COMMERCIAL_CONFIG_UPDATE', `商业化功能: ${req.body.enabled ? '开启' : '关闭'}，影响 ${req.body.disabledModules?.length || 0} 个模块`, 'high', { before: { enabled: config.enabled }, after: { enabled: req.body.enabled, disabledModules: req.body.disabledModules } });
         res.json({ success: true, data: config, message: enabled ? '商业化功能已开启' : '商业化功能已关闭' });
     } catch (error) {
         console.error('[Admin] 更新商业化配置失败:', error);

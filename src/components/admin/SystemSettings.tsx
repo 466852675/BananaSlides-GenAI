@@ -174,6 +174,12 @@ export const SystemSettings: React.FC = () => {
                 <option value="LEAD">销售线索</option>
                 <option value="RESOURCE">资源管理</option>
                 <option value="CONTENT_VIOLATION,PROMPT_INJECTION">安全事件</option>
+                <option value="AUTH">登录</option>
+                <option value="PROJECT">创作室</option>
+                <option value="SNAPSHOT">历史库</option>
+                <option value="TEMPLATE">模板间</option>
+                <option value="TRASH">回收箱</option>
+                <option value="EXPORT">导出</option>
               </select>
               <select
                 value={logSeverity}

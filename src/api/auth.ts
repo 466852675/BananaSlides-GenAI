@@ -88,9 +88,14 @@ export async function login(data: LoginData): Promise<AuthResult> {
 }
 
 /**
- * 退出登录
+ * 退出登录（先调后端 API 使 Token 失效，再清除本地 Token）
  */
-export function logout(): void {
+export async function logout(): Promise<void> {
+    try {
+        await client.post('/auth/logout');
+    } catch {
+        // API 调用失败仍清除本地 Token，保证用户能退出
+    }
     localStorage.removeItem(TOKEN_KEY);
     window.dispatchEvent(new CustomEvent('auth:logout'));
 }

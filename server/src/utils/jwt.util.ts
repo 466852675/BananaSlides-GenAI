@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { prisma } from '../db';
 
 // 延迟获取 JWT_SECRET，确保 dotenv 已加载
 let _JWT_SECRET: string | undefined;
@@ -27,16 +28,41 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 export interface JwtPayload {
   userId: string;
   role: string;
+  tokenVersion?: number;
   iat?: number;
   exp?: number;
 }
 
+/**
+ * 签发 Token（直接传入 payload）
+ */
 export function signToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
   const expiresInSeconds = getTokenExpiresIn();
   return jwt.sign(payload, getJwtSecret(), {
     expiresIn: expiresInSeconds,
     issuer: 'yh-ai-ppt',
     audience: 'yh-ai-ppt-users',
+  });
+}
+
+/**
+ * 为用户签发 Token（自动读取 tokenVersion）
+ * 统一使用此函数替代直接 signToken，确保 tokenVersion 正确传递
+ */
+export async function signUserToken(userId: string): Promise<string> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, tokenVersion: true }
+  });
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  return signToken({
+    userId: user.id,
+    role: user.role,
+    tokenVersion: user.tokenVersion,
   });
 }
 
@@ -83,5 +109,6 @@ export function refreshToken(token: string): string | null {
   return signToken({
     userId: decoded.userId,
     role: decoded.role,
+    tokenVersion: decoded.tokenVersion,
   });
 }

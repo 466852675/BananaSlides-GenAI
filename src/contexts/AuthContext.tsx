@@ -24,7 +24,7 @@ interface AuthContextType {
     loginWithPhone: (phone: string, code: string) => Promise<void>;
     sendPhoneCode: (phone: string) => Promise<void>;
     register: (email: string, password: string, nickname?: string, inviteCode?: string) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
     refreshUser: () => Promise<void>;
 
     // 弹窗控制
@@ -185,8 +185,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }, []);
 
     // 登出
-    const logout = useCallback(() => {
-        AuthAPI.logout();
+    const logout = useCallback(async () => {
+        await AuthAPI.logout();
         setUser(null);
         // 强制跳转到独立登录页
         window.location.href = '/login';

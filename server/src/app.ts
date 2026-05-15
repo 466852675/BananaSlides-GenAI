@@ -46,6 +46,9 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 1111;
 
+// 信任反向代理（Nginx/Caddy），使 req.ip 正确获取 x-forwarded-for 中的真实客户端 IP
+app.set('trust proxy', 1);
+
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
     'http://localhost:1000',
     'http://localhost:5173',

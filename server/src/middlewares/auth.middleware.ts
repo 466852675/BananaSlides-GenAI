@@ -55,7 +55,7 @@ export const authenticate = async (
             return;
         }
 
-        // 3. 获取用户信息
+        // 3. 获取用户信息（含 tokenVersion）
         const user = await prisma.user.findUnique({
             where: { id: payload.userId },
             select: {
@@ -68,6 +68,7 @@ export const authenticate = async (
                 points: true,
                 vipLevel: true,
                 vipExpiresAt: true,
+                tokenVersion: true,
             }
         });
 
@@ -84,6 +85,15 @@ export const authenticate = async (
             res.status(401).json({
                 success: false,
                 error: { code: 'ACCOUNT_DISABLED', message: '账户已被禁用' }
+            });
+            return;
+        }
+
+        // 4.5 检查 tokenVersion（兼容旧 Token：payload 中无 tokenVersion 时跳过校验）
+        if (payload.tokenVersion !== undefined && payload.tokenVersion < user.tokenVersion) {
+            res.status(401).json({
+                success: false,
+                error: { code: 'TOKEN_EXPIRED', message: '会话已过期，请重新登录' }
             });
             return;
         }

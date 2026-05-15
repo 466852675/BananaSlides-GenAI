@@ -8,7 +8,7 @@ import {
     validatePasswordStrength,
     generateVerificationCode
 } from '../utils/password.util';
-import { signToken, getTokenExpiresIn } from '../utils/jwt.util';
+import { signToken, signUserToken, getTokenExpiresIn } from '../utils/jwt.util';
 import { SettingService } from './setting.service';
 import { prisma } from '../db';
 import crypto from 'crypto';
@@ -139,7 +139,7 @@ export async function register(data: RegisterDto): Promise<AuthResult> {
     });
 
     // 7. 签发 Token
-    const token = signToken({ userId: user.id, role: user.role });
+    const token = await signUserToken(user.id);
 
     // 8. 创建赠送积分的交易记录
     await prisma.transaction.create({
@@ -273,7 +273,7 @@ export async function login(identity: string, password: string, clientIp?: strin
     });
 
     // 6. 签发 Token
-    const token = signToken({ userId: user.id, role: user.role });
+    const token = await signUserToken(user.id);
 
     // 7. 发送登录安全通知
     notifyLoginSuccess({ userId: user.id, ip: clientIp, method: 'password' }).catch(() => { });
@@ -356,10 +356,7 @@ export async function refreshUserToken(userId: string): Promise<string> {
         throw new AuthError('ACCOUNT_DISABLED', '账户已被禁用');
     }
 
-    return signToken({
-        userId: user.id,
-        role: user.role
-    });
+    return signUserToken(user.id);
 }
 
 /**
@@ -679,7 +676,7 @@ export async function loginWithPhone(phone: string, code: string): Promise<AuthR
         }
     });
 
-    const token = signToken({ userId: user.id, role: user.role });
+    const token = await signUserToken(user.id);
 
     // 发送手机登录安全通知
     notifyLoginSuccess({ userId: user.id, method: 'phone' }).catch(() => { });
@@ -700,5 +697,15 @@ export async function loginWithPhone(phone: string, code: string): Promise<AuthR
         token,
         expiresIn: getTokenExpiresIn(),
     };
+}
+
+/**
+ * 退出登录：递增 tokenVersion，使所有已签发 JWT 立即失效
+ */
+export async function logout(userId: string): Promise<void> {
+    await prisma.user.update({
+        where: { id: userId },
+        data: { tokenVersion: { increment: 1 } }
+    });
 }
 
