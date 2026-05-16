@@ -353,7 +353,6 @@ model Project {
   deletedBy       String?
   scenarioType    String            @default("BUSINESS")
   source          String            @default("IDE") // IDE | AGENT - 项目创建来源
-  generationMode  String            @default("image") // image | svg - 项目生成模式
   globalConfig    String
   styleMap        String?
   thumbnailUrl    String?
@@ -466,7 +465,6 @@ model Slide {
   variantCount    Int      @default(2)
   previewUrl      String?
   originalFileRef String?
-  svgContent      String?  // SVG 文件路径，image 模式下为 null
   status          String   @default("idle")
   createdAt       DateTime @default(now())
   Project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

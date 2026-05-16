@@ -347,7 +347,6 @@ export class ProjectService {
                     variantCount: Math.min(Math.max(slide.variantCount || 2, 1), 4),
                     previewUrl: slide.previewUrl || null,
                     originalFileRef: slide.originalFile ? JSON.stringify(slide.originalFile) : null,
-                    svgContent: slide.svgContent || null,
                     status: slide.status || 'idle'
                 };
 

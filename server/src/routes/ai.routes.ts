@@ -10,7 +10,6 @@ import {
     // New Handlers
     handleAnalyzeTemplateConcept,
     handleGenerateStyleReference,
-    handleGenerateSlideSvg,
     // Streaming Handlers
     handleSmartRefineStream,
     handleGenerateOutlineStream,
@@ -32,7 +31,6 @@ router.post('/generate-outline', handleGenerateOutline);
 router.post('/generate-single-outline-item', handleGenerateSingleOutlineItem);
 router.post('/generate-slide-detail', handleGenerateSlideDetail);
 router.post('/generate-slide-variant', handleGenerateSlideVariant);
-router.post('/generate-slide-svg', handleGenerateSlideSvg);
 
 // 流式端点
 router.post('/smart-refine/stream', handleSmartRefineStream);

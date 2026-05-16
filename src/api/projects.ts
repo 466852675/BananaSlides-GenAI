@@ -188,9 +188,6 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
             // when re-entering the workbench. 'completed' maps to 'success' for UI rendering.
             status: slide.status === 'completed' ? 'success' : slide.status as any,
             createdAt: new Date(slide.createdAt).getTime(),
-            // SVG 可编辑模式字段
-            svgContent: (slide as any).svgContent || null,
-            generationMode: (dto as any).generationMode || 'image',
         }
     });
 

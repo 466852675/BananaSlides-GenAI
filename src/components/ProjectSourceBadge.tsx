@@ -4,7 +4,6 @@
  */
 
 import React from 'react';
-import { Badge } from './ui/badge'; // 假设使用 shadcn/ui
 import { Sparkles, Presentation } from 'lucide-react';
 
 interface ProjectSourceBadgeProps {
@@ -29,8 +28,7 @@ export const ProjectSourceBadge: React.FC<ProjectSourceBadgeProps> = ({
   };
 
   return (
-    <Badge
-      variant={isAgent ? 'default' : 'secondary'}
+    <span
       className={`
         ${sizeClasses[size]}
         ${isAgent
@@ -50,7 +48,7 @@ export const ProjectSourceBadge: React.FC<ProjectSourceBadgeProps> = ({
       {showText && (
         isAgent ? 'AI 生成' : '手动创建'
       )}
-    </Badge>
+    </span>
   );
 };
 

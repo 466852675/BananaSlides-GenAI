@@ -394,15 +394,17 @@ const App: React.FC = () => {
   const commercial = useCommercial();
   const [adminInitialPage, setAdminInitialPage] = useState<AdminPage | undefined>(undefined);
 
-  const [viewMode, setViewMode] = useState<
-    "landing" | "dashboard" | "workbench" | "history" | "history-detail" | "templates" | "agent" | "admin" | "login" | "messages" | "trash"
-  >(() => {
+  type ViewMode =
+    'landing' | 'dashboard' | 'workbench' | 'history' | 'history-detail'
+    | 'templates' | 'agent' | 'admin' | 'login' | 'messages' | 'trash';
+
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const path = window.location.pathname;
     // 项目工作台优先：如果有 ?project=xxx，无论 pathname 是什么都进 workbench
     if (urlParams.get('project')) return 'workbench';
     // 从 URL pathname 恢复 viewMode（刷新时保持当前页面）
-    const routeMap: Record<string, typeof viewMode> = {
+    const routeMap: Record<string, ViewMode> = {
       '/admin': 'admin',
       '/login': 'login',
       '/messages': 'messages',
@@ -919,7 +921,7 @@ const App: React.FC = () => {
     }
 
     // 为每个 viewMode 写入对应的 pathname，刷新时能恢复
-    const pathMap: Partial<Record<typeof viewMode, string>> = {
+    const pathMap: Partial<Record<ViewMode, string>> = {
       dashboard: '/dashboard',
       history: '/history',
       'history-detail': '/history',

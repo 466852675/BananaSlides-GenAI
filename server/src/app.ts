@@ -27,7 +27,6 @@ import leadRoutes from './routes/lead.routes';
 import agentRoutes from './routes/agent.routes';
 import resourceRoutes from './routes/resource.routes';
 import trashRoutes from './routes/trash.routes';
-import exportRoutes from './routes/export.routes';
 import { commercialGuard } from './middleware/commercialGuard';
 import { SettingService } from './services/setting.service';
 import { websocketService } from './services/websocket.service';
@@ -149,7 +148,6 @@ app.use('/api/leads', commercialGuard('leads'), leadRoutes);
 app.use('/api/growth', commercialGuard('growth'), growthRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/trash', trashRoutes);
-app.use('/api/export', exportRoutes);
 
 // Watch for .env changes (Hot Reload)
 const envPath = path.join(process.cwd(), '.env');
