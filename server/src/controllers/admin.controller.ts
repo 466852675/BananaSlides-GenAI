@@ -1025,6 +1025,66 @@ export async function updateCommercialConfig(req: Request, res: Response): Promi
 }
 
 // ============================================================
+// Agent 功能配置
+// ============================================================
+
+/**
+ * 获取 Agent 功能配置
+ * GET /api/admin/agent-feature-config
+ */
+export async function getAgentFeatureConfig(req: Request, res: Response): Promise<void> {
+    try {
+        const config = await SettingService.getAgentFeatureConfig();
+        res.json({ success: true, data: config });
+    } catch (error) {
+        console.error('[Admin] 获取 Agent 功能配置失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '获取 Agent 功能配置失败' }
+        });
+    }
+}
+
+/**
+ * 更新 Agent 功能配置
+ * PUT /api/admin/agent-feature-config
+ */
+export async function updateAgentFeatureConfig(req: Request, res: Response): Promise<void> {
+    try {
+        const { enabled, subFeatures } = req.body;
+
+        if (typeof enabled !== 'boolean') {
+            res.status(400).json({
+                success: false,
+                error: { code: 'INVALID_PARAMS', message: 'enabled 为必填布尔值' }
+            });
+            return;
+        }
+
+        await SettingService.updateAgentFeatureConfig(
+            {
+                enabled,
+                subFeatures: subFeatures || { guidedMode: true, autoMode: true, fileUpload: true },
+            },
+            { id: req.user!.id, name: req.user!.username || req.user!.email || '未知' }
+        );
+
+        const config = await SettingService.getAgentFeatureConfig();
+        auditLogger(req, 'ADMIN_AGENT_FEATURE_CONFIG_UPDATE', `Agent 功能配置: ${enabled ? '开启' : '关闭'}`, 'high', {
+            before: { enabled: !enabled },
+            after: { enabled, subFeatures }
+        });
+        res.json({ success: true, data: config, message: enabled ? 'Agent 模式已开启' : 'Agent 模式已关闭' });
+    } catch (error) {
+        console.error('[Admin] 更新 Agent 功能配置失败:', error);
+        res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: '更新 Agent 功能配置失败' }
+        });
+    }
+}
+
+// ============================================================
 // 审计日志查询
 // ============================================================
 

@@ -287,6 +287,12 @@ router.get('/commercial', AdminController.getCommercialConfig);
 router.put('/commercial', authenticate, requireSuperAdmin, AdminController.updateCommercialConfig);
 
 // ============================================================
+// Agent 功能配置
+// ============================================================
+router.get('/agent-feature-config', AdminController.getAgentFeatureConfig);
+router.put('/agent-feature-config', authenticate, requireSuperAdmin, AdminController.updateAgentFeatureConfig);
+
+// ============================================================
 // 审计日志
 // ============================================================
 router.get('/audit-logs', requirePermission('admin.system.read'), AdminController.getAuditLogs);

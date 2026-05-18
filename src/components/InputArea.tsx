@@ -19,6 +19,12 @@ interface InputAreaProps {
   styleSelected?: boolean;
   onAIRefine?: (text: string) => Promise<void>;
   onFileUpload?: (type: 'outline' | 'document', file: File) => void;
+  /** 是否禁用文件上传功能（来自管理后台配置） */
+  fileUploadDisabled?: boolean;
+  /** 引导模式是否被禁用 */
+  guidedModeDisabled?: boolean;
+  /** 自动执行模式是否被禁用 */
+  autoModeDisabled?: boolean;
 }
 
 export default function InputArea({
@@ -33,7 +39,10 @@ export default function InputArea({
   configSaved = false,
   styleSelected = false,
   onAIRefine,
-  onFileUpload
+  onFileUpload,
+  fileUploadDisabled = false,
+  guidedModeDisabled = false,
+  autoModeDisabled = false
 }: InputAreaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
@@ -97,6 +106,7 @@ export default function InputArea({
               : 'border-gray-200 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500'
           }`}>
             {/* 附件按钮 */}
+            {!fileUploadDisabled && (
             <div className="relative">
               <button
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
@@ -140,6 +150,7 @@ export default function InputArea({
                 </>
               )}
             </div>
+            )}
 
             {/* 文本输入 */}
             <div className="flex-1 relative">
@@ -199,15 +210,23 @@ export default function InputArea({
         {/* 底部选项 */}
         <div className="mt-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* 模式切换 */}
+            {/* 模式切换 — 当目标模式被禁用时，按钮禁用并置灰提示 */}
+            {!(guidedModeDisabled && autoModeDisabled) && (
             <button
               onClick={onToggleAutoMode}
+              disabled={autoMode ? guidedModeDisabled : autoModeDisabled}
               className={`flex items-center gap-1.5 text-xs transition-colors px-2 py-1 rounded-full border ${
-                autoMode
-                  ? 'bg-blue-100 text-blue-700 border-blue-200 font-medium'
-                  : 'bg-purple-100 text-purple-700 border-purple-200 font-medium'
+                (autoMode && guidedModeDisabled) || (!autoMode && autoModeDisabled)
+                  ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                  : autoMode
+                    ? 'bg-blue-100 text-blue-700 border-blue-200 font-medium'
+                    : 'bg-purple-100 text-purple-700 border-purple-200 font-medium'
               }`}
-              title={autoMode ? '自动执行模式：Agent 自动完成所有步骤' : '引导模式：每一步都需要确认'}
+              title={
+                (autoMode && guidedModeDisabled) ? '引导模式已被管理员关闭' :
+                (!autoMode && autoModeDisabled) ? '自动执行模式已被管理员关闭' :
+                autoMode ? '自动执行模式：Agent 自动完成所有步骤' : '引导模式：每一步都需要确认'
+              }
             >
               {autoMode ? (
                 <Zap className="h-3.5 w-3.5" />
@@ -216,6 +235,7 @@ export default function InputArea({
               )}
               <span>{autoMode ? '自动执行' : '引导模式'}</span>
             </button>
+            )}
 
             <div className="h-3 w-px bg-gray-200" />
 

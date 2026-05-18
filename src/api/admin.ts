@@ -579,6 +579,57 @@ export async function updateCommercialConfig(data: {
 }
 
 // ============================================================
+// Agent 功能配置 API
+// ============================================================
+
+export interface AgentFeatureAuditEntry {
+    time: string;
+    operatorId: string;
+    operatorName: string;
+    action: string;
+    detail: string;
+}
+
+export interface AgentFeatureConfig {
+    enabled: boolean;
+    subFeatures: {
+        guidedMode: boolean;
+        autoMode: boolean;
+        fileUpload: boolean;
+    };
+    auditLog: AgentFeatureAuditEntry[];
+}
+
+/**
+ * 获取 Agent 功能配置
+ */
+export async function getAgentFeatureConfig(): Promise<AgentFeatureConfig> {
+    const result = await client.get('/admin/agent-feature-config') as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '获取 Agent 功能配置失败');
+}
+
+/**
+ * 更新 Agent 功能配置
+ */
+export async function updateAgentFeatureConfig(data: {
+    enabled: boolean;
+    subFeatures?: {
+        guidedMode?: boolean;
+        autoMode?: boolean;
+        fileUpload?: boolean;
+    };
+}): Promise<AgentFeatureConfig> {
+    const result = await client.put('/admin/agent-feature-config', data) as any;
+    if (result.success) {
+        return result.data;
+    }
+    throw new Error(result.error?.message || '更新 Agent 功能配置失败');
+}
+
+// ============================================================
 // 审计日志 API
 // ============================================================
 

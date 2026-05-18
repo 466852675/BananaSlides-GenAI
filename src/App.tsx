@@ -112,7 +112,9 @@ import { InviteModal } from './components/InviteModal';
 import { PointsGuard } from './components/PointsGuard';
 import { PurchaseSuccessModal } from './components/PurchaseSuccessModal';
 import { CommercialGuard } from './components/CommercialGuard';
+import { AgentFeatureGuard } from './components/AgentFeatureGuard';
 import { useCommercial } from './hooks/useCommercial';
+import { useAgentFeature } from './hooks/useAgentFeature';
 import { AdminPage } from "./components/admin/AdminSidebar";
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject, useSyncProjectSlides } from './api/projects';
 import { useTemplates, useSaveTemplate } from './api/templates';
@@ -392,6 +394,7 @@ const App: React.FC = () => {
   // --- State ---
   const { user, isAuthenticated, isAdmin, isSuperAdmin, refreshUser } = useAuth();
   const commercial = useCommercial();
+  const agentFeature = useAgentFeature();
   const [adminInitialPage, setAdminInitialPage] = useState<AdminPage | undefined>(undefined);
 
   type ViewMode =
@@ -432,6 +435,14 @@ const App: React.FC = () => {
       }
     }
   }, [isAuthenticated, isAdmin, isSuperAdmin, viewMode]);
+
+  // Agent 模式禁用时，重定向到 dashboard
+  useEffect(() => {
+    if (viewMode === 'agent' && agentFeature.isAgentDisabled()) {
+      setViewMode('dashboard');
+      window.history.pushState({}, '', '/dashboard');
+    }
+  }, [viewMode, agentFeature.isAgentDisabled()]);
 
   // Deep Linking Effect
   useEffect(() => {
@@ -4034,18 +4045,20 @@ const App: React.FC = () => {
                           <Monitor size={14} />
                           {!isScrolled && <span>IDE</span>}
                         </button>
-                        <button
-                          onClick={() => setViewMode('agent')}
-                          className={`flex items-center gap-1 ${isScrolled ? 'px-2' : 'px-3'} py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                            viewMode === 'agent'
-                              ? 'bg-blue-600 text-white shadow-sm'
-                              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                          }`}
-                          title="Agent模式"
-                        >
-                          <Bot size={14} />
-                          {!isScrolled && <span>Agent</span>}
-                        </button>
+                        <AgentFeatureGuard>
+                          <button
+                            onClick={() => setViewMode('agent')}
+                            className={`flex items-center gap-1 ${isScrolled ? 'px-2' : 'px-3'} py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                              viewMode === 'agent'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                            }`}
+                            title="Agent模式"
+                          >
+                            <Bot size={14} />
+                            {!isScrolled && <span>Agent</span>}
+                          </button>
+                        </AgentFeatureGuard>
                       </div>
                     )}
 

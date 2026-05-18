@@ -28,6 +28,7 @@ import agentRoutes from './routes/agent.routes';
 import resourceRoutes from './routes/resource.routes';
 import trashRoutes from './routes/trash.routes';
 import { commercialGuard } from './middleware/commercialGuard';
+import { agentFeatureGuard } from './middleware/agentFeatureGuard';
 import { SettingService } from './services/setting.service';
 import { websocketService } from './services/websocket.service';
 import { startScheduledJobs } from './jobs/cron';
@@ -130,7 +131,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/upload', uploadRoutes);
 // Agent 路由必须放在 /api (snapshotRoutes) 之前，因为 snapshotRoutes 有全局 authenticate 中间件
 // 会拦截所有 /api/* 请求，导致 SSE 端点（/api/agent/sessions/:id/progress）无法到达
-app.use('/api/agent', agentRoutes);
+app.use('/api/agent', agentFeatureGuard(), agentRoutes);
 app.use('/api', snapshotRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/doc-parser', mineruRoutes);

@@ -61,6 +61,77 @@ export class SettingService {
     }
 
     // ============================================================
+    // Agent 功能开关
+    // ============================================================
+
+    /**
+     * 获取 Agent 功能配置
+     */
+    static async getAgentFeatureConfig(): Promise<{
+        enabled: boolean;
+        subFeatures: {
+            guidedMode: boolean;
+            autoMode: boolean;
+            fileUpload: boolean;
+        };
+        auditLog: Array<{
+            time: string;
+            operatorId: string;
+            operatorName: string;
+            action: string;
+            detail: string;
+        }>;
+    }> {
+        const settings = await this.getSettings();
+        const agentFeature = settings?.agentFeature;
+        return {
+            enabled: agentFeature?.enabled !== false,
+            subFeatures: {
+                guidedMode: agentFeature?.subFeatures?.guidedMode !== false,
+                autoMode: agentFeature?.subFeatures?.autoMode !== false,
+                fileUpload: agentFeature?.subFeatures?.fileUpload !== false,
+            },
+            auditLog: agentFeature?.auditLog || [],
+        };
+    }
+
+    /**
+     * 更新 Agent 功能配置（写入 + 清除缓存 + 追加审计日志）
+     */
+    static async updateAgentFeatureConfig(
+        config: {
+            enabled: boolean;
+            subFeatures: {
+                guidedMode: boolean;
+                autoMode: boolean;
+                fileUpload: boolean;
+            };
+        },
+        operator: { id: string; name: string }
+    ): Promise<void> {
+        const settings = await this.getSettings();
+        const current = settings?.agentFeature || { enabled: true, subFeatures: { guidedMode: true, autoMode: true, fileUpload: true }, auditLog: [] };
+
+        const auditEntry = {
+            time: new Date().toISOString(),
+            operatorId: operator.id,
+            operatorName: operator.name,
+            action: config.enabled ? 'enable' : 'disable',
+            detail: `Agent 模式: ${config.enabled ? '开启' : '关闭'}, 子功能: ${JSON.stringify(config.subFeatures)}`,
+        };
+
+        const updatedSettings = {
+            ...(settings || {}),
+            agentFeature: {
+                ...config,
+                auditLog: [...(current.auditLog || []), auditEntry].slice(-500),
+            },
+        };
+
+        await this.updateSettings(updatedSettings);
+    }
+
+    // ============================================================
     // 商业化功能开关
     // ============================================================
 
@@ -254,6 +325,15 @@ export class SettingService {
             commercial: {
                 enabled: getEnv('COMMERCIAL_ENABLED') === 'true',
                 disabledModules: [],
+                auditLog: []
+            },
+            agentFeature: {
+                enabled: true,
+                subFeatures: {
+                    guidedMode: true,
+                    autoMode: true,
+                    fileUpload: true,
+                },
                 auditLog: []
             }
         };

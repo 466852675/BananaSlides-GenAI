@@ -19,6 +19,7 @@ import { client, getSseBaseUrl, TOKEN_KEY } from '../api/client';
 import { smartRefine } from '../services/geminiService';
 import { exportToZip, exportToPdf, exportToPptx } from '../services/exportService';
 import { sseManager } from '../utils/sseManager';
+import { useAgentFeature } from '../hooks/useAgentFeature';
 import type {
   AgentSession,
   AgentMessage,
@@ -117,6 +118,7 @@ export default function AgentView({
   const [userHasSelectedMode, setUserHasSelectedMode] = useState(false); // 用户是否主动选择了模式
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
   const [clearDialogOpen, setClearDialogOpen] = useState(false); // 清空确认对话框状态
+  const agentFeature = useAgentFeature();
 
   // sidebarCollapsedRef 防止resize handler闭包过期
   const sidebarCollapsedRef = useRef(sidebarCollapsed);
@@ -735,6 +737,16 @@ export default function AgentView({
   const handleToggleAutoMode = useCallback(async () => {
     const newMode = !autoMode;
 
+    // 检查目标模式是否被管理后台禁用
+    if (newMode && agentFeature.isSubFeatureDisabled('autoMode')) {
+      showToast?.('自动执行模式已被管理员关闭', 'error');
+      return;
+    }
+    if (!newMode && agentFeature.isSubFeatureDisabled('guidedMode')) {
+      showToast?.('引导模式已被管理员关闭', 'error');
+      return;
+    }
+
     // 如果有会话，同步到后端
     if (session) {
       try {
@@ -749,7 +761,7 @@ export default function AgentView({
       // 没有会话时只更新本地状态
       setAutoMode(newMode);
     }
-  }, [autoMode, session, showToast]);
+  }, [autoMode, session, showToast, agentFeature]);
 
   // 暂停会话
   const handlePauseSession = useCallback(async () => {
@@ -1433,6 +1445,9 @@ export default function AgentView({
               styleSelected={hasStyleSelected}
               onAIRefine={handleAIRefine}
               onFileUpload={handleFileUpload}
+              fileUploadDisabled={agentFeature.isSubFeatureDisabled('fileUpload')}
+              guidedModeDisabled={agentFeature.isSubFeatureDisabled('guidedMode')}
+              autoModeDisabled={agentFeature.isSubFeatureDisabled('autoMode')}
             />
           </>
         )}

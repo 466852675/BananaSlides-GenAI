@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Settings, Shield, Clock, Search, DollarSign } from 'lucide-react';
+import { Settings, Shield, Clock, Search, DollarSign, Bot, Brain } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import * as AdminApi from '../../api/admin';
 import { useCommercial, COMMERCIAL_MODULES } from '../../hooks/useCommercial';
 import type { CommercialModuleId } from '../../hooks/useCommercial';
 import { CommercialDisableModal } from './CommercialDisableModal';
+import { useAgentFeature } from '../../hooks/useAgentFeature';
 
-type TabKey = 'audit-log' | 'commercial';
+type TabKey = 'audit-log' | 'commercial' | 'agent-feature';
 
 const SEVERITY_LABELS: Record<string, string> = {
   info: '信息', low: '低', medium: '中', high: '高', critical: '严重',
@@ -50,6 +51,7 @@ const getModuleLabel = (type: string): string => {
 export const SystemSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('audit-log');
   const commercial = useCommercial();
+  const agentFeature = useAgentFeature();
   const [showCommercialModal, setShowCommercialModal] = useState(false);
   const [commercialModalMode, setCommercialModalMode] = useState<'disable' | 'enable'>('disable');
 
@@ -132,6 +134,16 @@ export const SystemSettings: React.FC = () => {
           }`}
         >
           <DollarSign size={16} /> 商业化功能
+        </button>
+        <button
+          onClick={() => setActiveTab('agent-feature')}
+          className={`flex items-center gap-2 px-5 py-3.5 text-sm font-bold border-b-2 transition-all ${
+            activeTab === 'agent-feature'
+              ? 'text-slate-900 border-violet-600'
+              : 'text-slate-400 border-transparent hover:text-slate-600'
+          }`}
+        >
+          <Bot size={16} /> Agent 模式配置
         </button>
       </div>
 
@@ -394,6 +406,94 @@ export const SystemSettings: React.FC = () => {
                 })()}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'agent-feature' && (
+          <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-[0_4px_20px_rgb(0,0,0,0.03)] p-6 overflow-y-auto h-full">
+            {/* Master Switch */}
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-bold text-lg">
+                  <Bot size={20} />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-slate-800">AI Agent 对话模式</div>
+                  <div className={`text-[11px] font-semibold mt-0.5 ${agentFeature.enabled ? 'text-green-600' : 'text-red-600'}`}>
+                    ● {agentFeature.enabled ? '已开启' : '已关闭'}
+                  </div>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agentFeature.enabled}
+                  onChange={() => {
+                    const newEnabled = !agentFeature.enabled;
+                    agentFeature.update({ enabled: newEnabled });
+                  }}
+                  className="sr-only peer"
+                />
+                <div className={`w-11 h-6 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-violet-500 peer-checked:to-indigo-600`} />
+              </label>
+            </div>
+
+            {/* Sub Features */}
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 mb-5">
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">🔧 子功能开关</div>
+              <div className="space-y-2">
+                {[
+                  { key: 'guidedMode' as const, label: '引导模式（每一步需确认）' },
+                  { key: 'autoMode' as const, label: '自动执行模式（Agent 自动完成）' },
+                  { key: 'fileUpload' as const, label: '文件上传（文档/图片解析）' },
+                ].map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between px-3 py-2.5 bg-white rounded-lg border border-slate-200">
+                    <span className="text-[12px] font-semibold text-slate-700">{label}</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={agentFeature.subFeatures[key]}
+                        onChange={() => {
+                          agentFeature.update({
+                            enabled: agentFeature.enabled,
+                            subFeatures: { [key]: !agentFeature.subFeatures[key] },
+                          });
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className={`w-9 h-5 bg-slate-300 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-500`} />
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Audit Log */}
+            {agentFeature.auditLog.length > 0 && (
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 mb-5">
+                <div className="text-[11px] font-bold text-slate-500 mb-2">📋 最近变更</div>
+                {(() => {
+                  const last = agentFeature.auditLog[agentFeature.auditLog.length - 1];
+                  return (
+                    <div className="space-y-1 text-[12px]">
+                      <div className="flex justify-between"><span className="text-slate-400">操作</span><span className={`font-semibold ${last.action === 'enable' ? 'text-green-600' : 'text-red-600'}`}>{last.action === 'enable' ? '开启' : '关闭'}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-400">操作人</span><span>{last.operatorName}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-400">时间</span><span>{new Date(last.time).toLocaleString('zh-CN')}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-400">详情</span><span className="text-right max-w-[200px] truncate">{last.detail}</span></div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Hint */}
+            <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800">
+              <span className="text-base">💡</span>
+              <div>
+                <strong>提示：</strong>Agent 模式配置独立于商业化功能开关，两者互不依赖。
+                关闭后用户无法使用 AI 对话生成 PPT，仅保留传统 IDE 编辑器。
+              </div>
+            </div>
           </div>
         )}
       </div>
