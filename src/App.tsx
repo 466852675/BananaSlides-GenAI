@@ -2254,8 +2254,8 @@ const App: React.FC = () => {
   };
 
   const handleApplyPresetRequest = (preset: StylePreset) => {
-    // [商业化] 关闭时跳过积分确认和扣除，直接应用
-    if (commercial.isModuleDisabled('points')) {
+    // 应用风格公共逻辑
+    const applyPresetStyle = (needRefreshBalance: boolean) => {
       setConfig({ ...preset.config });
       configRef.current = { ...preset.config };
       let nextStyleMap: GlobalStyleMap;
@@ -2278,6 +2278,14 @@ const App: React.FC = () => {
       setSelectedPresetForDetail(null);
       setHasUserInteraction(true);
       showToast("风格已应用到全局设置", "success");
+      if (needRefreshBalance) {
+        setTimeout(refreshUser, 500);
+      }
+    };
+
+    // [商业化] 关闭时跳过积分确认和扣除，直接应用
+    if (commercial.isModuleDisabled('points')) {
+      applyPresetStyle(false);
       return;
     }
 
@@ -2288,9 +2296,9 @@ const App: React.FC = () => {
         `确定要应用此风格预设吗？这将覆盖当前的全局配置和视觉参考。本次操作需消耗 ${cost} 积分。`,
         async () => {
           try {
-            // 2. 扣除积分
+            // 2. 扣除积分（商业化关闭时 consumeAction 内部静默跳过）
             const triggerTime = new Date().toISOString();
-            await consumeAction(
+            const deducted = await consumeAction(
               'style_apply',
               currentProjectId || undefined,
               undefined,
@@ -2303,36 +2311,8 @@ const App: React.FC = () => {
             );
 
             // 3. 执行应用逻辑
-            setConfig({ ...preset.config });
-            configRef.current = { ...preset.config };
-
-            // Restore style map if available, otherwise clear or use deprecated file
-            let nextStyleMap: GlobalStyleMap;
-            if (preset.styleMap) {
-              nextStyleMap = { ...preset.styleMap };
-            } else {
-              // Legacy support
-              nextStyleMap = {
-                cover: preset.styleFile || null,
-                directory: preset.styleFile || null,
-                transition: preset.styleFile || null,
-                content: preset.styleFile || null,
-                end: preset.styleFile || null,
-                custom: null,
-              };
-            }
-            setStyleMap(nextStyleMap);
-            styleMapRef.current = nextStyleMap;
-
-            setIsPresetSaved(true);
-            setIsFavoritesModalOpen(false);
-            setSelectedPresetForDetail(null);
-            setHasUserInteraction(true); // 标记交互以触发保存
+            applyPresetStyle(deducted.deductedAmount > 0);
             closeConfirm();
-
-            // 4. 成功反馈
-            showToast("风格已应用到全局设置", "success");
-            setTimeout(refreshUser, 500); // 刷新积分余额显示
 
           } catch (e: any) {
             console.error("Style apply failed:", e);

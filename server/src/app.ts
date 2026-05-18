@@ -140,7 +140,7 @@ app.use('/api/templates', templateRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/points', commercialGuard('points'), pointsRoutes);
+app.use('/api/points', pointsRoutes);
 app.use('/api/orders', commercialGuard('orders'), orderRoutes);
 app.use('/api/refunds', commercialGuard('refunds'), refundRoutes);
 app.use('/webhooks', webhookRoutes);

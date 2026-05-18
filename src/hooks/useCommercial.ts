@@ -62,9 +62,9 @@ export function useCommercial(): UseCommercialReturn {
             cacheRef.current = { data, timestamp: Date.now() };
             setConfig(data);
         } catch {
-            // 失败时使用缓存或默认值：默认所有功能可用（保守模式）
+            // 失败时使用缓存或默认值：保守模式（假设所有商业功能关闭）
             if (!cacheRef.current) {
-                setConfig({ enabled: true, disabledModules: [], auditLog: [] });
+                setConfig({ enabled: false, disabledModules: [], auditLog: [] });
             }
         } finally {
             setLoading(false);

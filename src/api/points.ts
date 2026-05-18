@@ -240,20 +240,33 @@ export async function consumeAction(
         description,
         ...options
     };
-    const result = await client.post('/points/deduct', body) as any;
+    try {
+        const result = await client.post('/points/deduct', body) as any;
 
-    if (result.success && result.data) {
-        return {
-            success: true,
-            deductedAmount: result.data.deductedAmount,
-            remainingBalance: result.data.remainingBalance
+        if (result.success && result.data) {
+            return {
+                success: true,
+                deductedAmount: result.data.deductedAmount,
+                remainingBalance: result.data.remainingBalance
+            };
+        }
+    } catch (err: any) {
+        // axios 拦截器将 404 转为 rejected promise，检查是否 FEATURE_DISABLED
+        if (err.message?.includes('功能未开启')) {
+            return { success: true, deductedAmount: 0, remainingBalance: 0 };
+        }
+
+        // 其他错误，抛出结构化异常以便调用方处理
+        throw {
+            code: err.code || 'UNKNOWN_ERROR',
+            message: err.message || '扣费失败',
+            details: err.details
         };
     }
 
-    // 如果返回 402 或其他业务错误，抛出异常以便调用方处理
+    // 非错误但无有效数据
     throw {
-        code: result.error?.code || 'UNKNOWN_ERROR',
-        message: result.error?.message || '扣费失败',
-        details: result.error
+        code: 'UNKNOWN_ERROR',
+        message: '扣费失败',
     };
 }
