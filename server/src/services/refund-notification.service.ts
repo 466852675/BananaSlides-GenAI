@@ -3,6 +3,8 @@ import { createMessage } from './message.service';
 import { renderTemplate } from './message-template.service';
 import { prisma } from '../db';
 
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@bananaslides.com';
+
 export interface RefundMessageContext {
     userId: string;
     refundId: string;
@@ -208,7 +210,7 @@ export async function sendRefundFailedMessage(ctx: RefundMessageContext) {
                 userId: ctx.userId,
                 type: MessageType.REFUND,
                 title: '退款处理失败',
-                content: `您的退款处理失败，请联系客服处理。${reasonDisplay}\n\n退款单号: ${ctx.refundNo}\n退款金额: ¥${ctx.amount.toFixed(2)}\n\n请联系客服: support@bananaslides.com`,
+                content: `您的退款处理失败，请联系客服处理。${reasonDisplay}\n\n退款单号: ${ctx.refundNo}\n退款金额: ¥${ctx.amount.toFixed(2)}\n\n请联系客服: ${SUPPORT_EMAIL}`,
                 summary: `退款单号: ${ctx.refundNo} 处理失败`,
                 bizType: 'refund',
                 bizId: ctx.refundId,
