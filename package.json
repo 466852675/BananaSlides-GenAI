@@ -5,12 +5,8 @@
   "keywords": ["ppt", "ai", "presentation", "slides", "agent"],
   "repository": {
     "type": "git",
-    "url": "https://github.com/466852675/YH-AI-PPT.git"
+    "url": "git+https://github.com/466852675/YH-AI-PPT.git"
   },
-  "bugs": {
-    "url": "https://github.com/466852675/YH-AI-PPT/issues"
-  },
-  "homepage": "https://github.com/466852675/YH-AI-PPT#readme",
   "version": "0.0.0",
   "type": "module",
   "scripts": {

@@ -11,7 +11,7 @@
 - [ ] 测试相关 (test)
 - [ ] 构建/工具 (chore)
 
-## 关联 Issue
+## 关联 Issue（如有）
 
 关闭 #(issue 编号)
 

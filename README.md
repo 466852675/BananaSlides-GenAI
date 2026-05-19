@@ -5,7 +5,6 @@
 > Multi-model AI engine with intelligent routing — from a single sentence to a polished presentation in minutes.
 
 [![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/) [![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)](#) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](#) [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4.1-38B2AC?logo=tailwind-css)](#) [![Prisma](https://img.shields.io/badge/Prisma-SQLite-2D3748?logo=prisma)](#) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue)](./LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/466852675/YH-AI-PPT?style=social)](https://github.com/466852675/YH-AI-PPT/stargazers) [![GitHub Forks](https://img.shields.io/github/forks/466852675/YH-AI-PPT?style=social)](https://github.com/466852675/YH-AI-PPT/forks) [![GitHub Issues](https://img.shields.io/github/issues/466852675/YH-AI-PPT)](https://github.com/466852675/YH-AI-PPT/issues) [![Release](https://img.shields.io/github/v/release/466852675/YH-AI-PPT)](https://github.com/466852675/YH-AI-PPT/releases)
 
 ---
 
@@ -203,22 +202,8 @@ graph TD
 
 ---
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=466852675/YH-AI-PPT&type=Date)](https://star-history.com/#466852675/YH-AI-PPT&Date)
-
-## Contributors
-
-[![Contributors](https://contrib.rocks/image?repo=466852675/YH-AI-PPT)](https://github.com/466852675/YH-AI-PPT/graphs/contributors)
-
----
-
 ## License
 
 [GNU AGPL-3.0-or-later](./LICENSE)
-
-If you use this project in a public SaaS product, please attribute **"Based on YH-AI PPT"** with a link to the original repository.
-
----
 
 *YH-AI PPT: Let every presentation resonate.*

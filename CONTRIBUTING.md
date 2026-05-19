@@ -52,11 +52,11 @@ cd server && npm test
 
 ### 提交代码
 
-1. Fork 本仓库
+1. 拉取最新代码：`git checkout main && git pull`
 2. 创建功能分支：`git checkout -b feature/your-feature`
 3. 提交更改：使用清晰的中文或英文 commit message
 4. 推送分支：`git push origin feature/your-feature`
-5. 创建 Pull Request
+5. 创建 Pull Request 或合并至 main 分支
 
 ### 代码规范
 
@@ -79,4 +79,4 @@ cd server && npm test
 
 ## 许可证
 
-本项目采用 [AGPL-3.0](./LICENSE) 许可证。贡献的代码将按相同许可证授权。
+本项目采用 [AGPL-3.0](./LICENSE) 许可证。

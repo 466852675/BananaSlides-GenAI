@@ -5,7 +5,6 @@
 > 多模型 AI 引擎智能路由 —— 一句话，从想法到演示，分钟级交付。
 
 [![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?logo=vite)](https://vitejs.dev/) [![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)](#) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript)](#) [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4.1-38B2AC?logo=tailwind-css)](#) [![Prisma](https://img.shields.io/badge/Prisma-SQLite-2D3748?logo=prisma)](#) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue)](./LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/466852675/YH-AI-PPT?style=social)](https://github.com/466852675/YH-AI-PPT/stargazers) [![GitHub Forks](https://img.shields.io/github/forks/466852675/YH-AI-PPT?style=social)](https://github.com/466852675/YH-AI-PPT/forks) [![GitHub Issues](https://img.shields.io/github/issues/466852675/YH-AI-PPT)](https://github.com/466852675/YH-AI-PPT/issues) [![Release](https://img.shields.io/github/v/release/466852675/YH-AI-PPT)](https://github.com/466852675/YH-AI-PPT/releases)
 
 ---
 
@@ -203,22 +202,8 @@ graph TD
 
 ---
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=466852675/YH-AI-PPT&type=Date)](https://star-history.com/#466852675/YH-AI-PPT&Date)
-
-## 贡献者
-
-[![Contributors](https://contrib.rocks/image?repo=466852675/YH-AI-PPT)](https://github.com/466852675/YH-AI-PPT/graphs/contributors)
-
----
-
 ## 许可证
 
 [GNU AGPL-3.0-or-later](./LICENSE)
-
-在企业级 SaaS 产品中使用本项目，请在产品可见位置标注 **"Based on YH-AI PPT"** 并附原项目链接。
-
----
 
 *YH-AI PPT: 让每一场演示都能直抵人心。*
