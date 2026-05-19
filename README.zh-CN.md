@@ -1,6 +1,6 @@
 **[English](./README.md) | [中文](./README.zh-CN.md)**
 
-# YH-AI PPT - 智能演示文稿全链条设计平台
+# YH-AI 智能PPT创作平台
 
 > 多模型 AI 引擎智能路由 —— 一句话，从想法到演示，分钟级交付。
 
@@ -206,4 +206,4 @@ graph TD
 
 [GNU AGPL-3.0-or-later](./LICENSE)
 
-*YH-AI PPT: 让每一场演示都能直抵人心。*
+*YH-AI 智能PPT创作平台*

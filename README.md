@@ -1,6 +1,6 @@
 **[English](./README.md) | [中文](./README.zh-CN.md)**
 
-# YH-AI PPT - AI-Powered Presentation Design Platform
+# YH-AI 智能PPT创作平台
 
 > Multi-model AI engine with intelligent routing — from a single sentence to a polished presentation in minutes.
 
@@ -206,4 +206,4 @@ graph TD
 
 [GNU AGPL-3.0-or-later](./LICENSE)
 
-*YH-AI PPT: Let every presentation resonate.*
+*YH-AI 智能PPT创作平台*

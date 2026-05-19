@@ -4,7 +4,7 @@ chcp 65001 >nul
 setlocal
 cd /d %~dp0..
 echo ========================================
-echo   YH-AI PPT Database Backup Tool
+echo   YH-AI 智能PPT创作平台 Database Backup Tool
 echo ========================================
 echo.
 

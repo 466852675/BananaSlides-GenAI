@@ -1,4 +1,4 @@
-# UI 组件 - YH-AI PPT
+# UI 组件 - YH-AI 智能PPT创作平台
 
 **作用域：** `/src/components` — React 函数式组件 + Tailwind CSS
 

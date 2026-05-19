@@ -3,7 +3,7 @@ chcp 65001 >nul
 
 cd /d %~dp0..
 echo ========================================
-echo   YH-AI PPT Database Repair Tool
+echo   YH-AI 智能PPT创作平台 Database Repair Tool
 echo ========================================
 echo.
 echo.

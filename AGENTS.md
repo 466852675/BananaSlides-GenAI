@@ -1,4 +1,4 @@
-# AGENTS.md - YH-AI PPT 开发指南
+# AGENTS.md - YH-AI 智能PPT创作平台 开发指南
 
 **技术栈：** React 19.2 + Vite 6.2 + Express 5.2 + Prisma 6.19 + SQLite
 **项目结构：** 两个独立包 — 根目录（前端）+ `server/`（后端）

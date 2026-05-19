@@ -4,7 +4,7 @@ chcp 65001 >nul
 cd /d %~dp0..
 cls
 echo ============================================================
-echo   YH-AI PPT Startup Script v2.0
+echo   YH-AI 智能PPT创作平台 Startup Script v2.0
 echo ============================================================
 echo.
 
@@ -50,7 +50,7 @@ echo    Done.
 echo.
 
 echo [4/5] Starting Backend (Port 1111)...
-start "YH-AI PPT Backend (Port 1111)" cmd /k "cd server && npm run dev || pause"
+start "YH-AI 智能PPT创作平台 Backend (Port 1111)" cmd /k "cd server && npm run dev || pause"
 
 echo    Waiting for backend to be ready...
 set WAIT_COUNT=0
@@ -72,7 +72,7 @@ echo    Warning: Backend startup timeout
 echo.
 
 echo [5/5] Starting Frontend (Port 1000)...
-start "YH-AI PPT Frontend (Port 1000)" cmd /k "npm run dev || pause"
+start "YH-AI 智能PPT创作平台 Frontend (Port 1000)" cmd /k "npm run dev || pause"
 timeout /t 3 /nobreak >nul
 
 echo.

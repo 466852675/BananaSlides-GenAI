@@ -4,7 +4,7 @@ chcp 65001 >nul
 cd /d %~dp0..
 cls
 echo ============================================================
-echo   YH-AI PPT Stop Services
+echo   YH-AI 智能PPT创作平台 Stop Services
 echo ============================================================
 echo.
 

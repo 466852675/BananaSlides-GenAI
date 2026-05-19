@@ -1,7 +1,7 @@
 {
   "name": "yh-ai-ppt-server",
   "version": "1.0.0",
-  "description": "YH-AI PPT 后端服务",
+  "description": "YH-AI 智能PPT创作平台后端服务",
   "keywords": ["ppt", "ai", "express", "prisma"],
   "main": "index.js",
   "scripts": {
