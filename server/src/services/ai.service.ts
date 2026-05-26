@@ -1347,7 +1347,9 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
         structure.content = Math.max(1, targetPageCount - fixedSum);
 
         const prompt = `
-            Task: 为主题 "${topic}" 生成一份结构化的 PPT 演示大纲。
+            Task: 根据以下提供的内容，生成一份结构化的 PPT 演示大纲。大纲中的所有内容必须严格来源于下方提供的内容，不得引入外部知识或编造信息。
+            以下提供的内容将作为"主题"或"源文档"：
+            "${topic}"
             
             【严格限制】:
             1. 总页数必须正好为: ${targetPageCount} 页。
@@ -1391,15 +1393,33 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             
             【内容要求】:
             1. 逻辑清晰: 内容正文应围绕主题展开,如果有章节过渡页,请在章节开始前插入。
-            2. 简洁有力: 每页的 brief (简介) 应当提炼核心观点,不宜过长。
-            3. 输出语言: 简体中文。
+            2. 输出语言: 简体中文。
+
+            【brief 字段 - 按页面类型严格遵循以下规范 (最重要)】:
+            brief 字段的内容将直接作为该页面的展示文案，必须写"幻灯片上用户能看到的文字"，而非"对幻灯片的设计描述"。
+
+            - cover (封面页): brief 必须写成"封面一句话定位语/副标题"，例如"全面解析九功平台与H3C灵犀在六大核心维度的差异化竞争力"。该内容将作为封面副标题展示，主标题已由 title 字段提供。严禁写"封面页""展示主题""展示演讲者"等描述性文字。日期和讲解人由系统自动添加，cover brief 中不得包含日期和人名。
+            - directory (目录页): brief 必须写成带序号前缀的列表，用分隔符连接。例如"一、产品定位与架构 · 二、前端AI助手 · 三、后台管理"。每个章节名称前必须有"一、二、三"或"1、2、3"等序号前缀，让观众一目了然。严禁出现"本次演示分为X个部分""本章节包括"等描述前缀。
+            - end (结束页): brief 必须写成简短的收尾语，仅保留对观众有意义的实质内容。例如"期待交流合作"。严禁包含"感谢观看""谢谢观看"等冗余客套（标题已表达谢意），严禁展示文件版本号、文档元数据等附件信息。
+            - content (正文页): brief 写该页核心观点的概要提炼，作为后续生成正文的参考指引。
+            - transition (过渡页): brief 写该章节的概述，简洁说明章节内容方向。
+
+            3. 简洁有力: 每页的 brief 应当精炼直接,不宜过长。
             
             【输出格式】:
             返回一个 JSON 数组,数组长度必须为 ${targetPageCount}。
             每个对象包含以下字段:
             - title: 页面标题
-            - brief: 页面内容简介 (作为生成正文的参考)
+            - brief: 页面的直接展示文案（将作为该页面的实际内容显示，而非设计描述）
             - pageType: 必须是 "cover" | "directory" | "transition" | "content" | "end" 中的一个。
+            
+            【brief 字段规范 (重要)】:
+            brief 将直接作为该页面的展示文字，必须按页面类型写"观众在幻灯片上看到的文案"：
+            - cover: 封面一句话定位语/副标题，主标题已由 title 提供。禁止"封面页展示主题"等描述。日期和讲解人系统自动添加，brief中不得包含。
+            - directory: 带序号前缀的列表，如"一、A · 二、B · 三、C"。禁止"本次演示分为X个部分"。
+            - end: 简短收尾语。禁止"感谢观看"(标题已含谢意)、禁止版本号/文件元数据。
+            - content: 该页核心观点概要。
+            - transition: 章节方向概述。
             
             注意: 严禁返回任何 Markdown 代码块标签,只返回原始 JSON。
         `;
@@ -1559,7 +1579,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             return `- ${t || '要点'}\n- ${b || '示例内容（用于 E2E 测试）'}\n\n---DESIGN_SUGGESTION_START---\n**设计建议：** 采用左右分栏布局：左侧标题与要点列表，右侧使用图标/流程箭头表达逻辑。`;
         }
         const config = await resolveActiveConfig(settings, 'text');
-        const prompt = `Topic Context: ${topicContext}
+        const prompt = `Topic Context (Source Document Content): ${topicContext}
             Slide Title: ${title}
             Slide Intent: ${brief}
             
@@ -1567,7 +1587,20 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             - This is slide ${index} of ${total} in the entire presentation.
             - Page Type: ${pageType}
             
-            Task: Write the full, detailed content for this slide.
+            Task: Write the full, detailed content for this slide strictly based on the source document content provided above in "Topic Context".
+            
+            [CRITICAL FIDELITY REQUIREMENT]:
+            - You MUST derive ALL substantive content from the "Topic Context (Source Document Content)" section above.
+            - DO NOT fabricate facts, data, statistics, case studies, or examples that do not exist in the source document.
+            - If the source document covers a topic, summarize and present it faithfully. DO NOT add external knowledge.
+            - You MAY rephrase, restructure, or polish the language for presentation clarity, but the core meaning MUST come from the source.
+            - [FORBIDDEN] Generating entirely new sections or claims not supported by the source.
+            
+            [CRITICAL OUTPUT FORMAT RULE - STRICTLY ENFORCED]:
+            - [FORBIDDEN] Do NOT include any meta-description, structural context, or self-referential text in the output.
+            - [FORBIDDEN] Do NOT write phrases like "This is slide X of Y", "根据...分析，第X张幻灯片的内容如下", "以下是...的内容", "Page Type indicates", or any similar framing.
+            - [FORBIDDEN] Do NOT describe what the slide "is" or "contains". Instead, directly output the slide's actual content.
+            - The output must be ONLY the slide content that the audience can see and read. No explanations, no labels, no descriptions of the slide itself.
             
             Requirements:
             1. Language: Strictly Simplified Chinese (简体中文).
@@ -2227,7 +2260,9 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
 
         // 使用 JSON Lines 格式，每行一个 JSON 对象，便于流式解析
         const prompt = `
-Task: 为主题 "${topic}" 生成一份结构化的 PPT 演示大纲。
+Task: 根据以下提供的内容，生成一份结构化的 PPT 演示大纲。大纲中的所有内容必须严格来源于下方提供的内容，不得引入外部知识或编造信息。
+以下提供的内容将作为"主题"或"源文档"：
+"${topic}"
 
 【严格限制】:
 1. 总页数必须正好为: ${targetPageCount} 页。
@@ -2243,13 +2278,22 @@ Task: 为主题 "${topic}" 生成一份结构化的 PPT 演示大纲。
 不要输出数组括号 []，不要使用 Markdown 代码块。
 
 每行格式:
-{"title": "页面标题", "brief": "页面内容简介", "pageType": "cover|directory|transition|content|end"}
+{"title": "页面标题", "brief": "页面内容简介（将直接展示在幻灯片上）", "pageType": "cover|directory|transition|content|end"}
+
+【brief 字段 - 按页面类型严格遵循以下规范】:
+brief 的内容将直接作为该页面的展示文案，必须写"观众在幻灯片上看到的文字"，而非"对页面的描述"。
+
+- cover: 写封面一句话定位语/副标题，如"全面解析九功平台与H3C灵犀在六大核心维度的差异化竞争力"。禁止"封面页展示主题"等描述。日期和讲解人由系统自动附加，brief中不得包含。
+- directory: 带序号前缀的列表形式，如"一、产品定位 · 二、前端AI助手 · 三、后台管理"。禁止"本次演示分为X部分"等前缀。
+- end: 写简短收尾语，如"期待交流合作"。禁止"感谢观看"(标题已表达)、禁止版本号/元数据。
+- content: 写该页核心观点概要，作为后续内容指引。
+- transition: 写章节方向概述。
 
 示例输出:
-{"title": "人工智能发展趋势", "brief": "封面页展示主题和演讲者信息", "pageType": "cover"}
-{"title": "目录", "brief": "展示本次演示的主要章节", "pageType": "directory"}
-{"title": "核心要点一", "brief": "介绍第一个核心观点", "pageType": "content"}
-{"title": "谢谢", "brief": "感谢观看，联系方式", "pageType": "end"}
+{"title": "九功平台 vs H3C 灵犀 — 竞品对比分析", "brief": "全面解析九功平台与H3C灵犀在六大核心维度的差异化竞争力", "pageType": "cover"}
+{"title": "目录", "brief": "一、产品定位与架构 · 二、前端AI助手 · 三、后台管理 · 四、数据智能 · 五、工作流编排 · 六、内容创作 · 七、综合评估", "pageType": "directory"}
+{"title": "核心对比维度", "brief": "从架构、功能、性能三大维度全面对比两款产品", "pageType": "content"}
+{"title": "谢谢", "brief": "期待交流合作", "pageType": "end"}
 
 【重要】: 每行必须是一个完整有效的 JSON 对象，按顺序逐行输出。
 `;
@@ -2337,7 +2381,7 @@ Task: 为主题 "${topic}" 生成一份结构化的 PPT 演示大纲。
         }
 
         const config = await resolveActiveConfig(settings, 'text');
-        const prompt = `Topic Context: ${topicContext}
+        const prompt = `Topic Context (Source Document Content): ${topicContext}
             Slide Title: ${title}
             Slide Intent: ${brief}
 
@@ -2345,7 +2389,20 @@ Task: 为主题 "${topic}" 生成一份结构化的 PPT 演示大纲。
             - This is slide ${index} of ${total} in the entire presentation.
             - Page Type: ${pageType}
 
-            Task: Write the full, detailed content for this slide.
+            Task: Write the full, detailed content for this slide strictly based on the source document content provided above in "Topic Context".
+
+            [CRITICAL FIDELITY REQUIREMENT]:
+            - You MUST derive ALL substantive content from the "Topic Context (Source Document Content)" section above.
+            - DO NOT fabricate facts, data, statistics, case studies, or examples that do not exist in the source document.
+            - If the source document covers a topic, summarize and present it faithfully. DO NOT add external knowledge.
+            - You MAY rephrase, restructure, or polish the language for presentation clarity, but the core meaning MUST come from the source.
+            - [FORBIDDEN] Generating entirely new sections or claims not supported by the source.
+
+            [CRITICAL OUTPUT FORMAT RULE - STRICTLY ENFORCED]:
+            - [FORBIDDEN] Do NOT include any meta-description, structural context, or self-referential text in the output.
+            - [FORBIDDEN] Do NOT write phrases like "This is slide X of Y", "根据...分析，第X张幻灯片的内容如下", "以下是...的内容", "Page Type indicates", or any similar framing.
+            - [FORBIDDEN] Do NOT describe what the slide "is" or "contains". Instead, directly output the slide's actual content.
+            - The output must be ONLY the slide content that the audience can see and read. No explanations, no labels, no descriptions of the slide itself.
 
             Requirements:
             1. Language: Strictly Simplified Chinese (简体中文).

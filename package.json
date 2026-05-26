@@ -2,7 +2,13 @@
   "name": "yh-ai-ppt",
   "description": "AI驱动的智能演示文稿全链条设计平台",
   "license": "AGPL-3.0-or-later",
-  "keywords": ["ppt", "ai", "presentation", "slides", "agent"],
+  "keywords": [
+    "ppt",
+    "ai",
+    "presentation",
+    "slides",
+    "agent"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/466852675/YH-AI-PPT.git"
@@ -39,6 +45,7 @@
     "react-hot-toast": "^2.6.0",
     "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18"
   },

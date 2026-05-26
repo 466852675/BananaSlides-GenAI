@@ -184,9 +184,11 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
             previewUrl: slide.previewUrl || (slide.contentType === 'image' && originalFile ? originalFile : ''),
             variants,
             variantCount: slide.variantCount || 2, // Use database value, not variants.length
-            // Keep original status: 'generating' stays 'generating' so the user sees loading animation
-            // when re-entering the workbench. 'completed' maps to 'success' for UI rendering.
-            status: slide.status === 'completed' ? 'success' : slide.status as any,
+            // Prevent stuck 'generating' status on reload: map 'generating' to 'idle'
+            // so users can re-trigger generation. 'completed' maps to 'success'.
+            status: slide.status === 'completed' ? 'success' :
+                    slide.status === 'generating' ? 'idle' :
+                    slide.status as any,
             createdAt: new Date(slide.createdAt).getTime(),
         }
     });

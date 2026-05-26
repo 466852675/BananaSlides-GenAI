@@ -2820,6 +2820,12 @@ const App: React.FC = () => {
 
       showToast(`调用 ${providerName} API 服务成功`, "success");
     } catch (e) {
+      // 【修复】重试失败时，将 status 恢复为 idle，避免永久卡在 generating
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === id ? { ...i, status: "idle" as const, errorMessage: e instanceof Error ? e.message : "生成失败" } : i
+        )
+      );
       showToast(`调用 ${providerName} API 失败`, "error");
     }
   };

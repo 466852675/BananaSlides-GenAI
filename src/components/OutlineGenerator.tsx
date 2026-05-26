@@ -12,6 +12,7 @@ import { AIGlowContainer } from './AIGlowContainer';
 import { ToastMessage } from './Toast';
 import { getPointsRule, getBalance } from '../api/points';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface OutlineGeneratorProps {
     isOpen: boolean;
@@ -69,7 +70,7 @@ const ContentPreview: React.FC<{ content: string; className?: string }> = ({ con
                 );
             } else if (part.trim()) {
                 // 如果是非表格内容，使用 ReactMarkdown 渲染
-                return <ReactMarkdown key={index}>{part}</ReactMarkdown>;
+                return <ReactMarkdown key={index} remarkPlugins={[remarkGfm]}>{part}</ReactMarkdown>;
             }
             return null;
         });
@@ -698,10 +699,18 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
             } else {
                 // 流式输出：实时更新详情内容
                 let accumulatedDetail = '';
+
+                // 【关键修复】确保传入的上下文包含完整的文档原内容
+                // 当用户在上传文档模式下，fileParsedContent 包含文档全文，
+                // 必须将其作为 topicContext 传入以约束 AI 严格基于原文生成
+                const context = (activeTab === 'file' && attachedFile && fileParsedContent?.trim())
+                    ? fileParsedContent
+                    : topic;
+
                 const detail = await generateSlideDetailAuto(
                     item.title,
                     item.brief,
-                    topic,
+                    context,
                     index,
                     total,
                     item.pageType,
@@ -856,19 +865,36 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
             onConfirm: () => {
                 setConfirmState(prev => ({ ...prev, isOpen: false }));
 
-                const slides: GeneratedSlide[] = outlineItems.map(item => ({
-                    id: Math.random().toString(36).substr(2, 9),
-                    contentType: 'text',
-                    originalFile: null,
-                    pageType: item.pageType, // Pass the type
-                    title: item.title,
-                    textContent: item.fullContent || item.brief,
-                    previewUrl: '',
-                    variants: [],
-                    variantCount: config.defaultVariantCount || 1,
-                    status: 'idle',
-                    createdAt: Date.now()
-                }));
+                const today = new Date();
+                const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                const presenterName = user?.username || user?.nickname || user?.email || '';
+
+                const slides: GeneratedSlide[] = outlineItems.map(item => {
+                    let textContent = item.fullContent || item.brief;
+
+                    // 【封面页增强】自动附加分析日期和讲解人信息
+                    if (item.pageType === 'cover') {
+                        const extra = [`分析日期：${dateStr}`];
+                        if (presenterName) {
+                            extra.unshift(`主讲人：${presenterName}`);
+                        }
+                        textContent = textContent + '\n\n' + extra.join('  |  ');
+                    }
+
+                    return {
+                        id: Math.random().toString(36).substr(2, 9),
+                        contentType: 'text',
+                        originalFile: null,
+                        pageType: item.pageType,
+                        title: item.title,
+                        textContent,
+                        previewUrl: '',
+                        variants: [],
+                        variantCount: config.defaultVariantCount || 1,
+                        status: 'idle',
+                        createdAt: Date.now()
+                    };
+                });
 
                 // Clear draft on success
                 localStorage.removeItem(draftKey);
@@ -995,7 +1021,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                             </div>
                             <div className="flex-1 overflow-auto p-6 bg-slate-50">
                                 <div className="prose prose-slate prose-sm max-w-none p-4">
-                                    <ReactMarkdown>{attachedFile.content}</ReactMarkdown>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{attachedFile.content}</ReactMarkdown>
                                 </div>
                             </div>
                         </div>
@@ -1356,7 +1382,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                             {previewItems[item.id] && item.fullContent ? (
                                                 <div className="w-full h-full min-h-[200px] overflow-y-auto custom-scrollbar">
                                                     <div className="prose prose-slate prose-sm max-w-none">
-                                                        <ReactMarkdown>{item.fullContent}</ReactMarkdown>
+                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.fullContent}</ReactMarkdown>
                                                     </div>
                                                 </div>
                                             ) : (

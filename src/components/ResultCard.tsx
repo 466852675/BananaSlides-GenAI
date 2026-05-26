@@ -421,6 +421,16 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                         <RefreshCw size={12} /> 重试
                                     </button>
                                 )}
+
+                                {item.status === 'generating' && onGenerateSingle && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onGenerateSingle(); }}
+                                        className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700 text-xs font-medium transition-all border border-amber-200 shadow-sm"
+                                        title="此页生成状态异常，点击重新生成"
+                                    >
+                                        <RefreshCw size={12} /> 重新生成
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
