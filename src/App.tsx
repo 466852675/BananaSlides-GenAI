@@ -2669,21 +2669,18 @@ const App: React.FC = () => {
         }
       };
       await syncWithRetry();
-    } else {
-      console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
-    }
 
-    // 批量生成完成，将最新 items 写回 React Query 缓存，避免后续 invalidateQueries 并覆盖 UI
-    if (currentProjectId) {
-      // 直接更新缓存，不让 React Query 从后端拉数据覆盖本地状态
+      // 批量生成完成，将最新 items 写回 React Query 缓存
       const cachedProject = queryClient.getQueryData<ProjectSession>(['project', currentProjectId]);
       if (cachedProject) {
         queryClient.setQueryData(['project', currentProjectId], {
           ...cachedProject,
-          items: items,
+          items: newSlides,
           status: items.every(i => i.status === 'success') ? 'completed' : cachedProject.status
         });
       }
+    } else {
+      console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
 
     // 检查是否所有幻灯片都已完成并更新项目状态
