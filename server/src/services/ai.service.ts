@@ -2625,11 +2625,19 @@ brief 的内容将直接作为该页面的展示文案，必须写"观众在幻�
 
             for (const line of lines) {
                 const trimmed = line.trim();
-                // 跳过空行和非 JSON 行
-                if (!trimmed || !trimmed.startsWith('{')) continue;
+                // 跳过空行
+                if (!trimmed) continue;
+
+                // 不以 { 开头的行忽略（非 JSON 行，如 AI 输出的多余文字）
+                if (!trimmed.startsWith('{')) {
+                    // 但如果不是 JSON 行且 buffer 中有未完成的 JSON，将整行放回 buffer
+                    buffer = line + '\n' + buffer;
+                    continue;
+                }
 
                 try {
                     const parsed = JSON.parse(trimmed);
+                    buffer = ''; // 解析成功后清空 buffer
                     const item: OutlineItem = {
                         id: Math.random().toString(36).slice(2, 11),
                         index: itemIndex + 1,
@@ -2642,8 +2650,10 @@ brief 的内容将直接作为该页面的展示文案，必须写"观众在幻�
                     onItem(item, itemIndex);
                     itemIndex++;
                 } catch (e) {
-                    // JSON 解析失败，可能是行不完整，继续等待更多数据
-                    console.log('[GenerateOutlineStream] Failed to parse line:', trimmed.substring(0, 50));
+                    // JSON 解析失败，可能是行被跨 chunk 截断
+                    // 将整行放回 buffer，等待更多数据后重试
+                    console.log('[GenerateOutlineStream] Line incomplete, re-queuing...');
+                    buffer = line + '\n' + buffer;
                 }
             }
         });
