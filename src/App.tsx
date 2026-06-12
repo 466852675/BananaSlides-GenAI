@@ -2673,8 +2673,18 @@ const App: React.FC = () => {
       console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
 
-    // 批量生成完成，缓存由 syncSlidesMutation.onSuccess 自动处理，不再手动 refetch
-    // 避免 React Query 返回的数据覆盖 processItem 已回写的 UI 状态
+    // 批量生成完成，将最新 items 写回 React Query 缓存，避免后续 invalidateQueries 并覆盖 UI
+    if (currentProjectId) {
+      // 直接更新缓存，不让 React Query 从后端拉数据覆盖本地状态
+      const cachedProject = queryClient.getQueryData<ProjectSession>(['project', currentProjectId]);
+      if (cachedProject) {
+        queryClient.setQueryData(['project', currentProjectId], {
+          ...cachedProject,
+          items: items,
+          status: items.every(i => i.status === 'success') ? 'completed' : cachedProject.status
+        });
+      }
+    }
 
     // 检查是否所有幻灯片都已完成并更新项目状态
     // 如果所有现有项都已成功 (且至少有一个项),则标记为已完成
