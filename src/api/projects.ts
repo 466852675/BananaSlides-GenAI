@@ -406,9 +406,9 @@ export const useSyncProjectSlides = () => {
             return response;
         },
         onSuccess: (data: any, variables) => {
-            // 更新单个项目缓存 + 项目列表缓存，确保回仪表盘再进入时数据最新
-            // 安全：后端 syncSlides 和前端 auto-save 均有空数组保护，不会因刷新覆盖数据
-            queryClient.invalidateQueries({ queryKey: ['project', variables.projectId] });
+            // 直接写缓存，不触发 refetch（避免 App.tsx 中 setQueryData 被覆盖）
+            queryClient.setQueryData(['project', variables.projectId], data);
+            // 项目列表只标记过期，后台安静刷新（不强迫立即 refetch）
             queryClient.invalidateQueries({ queryKey: ['projects'] });
         },
         onError: (error) => {

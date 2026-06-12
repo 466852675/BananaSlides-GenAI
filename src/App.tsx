@@ -2637,27 +2637,30 @@ const App: React.FC = () => {
     if (currentProjectId && generatedResults.length > 0) {
       const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
 
-      // 使用函数式 setItems 保留 processItem 已回写的页面状态
-      // 只将 generatedResults 有结果但 status 仍不为 success 的页面更新
-      const newSlides = items.map(slide => {
-        const result = resultsMap.get(slide.id);
-        if (result && slide.status !== 'success') {
-          return {
-            ...slide,
-            variants: result.variants,
-            previewUrl: result.previewUrl,
-            status: 'success' as const
-          };
-        }
-        return slide;
+      // 从最新 state 合并 variants，避免闭包 items 快照过期
+      let mergedSlides: GeneratedSlide[] = [];
+      setItems((prev) => {
+        mergedSlides = prev.map(slide => {
+          const result = resultsMap.get(slide.id);
+          if (result && slide.status !== 'success') {
+            return {
+              ...slide,
+              variants: result.variants,
+              previewUrl: result.previewUrl,
+              status: 'success' as const
+            };
+          }
+          return slide;
+        });
+        return mergedSlides;
       });
 
-      // 数据库同步
+      // 数据库同步（用最新数据）
       const syncWithRetry = async (attempt = 0): Promise<void> => {
         try {
           await syncSlidesMutation.mutateAsync({
             projectId: currentProjectId,
-            slides: newSlides
+            slides: mergedSlides
           });
         } catch (e) {
           console.error(`[handleGenerateBatch] Sync failed (attempt ${attempt + 1}):`, e);
@@ -2670,33 +2673,20 @@ const App: React.FC = () => {
       };
       await syncWithRetry();
 
-      // 批量生成完成，将最新 items 写回 React Query 缓存
-      const cachedProject = queryClient.getQueryData<ProjectSession>(['project', currentProjectId]);
-      if (cachedProject) {
-        queryClient.setQueryData(['project', currentProjectId], {
-          ...cachedProject,
-          items: newSlides,
-          status: items.every(i => i.status === 'success') ? 'completed' : cachedProject.status
-        });
-      }
+      // 缓存已由 syncSlidesMutation.onSuccess (projects.ts) 中 setQueryData 写入，此处不再重复写入
     } else {
       console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
 
-    // 检查是否所有幻灯片都已完成并更新项目状态
-    // 如果所有现有项都已成功 (且至少有一个项),则标记为已完成
-    setItems((currentItems) => {
-      const allCompleted = currentItems.length > 0 &&
-        currentItems.every(i => i.status === 'success');
-
-      if (allCompleted && currentProjectId) {
-        updateProjectMutation.mutate({
-          id: currentProjectId,
-          data: { status: 'completed' }
-        });
-      }
-      return currentItems;
-    });
+    // 检查是否所有幻灯片都已完成并更新项目状态（从最新 state 读取）
+    const allCompleted = items.every(i => i.status === 'success') ||
+      generatedResults.length + items.filter(i => i.status === 'error').length === items.length;
+    if (allCompleted && currentProjectId) {
+      updateProjectMutation.mutate({
+        id: currentProjectId,
+        data: { status: 'completed' }
+      });
+    }
 
     if (failureCount > 0) {
       showToast(
@@ -2842,23 +2832,19 @@ const App: React.FC = () => {
             }
           }
         };
-        syncSingleWithRetry().catch((e) => {
-          console.error('[handleRegenerate] Sync failed after retries - data may be lost:', e);
-        });
+        await syncSingleWithRetry();
 
         // 更新项目整体状态（纯状态检查，无副作用）
-        setItems((currentItems) => {
-          const allCompleted = currentItems.length > 0 &&
-            currentItems.every(i => i.status === 'success');
-
-          if (!allCompleted) return currentItems;
-
-          updateProjectMutation.mutate({
-            id: currentProjectId,
-            data: { status: 'completed' }
-          });
-          return currentItems;
-        });
+        setItems((currentItems) => currentItems); // 触发 re-render 获取最新状态
+        if (currentProjectId) {
+          const allCompleted = items.every(i => i.status === 'success');
+          if (allCompleted) {
+            updateProjectMutation.mutate({
+              id: currentProjectId,
+              data: { status: 'completed' }
+            });
+          }
+        }
       }
 
       showToast(`调用 ${providerName} API 服务成功`, "success");
