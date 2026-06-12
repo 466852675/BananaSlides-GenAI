@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as https from 'https';
 import { AssetService } from './asset.service';
 import { saveBase64Image } from '../utils/imageSaver';
-import { injectionDetector, promptSanitizer, SecurePromptBuilder } from '../utils/prompt-security';
+import { injectionDetector, promptSanitizer } from '../utils/prompt-security';
 import { contentFilter } from '../utils/content-filter';
 import { AuditService } from './audit.service';
 
@@ -38,56 +38,148 @@ export function invalidateConfigCache(): void {
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 const DEFAULT_GEMINI_BASE_URL = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com";
 
+// --- Shared Prompt Templates (smartRefine / smartRefineStream 共享) ---
+const PROMPT_TEMPLATES: Record<string, (input: string) => string> = {
+    requirement_polish: (text) => `
+Task: Generate a concise PPT presentation title based on user's input.
+Input: "${text}"
+
+[STRICT RULES]
+1. Output ONLY a short title (maximum 20 Chinese characters).
+2. NO punctuation marks at the end (no 。！？).
+3. No Markdown formatting.
+4. Language: Simplified Chinese (简体中文).
+5. The title should be professional and suitable for a presentation.
+
+Example:
+Input: "我想做一个关于人工智能发展趋势的路演PPT"
+Output: "人工智能发展趋势路演"
+
+Input: "帮我做一个产品发布会的演示文稿"
+Output: "产品发布会演示"
+
+Input: "关于公司年度工作总结的汇报材料"
+Output: "公司年度工作总结汇报"`,
+    template_description: (text) => `
+Task: 根据用户的描述，生成一份专业的模板风格需求设计方案。
+用户输入: "${text}"
+
+[输出要求]
+1. 输出一段完整的模板风格描述（约100-150字）
+2. 包含以下要素：
+   - 设计风格定位（如：现代简约、商务专业、创意活泼等）
+   - 配色方案建议（主色调、辅助色）
+   - 视觉元素建议（图形、图标、排版风格）
+   - 适用场景
+3. 语言：简体中文
+4. 不使用 Markdown 格式，输出纯文本
+
+示例：
+输入: "我想做一个科技公司的产品发布会PPT"
+输出: "采用现代科技感设计风格，以深蓝色为主色调，搭配荧光蓝渐变作为强调色，营造专业前沿的视觉氛围。建议使用几何图形和流线型元素，配合无衬线字体呈现简洁大气的排版风格。整体设计注重信息的层次感，通过数据可视化图表增强说服力，适用于科技产品发布、商业路演等正式场合。"`,
+    requirement: (text) => `
+Role: Senior Visual Director & PPT Expert.
+Task: Refine the user's input into a professional, structured "AI Visual Instruction" (Style Config) for a presentation generation system.
+Input Text: "${text}"
+
+[CRITICAL REQUIREMENT]
+You MUST output the result in the following Standard Markdown Structure. Do NOT change the headings.
+
+# [Role Name] AI 视觉指令
+
+## 1. 核心定位
+*   **角色设定**: (e.g. 未来主义架构师)
+*   **应用场景**: (e.g. 技术发布会)
+*   **视觉关键词**: (3-5 keywords)
+
+## 2. 总体视觉规范
+*   **设计美学**: (Detailed description of style, mood, lighting, materials)
+*   **色彩方案 (Name)**:
+    *   **背景色**: (Hex & Description)
+    *   **核心骨架/主色**: (Hex)
+    *   **战略目标/亮色**: (Hex)
+    *   **文字色**: (Hex)
+*   **字体建议**:
+    *   **标题**:
+    *   **正文**:
+*   **核心元素**: (List of visual elements)
+
+## 3. 页面类型详细指令
+(Provide specific visual instructions for EACH page type below. Infer details if missing.)
+
+### [封面页] (Cover Page)
+*   **布局**:
+*   **元素**:
+*   **氛围**:
+
+### [目录页] (Agenda Page)
+*   **布局**:
+*   **元素**:
+*   **特点**:
+
+### [章节过渡页] (Section Header)
+*   **布局**:
+*   **元素**:
+*   **特点**:
+
+### [内容页] (Content Page)
+*   **布局**:
+*   **图表**:
+*   **特点**:
+
+### [结束页] (Thank You)
+*   **布局**:
+*   **元素**:
+*   **氛围**:
+
+---
+Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简体中文).`,
+    content: (text) => `Task: Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.\n\nInput Text: "${text}"\n\nRequirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`,
+};
+
 // --- AI Prompt Generation Helper Functions ---
 
 /**
  * 根据页面类型生成专属指令
  */
-const getPageTypeInstructions = (pageType: string): string => {
-    const commonRules = '【必须遵守】: 页面中的标题名称必须去重,保证生成的页面中只有唯一的一个标题。生成的文字、数字等务必清晰,严禁模糊化,特别是正文、列表、总结性的小字体文字,确保极高的可读性。';
-
-    const instructions: Record<string, string> = {
-        cover: `生成专业的PPT封面页。要求:标题突出醒目,背景视觉大气。${commonRules}`,
-        directory: `生成清晰的PPT目录页。要求:1)章节列表条理清晰,层级分明;2)根据提供的内容或大纲标题,智能归纳总结出合适的目录结构;3)严禁随意发挥偏离本项目主题。${commonRules}`,
-        transition: `生成章节过渡页。要求:突出显示章节标题,具有承上启下的视觉过渡效果。${commonRules}`,
-        content: `生成内容展示页。要求:1)在页面标题下方添加一句核心总结语句,让观众快速理解本页核心观点;2)内容需要有层次地展示:提炼小标题、关键要素、视觉标签;3)避免大段文字堆叠。${commonRules}`,
-        end: `生成PPT结束页。要求:严格根据提供的标题和描述内容生成,严禁包含联系电话、电子邮箱、网址、地址等占位符信息。${commonRules}`,
-        custom: `按照提供的内容和要求自定义生成专业PPT页面。${commonRules}`
-    };
-    return instructions[pageType] || instructions.custom;
-};
-
 type PageType = 'cover' | 'directory' | 'transition' | 'content' | 'end' | 'custom';
 type GlobalStyleMap = Record<PageType, string | null>;
 
 /**
  * 视觉特征提取: 使用 Vision 模型分析风格图并返回关键词
  */
+
 const analyzeStyleImage = async (
     imageResource: string,
     pageType: string,
-    settings?: AppSettings
-): Promise<string> => {
+    settings?: AppSettings,
+    maxKeywordsLength: number = 300
+): Promise<{ keywords: string, hexColors: string[] }> => {
     const config = await resolveActiveConfig(settings, 'vision');
     const base64 = await resourceToBase64(imageResource);
 
-    // 全流派适用: 通用设计语言提取 Prompt
+    // 全流派适用: 通用设计语言提取 Prompt + 精确色值提取
     const prompt = `
         Role: 顶级 PPT 视觉分析师 & 构图专家。
         Task: 解构这张 PPT ${pageType} 的"视觉元属性"，为图像生成模型重建其灵魂。
-        
+
         重点提取以下抽象设计属性 (禁止描述具象物品，禁止提取文字内容):
         1. 【主色调 - 最重要】: 必须明确指出画面的主导颜色名称（如：荧光绿、赛博蓝、琥珀金、科技紫等），以及辅助色。这是风格复现的核心！
         2. 【构图骨架】: 描述画面的几何重心分配（如：偏左重心、居中对称、大块非对称切割）。
         3. 【空间层级】: 识别其视觉深度（如：多层 3D 堆叠、极简扁平层级、半透明重叠感）。
         4. 【背景肌理】: 描述背景是某种纹理（如：电路板肌理、流体渐变、深色纯色）以及背景颜色。
         5. 【发光效果】: 是否有霓虹光晕、扫描线、粒子效果等科技感元素。
-        
-        输出要求:
+        6. 【精确色值】: 提取 2-5 个十六进制色值（#RRGGBB 格式），按重要性排列。
+
+        输出格式:
+        - 单独一行以 "HEX:" 开头，后面空格分隔色值（如: HEX: #00BFA5 #FFFFFF #1A237E）
+        - 随后紧跟风格描述文本
         - 语言: 简体中文。
         - 格式: 极简扫描指令，必须首先明确主色调。
-        - 示例: "主色调为荧光绿配深黑背景，构图为...，视觉采用电路板肌理，配合绿色霓虹光晕效果"
-        - 长度: 150 字以内。
+        - 示例:
+          HEX: #00BFA5 #FFFFFF
+          主色调为荧光绿配深黑背景，构图为...，视觉采用电路板肌理，配合绿色霓虹光晕效果
+        - 描述长度: ${maxKeywordsLength} 字以内。
     `;
 
     try {
@@ -101,7 +193,8 @@ const analyzeStyleImage = async (
                 model: config.model,
                 contents: { parts: contents } as any
             });
-            return response.text?.trim() || "";
+            const text = response.text?.trim() || "";
+            return parseStructuredVisionOutput(text);
         } else {
             const messages = [
                 {
@@ -112,12 +205,36 @@ const analyzeStyleImage = async (
                     ]
                 }
             ];
-            return await callOpenAICompatible(config, messages, 0.7, false, 'text');
+            const text = await callOpenAICompatible(config, messages, 0.7, false, 'vision');
+            return parseStructuredVisionOutput(text);
         }
     } catch (e) {
-        console.warn(`[analyzeStyleImage] Style analysis failed (Model: ${config.model}), falling back to basic metadata.`, e);
-        return "";
+        console.warn(`[analyzeStyleImage] Style analysis or resource loading failed (Model: ${config?.model || 'unknown'}), falling back to basic metadata.`, e);
+        return { keywords: "", hexColors: [] };
     }
+};
+
+/**
+ * 解析 Vision 模型的结构化输出
+ * 格式: "HEX: #00BFA5 #FFFFFF\n主色调为科技青绿..."
+ */
+const parseStructuredVisionOutput = (text: string): { keywords: string, hexColors: string[] } => {
+    if (!text) return { keywords: "", hexColors: [] };
+
+    // 提取 HEX: 行
+    const hexLineMatch = text.match(/^HEX:\s*(.+)$/im);
+    let hexColors: string[] = [];
+    let keywords = text;
+
+    if (hexLineMatch) {
+        // 从 HEX: 行解析色值
+        const hexStr = hexLineMatch[1];
+        hexColors = extractHexFromText(hexStr);
+        // 移除 HEX: 行，剩余部分作为 keywords
+        keywords = text.replace(/^HEX:\s*.+$/im, '').trim();
+    }
+
+    return { keywords, hexColors };
 };
 
 /**
@@ -147,16 +264,112 @@ const getStyleReference = (
 };
 
 /**
+ * 场景判别器: 自动识别当前生成调用属于哪个输入场景
+ */
+function detectInputScenario(
+    styleRef: string | null,
+    requirements: string
+): 'scenario1' | 'scenario2' | 'scenario3' | 'scenario4' {
+    try {
+        const hasRef = !!styleRef;
+        const hasReq = !!(requirements && requirements.trim().length > 0);
+        if (hasRef && hasReq) return 'scenario1';
+        if (hasRef && !hasReq) return 'scenario2';
+        if (!hasRef && hasReq) return 'scenario3';
+        return 'scenario4';
+    } catch (e) {
+        console.warn('[detectInputScenario] Unexpected error, defaulting to scenario4:', e);
+        return 'scenario4';
+    }
+}
+
+/**
+ * 从文本中提取所有 hex 色值 (#RRGGBB)，去重后返回
+ */
+const extractHexFromText = (text: string): string[] => {
+    if (!text) return [];
+    const hexes = [...text.matchAll(/#[0-9a-fA-F]{6}/g)].map(m => m[0].toUpperCase());
+    return [...new Set(hexes)];
+};
+
+/**
+ * 通过 text LLM 从 requirements 提取视觉风格关键词
+ */
+async function extractKeywordsViaTextLLM(
+    requirements: string,
+    settings?: AppSettings
+): Promise<string> {
+    try {
+        const textConfig = await resolveActiveConfig(settings, 'text');
+        const prompt = `从以下设计需求中提取3-5个视觉风格关键词（如：科技感、通透、轻盈、稳重、商务）。
+输出纯文本，逗号分隔，禁止其他格式。
+
+设计需求: ${requirements.substring(0, 300)}`;
+
+        const messages = [{ role: "user", content: prompt }];
+        const result = await callOpenAICompatible(textConfig, messages, 0.7, false, 'text');
+        return result.trim();
+    } catch (e) {
+        console.warn('[extractKeywordsViaTextLLM] Failed:', e);
+        return "";
+    }
+}
+
+/**
+ * 交叉补全引擎: 根据场景填补信息缺口
+ */
+async function complementScenarioInputs(
+    scenario: 'scenario1' | 'scenario2' | 'scenario3' | 'scenario4',
+    styleKeywords: string,
+    hexColors: string[],
+    effectiveRequirements: string,
+    settings?: AppSettings
+): Promise<{ injectedKeywords: string, injectedHexes: string[] }> {
+    try {
+        if (scenario === 'scenario2') {
+            // 场景二: 有 Vision 风格描述，缺色值 → 补充 Vision 色值
+            return { injectedKeywords: "", injectedHexes: hexColors };
+        }
+        if (scenario === 'scenario3') {
+            // 场景三: 有 requirements 精确色值，缺自然语言描述 → 提取关键词 + 色值
+            const injectedHexes = extractHexFromText(effectiveRequirements);
+            const injectedKeywords = await extractKeywordsViaTextLLM(effectiveRequirements, settings);
+            return { injectedKeywords, injectedHexes };
+        }
+        // 场景一: 双通道俱全，无需补全
+        // 场景四: 无输入，无需补全
+        return { injectedKeywords: "", injectedHexes: [] };
+    } catch (e) {
+        console.warn('[complementScenarioInputs] Error, returning empty:', e);
+        return { injectedKeywords: "", injectedHexes: [] };
+    }
+}
+
+/**
  * 智能 Prompt 过滤器: 从完整的 Markdown 需求中提取特定页面的指令
  */
-const extractPageSpecificRequirements = (fullRequirements: string, pageType: string): string => {
-    if (!fullRequirements) return "";
+const extractPageSpecificRequirements = (fullRequirements: string, pageType: string): { content: string, isFallback: boolean } => {
+    if (!fullRequirements || !fullRequirements.trim()) return { content: "", isFallback: false };
 
     try {
         // 1. 提取全局规范 (Section 2)
-        // 匹配 "## 2. 总体视觉规范" 开始，直到下一个 "##" (通常是 Section 3)
-        const globalSpecMatch = fullRequirements.match(/## 2\. 总体视觉规范([\s\S]*?)(?=## \d|\z)/);
-        const globalSpec = globalSpecMatch ? globalSpecMatch[1].trim() : "";
+        // 匹配多种格式的"总体视觉规范"标题
+        const globalPatterns = [
+            /##\s*\d+\.\s*总体视觉规范/i,              // ## 2. 总体视觉规范
+            /##\s*第[一二三四五六七八九十]+[章节]\s*总体视觉规范/i,  // ## 第二章 总体视觉规范
+            /##\s*[一二三四五六七八九十][、.．]\s*总体视觉规范/i,     // ## 二、总体视觉规范
+            /##\s*总体视觉规范/i,                        // ## 总体视觉规范（无编号）
+        ];
+        let globalSpec = "";
+        for (const pattern of globalPatterns) {
+            const match = fullRequirements.match(pattern);
+            if (match) {
+                const rest = fullRequirements.slice(match.index! + match[0].length);
+                const endMatch = rest.match(/(?=##\s)/);
+                globalSpec = endMatch ? rest.slice(0, endMatch.index!).trim() : rest.trim();
+                break;
+            }
+        }
 
         // 2. 提取页面专属指令 (Section 3 中的子项)
         // 映射 pageType 到 Markdown 标题关键词
@@ -172,20 +385,21 @@ const extractPageSpecificRequirements = (fullRequirements: string, pageType: str
         let pageSpec = "";
 
         if (targetKeyword) {
-            // 匹配 "### [关键词]" 开始，直到下一个 "###" 或 "##" 或 结束
-            // 注意：Markdown 标题可能包含额外的文字，如 "### [封面页] (Cover Page)"
-            // 正则解释: 
-            // ###\s*\[?       -> 匹配 "### [" (可选左方括号)
-            // ${targetKeyword} -> 匹配关键词
-            // \]?             -> 匹配可选右方括号
-            // [^\n]*          -> 匹配标题行的剩余部分
-            // ([\s\S]*?)      -> 捕获内容
-            // (?=###|##|\z)   -> 向后查找，直到下一个标题或结束
-            const regex = new RegExp(`###\\s*\\[?${targetKeyword}\\]?[^\\n]*([\\s\\S]*?)(?=###|##|\\z)`, 'i');
+            // 增强正则：支持多级标题 (## / ### / ####) + 多种关键词后缀 + 灵活结束边界
+            const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const headingLevel = `#{2,4}`;
+            const keywordVariants = [
+                escapeRegex(targetKeyword),
+                escapeRegex(targetKeyword) + '页',
+                escapeRegex(targetKeyword) + '要求',
+                escapeRegex(targetKeyword) + '指令',
+            ];
+            const pattern = `${headingLevel}\\s*\\[?(${keywordVariants.join('|')})\\]?[^\\n]*([\\s\\S]*?)(?=#{2,4}|$)`;
+            const regex = new RegExp(pattern, 'i');
             const pageMatch = fullRequirements.match(regex);
 
             if (pageMatch) {
-                pageSpec = pageMatch[1].trim();
+                pageSpec = pageMatch[2].trim();
             } else {
                 console.warn(`[SmartPrompt] No specific instructions found for type: ${pageType} (${targetKeyword})`);
             }
@@ -194,15 +408,19 @@ const extractPageSpecificRequirements = (fullRequirements: string, pageType: str
         // 3. 组合
         if (globalSpec || pageSpec) {
             console.log(`[SmartPrompt] Successfully filtered requirements for ${pageType}.`);
-            return `【全局视觉规范】\n${globalSpec}\n\n【本页专属指令 (${pageType})】\n${pageSpec}`;
+            return {
+                content: `【全局视觉规范】\n${globalSpec}\n\n【本页专属指令 (${pageType})】\n${pageSpec}`,
+                isFallback: false
+            };
         }
 
         // Fallback
-        return fullRequirements;
+        console.warn(`[SmartPrompt] No structured sections found for any type, using full requirements as fallback.`);
+        return { content: fullRequirements, isFallback: true };
 
     } catch (e) {
         console.warn("[SmartPrompt] Regex parsing failed, using full requirements.", e);
-        return fullRequirements;
+        return { content: fullRequirements, isFallback: true };
     }
 };
 
@@ -213,9 +431,11 @@ const extractPageSpecificRequirements = (fullRequirements: string, pageType: str
 const extractDesignSuggestion = (content: string): string => {
     if (!content) return "";
     try {
-        const match = content.match(/\*\*设计建议：?\*\*\s*(.+)/);
+        // 支持单行和多行：从 "**设计建议：**" 标题到第一个空行、分割线或文件结尾
+        const match = content.match(/\*\*设计建议：?\*\*\s*([\s\S]*?)(?=\n\n|\n---|\n$|$)/);
         return match ? match[1].trim() : "";
     } catch (e) {
+        console.warn('[extractDesignSuggestion] Regex match failed:', e);
         return "";
     }
 };
@@ -227,76 +447,177 @@ const buildImageGenerationPrompt = (params: {
     pageType: string;
     title: string;
     content: string;
+    dataBlock?: string;
+    bodyBlock?: string;
+    keyPointsBlock?: string;
     styleName: string;
     colorPalette: string;
-    requirements: string;
+    requirements: string | { content: string, isFallback: boolean };
     aspectRatio: string;
     styleMatchType: 'exact' | 'fallback' | 'none';
-    allSlideTitles?: string[]; // 新增: 所有页面标题,用于目录页生成参考
-    styleKeywords?: string;  // 新增: Vision 模型解析出的风格特征
-    designSuggestion?: string; // 新增: 用户明确的设计建议
+    allSlideTitles?: string[];
+    styleKeywords?: string;
+    designSuggestion?: string;
+    injectedKeywords?: string;
+    injectedHexes?: string[];
 }): string => {
-    const { pageType, title, content, styleName, colorPalette, requirements, aspectRatio, styleMatchType, allSlideTitles, styleKeywords, designSuggestion } = params;
+    const { pageType, title, content, dataBlock, bodyBlock, keyPointsBlock, styleName, colorPalette, requirements, aspectRatio, styleMatchType, allSlideTitles, styleKeywords, designSuggestion, injectedKeywords, injectedHexes } = params;
 
     let prompt = '';
 
+    // ============================================================
     // 0. 智能过滤需求 (Smart Prompt Filter)
-    const effectiveRequirements = extractPageSpecificRequirements(requirements, pageType);
+    // ============================================================
+    // 当传入预解析结果时直接使用，兼容旧调用传入原始字符串
+    const effectiveRequirements = typeof requirements === 'object'
+        ? requirements
+        : extractPageSpecificRequirements(requirements, pageType);
 
     // ============================================================
-    // 核心指令：内容隔离
+    // 第一部分: 视觉灵魂 & 风格定义 (HIGHEST PRIORITY)
+    // 此区域仅为 AI 模型提供视觉风格参考，禁止渲染为画面文字
     // ============================================================
-    prompt += `【内容隔离】\n`;
-    prompt += `图片中只能出现业务标题和正文。\n`;
-    prompt += `禁止在画面中出现技术参数(#hex、字体名、比例数字等)。\n`;
-    prompt += `文字结尾禁用中文标点(。！？)\n\n`;
-
-    // 第一部分: 视觉调性定义 (Visual Language - "HOW to draw")
-    // 注意：这部分是内部风格参考，不渲染到图片
-    prompt += `【1. 视觉语言 & 艺术风格 (仅供内部参考，禁止渲染)】\n`;
+    prompt += `【1. 视觉灵魂 & 风格定义 (HIGHEST PRIORITY) — 仅供视觉参考，禁止渲染为画面文字】\n`;
+    if (styleName) prompt += `✦ 风格: ${styleName}\n`;
+    if (colorPalette) prompt += `✦ 配色: ${colorPalette}\n`;
+    if (injectedHexes && injectedHexes.length > 0) {
+        prompt += `✦ 精确色值参考: ${injectedHexes.join(', ')}\n`;
+    }
     if (styleKeywords) {
-        prompt += `- [最重要] 核心视觉指纹 (必须严格遵循): ${styleKeywords}\n`;
-        prompt += `- [颜色约束] 上述指纹中的主色调是风格的灵魂，必须作为画面的主导颜色，不得更换为其他颜色！\n`;
-        prompt += `- [背景统一 (禁止白头)]: 页面必须使用【全屏沉浸式背景】(Full-Screen Background)。严禁在顶部出现白色的标题栏或分割区域！标题文字直接悬浮在深色背景之上。确保画面上下浑然一体，没有割裂感。\n`;
+        prompt += `✦ [最重要] 核心视觉指纹 (必须严格遵循): ${styleKeywords}\n`;
+        prompt += `✦ [颜色约束] 上述指纹中的主色调是风格的灵魂，必须作为画面的主导颜色，不得更换为其他颜色！\n`;
+        prompt += `✦ [背景统一 (禁止白头)]: 页面必须使用【全屏沉浸式背景】(Full-Screen Background)。严禁在顶部出现白色的标题栏或分割区域！标题文字直接悬浮在深色背景之上。确保画面上下浑然一体，没有割裂感。\n`;
+    }
+    if (injectedKeywords) {
+        prompt += `✦ 提取的风格特征: ${injectedKeywords}\n`;
     }
     if (styleMatchType === 'exact') {
-        prompt += `- 构图锁定: 必须严格复刻参考图的几何骨架、色彩权重和视觉平衡感。\n`;
+        prompt += `✦ 构图锁定: 必须严格复刻参考图的几何骨架、色彩权重和视觉平衡感。\n`;
     }
-
-    // 用户明确的设计建议 (Priority High)
     if (designSuggestion) {
-        prompt += `- [用户设计建议 (必须采纳)]: ${designSuggestion}\n`;
-        prompt += `- [可视化强制]: 如果建议中包含了具体的图表形式（如环形图、蜂窝图），必须作为画面的核心视觉主体！\n`;
+        prompt += `✦ [用户设计建议 (必须采纳)]: ${designSuggestion}\n`;
+        prompt += `✦ [可视化强制]: 如果建议中包含了具体的图表形式（如环形图、蜂窝图），必须作为画面的核心视觉主体！\n`;
     }
-
-    // Inject filtered requirements here (作为风格参考，不作为内容)
-    if (effectiveRequirements) {
-        prompt += `- 详细设计规范:\n${effectiveRequirements}\n`;
+    if (effectiveRequirements.content) {
+        prompt += `✦ 详细设计规范:\n${effectiveRequirements.content}\n`;
     }
-    prompt += `- 输出比例: ${aspectRatio} (仅控制画布)\n`;
-    if (styleName) prompt += `- 风格: ${styleName}\n`;
-    if (colorPalette) prompt += `- 配色: ${colorPalette}\n`;
-    prompt += `- 基调: 专业商业演示, 4K 高画质, 文字清晰\n`;
+    prompt += `✦ 输出比例: ${aspectRatio} (仅控制画布)\n`;
+    prompt += `✦ 基调: 专业商业演示, 4K 高画质, 文字清晰\n`;
+    prompt += `✦ 文字结尾禁用中文标点(。！？)\n\n`;
 
-    // 第二部分: 业务任务核心 (Business Core - "WHAT to draw")
-    // 这是唯一可以渲染的内容
-    prompt += `\n【2. 业务任务内容 (✅ 这是唯一可渲染的内容)】\n`;
-    prompt += `- 页面标题: "${title}"\n`;
+    // ============================================================
+    // 第二部分: 业务任务内容 (这是唯一可渲染的画面内容)
+    // ============================================================
+    prompt += `\n【2. 业务任务内容 (✅ 这是唯一可渲染的画面内容)】\n`;
+    prompt += `✦ 约束: 此区域内的文字和图标可以出现在画面中。\n`;
+    prompt += `✦ 约束: 此区域内禁止出现 #hex 格式的技术参数、字体名、比例数字等。\n`;
+    prompt += `✦ 页面标题: "${title}"\n`;
 
-    if (pageType === 'directory' && (!content || content.length < 20) && allSlideTitles && allSlideTitles.length > 0) {
-        prompt += `- 大纲参考: "${allSlideTitles.join('、')}"\n`;
-    } else if (content) {
-        const MAX_CONTENT = 600;
-        let contentPreview = content;
-        if (content.length > MAX_CONTENT) {
-            const t = content.substring(0, MAX_CONTENT);
-            const p = t.lastIndexOf('。');
-            contentPreview = (p > MAX_CONTENT * 0.5 ? t.substring(0, p + 1) : t) + '...';
+    // 判断是否使用块参数
+    const hasDataBlock = dataBlock && dataBlock.length > 0;
+    const hasBodyBlock = bodyBlock && bodyBlock.length > 0;
+    const hasKeyPointsBlock = keyPointsBlock && keyPointsBlock.length > 0;
+    const useBlocks = hasDataBlock || hasBodyBlock || hasKeyPointsBlock;
+
+    if (pageType === 'directory' && !useBlocks && (!content || content.length < 20) && allSlideTitles && allSlideTitles.length > 0) {
+        prompt += `✦ 大纲参考: "${allSlideTitles.join('、')}"\n`;
+    } else if (useBlocks) {
+        // ============================================================
+        // 块参数注入模式：dataBlock / bodyBlock / keyPointsBlock 分别注入
+        // ============================================================
+
+        // --- 数据源 ---
+        if (hasDataBlock) {
+            prompt += `✦ 数据源 (仅供构建图表/表格，禁止渲染为画面文字):\n"""\n${dataBlock}\n"""\n`;
         }
-        prompt += `- 正文: "${contentPreview}"\n`;
 
-        // 针对内容页的排版指令
-        if (pageType === 'content') {
+        // --- 正文 / 内容素材 ---
+        if (hasBodyBlock) {
+            const bodyType = detectContentType(bodyBlock);
+            if (bodyType === 'table') {
+                prompt += `✦ 数据源 (仅供构建图表/表格，禁止渲染为画面文字):\n"""\n${bodyBlock}\n"""\n`;
+            } else if (bodyType === 'structured' || bodyType === 'list') {
+                prompt += `✦ 内容素材 (从中提炼关键信息做可视化呈现，禁止将原文直接渲染为画面文字):\n"""\n${bodyBlock}\n"""\n`;
+            } else {
+                prompt += `✦ 正文 (渲染为画面文字): "${bodyBlock}"\n`;
+            }
+        }
+
+        // --- 要点 ---
+        if (hasKeyPointsBlock) {
+            prompt += `✦ 要点 (提炼为视觉亮点展示，不要整段渲染):\n"""\n${keyPointsBlock}\n"""\n`;
+        }
+
+        // 防重复约束（有数据块或要点块时生效）
+        if (hasDataBlock || hasKeyPointsBlock) {
+            prompt += `\n✦ [重要排版约束] 同一数据在画面中最多出现两次：一次在表格/图表中展示完整明细，一次在结论/重点区域突出核心指标。禁止在第三个及以上位置重复描述同一组数据。\n`;
+        }
+    } else if (content) {
+        // 检测内容类型，自适应分配字数上限和注入方式
+        const contentType = detectContentType(content);
+        let maxContentLen: number;
+        let pageTypeOverrides: string[] = [];
+
+        switch (contentType) {
+            case 'table':
+                // 数据表格：高字数上限 + 数据源注入（不渲染为文字）
+                maxContentLen = 4000;
+                if (pageType === 'content') {
+                    pageTypeOverrides = [
+                        `- 使用清晰的表格/图表结构呈现数据，列标题可高亮。`,
+                        `- 表格数据仅用于构建图表和表格视觉元素，禁止将原始数据行渲染为画面文字。`,
+                        `- 表格下方的"结论"、"小计"等结论文本，需提炼为要点展示，不要整段渲染。`,
+                    ];
+                }
+                break;
+            case 'structured':
+            case 'list':
+                // 结构化文档 / 列表：高字数上限 + 素材注入（提炼可视化）
+                maxContentLen = 4000;
+                if (pageType === 'content') {
+                    pageTypeOverrides = [
+                        `- 检测到内容为结构化素材，从中提炼关键信息做可视化呈现。`,
+                        `- 将素材中的不同模块（标题+对应要点）分别呈现为独立的视觉区块。`,
+                        `- 每个区块使用"图标+标题+短要点"结构，禁止堆叠原始文本。`,
+                        `- 关键数字可在区块内突出显示，但同一数字只能突出一次。`,
+                    ];
+                }
+                break;
+            default:
+                // 段落文本：直接渲染为文字
+                maxContentLen = 1500;
+                break;
+        }
+
+        let contentPreview = content;
+        if (content.length > maxContentLen) {
+            const t = content.substring(0, maxContentLen);
+            const p = contentType === 'table' ? -1 : t.lastIndexOf('。');
+            contentPreview = (p > maxContentLen * 0.5 ? t.substring(0, p + 1) : t) + '...';
+        }
+
+        // 按内容类型分流注入方式
+        if (contentType === 'table') {
+            prompt += `✦ 数据源 (仅供构建图表/表格，禁止渲染为画面文字):\n"""\n${contentPreview}\n"""\n`;
+        } else if (contentType === 'structured' || contentType === 'list') {
+            prompt += `✦ 内容素材 (从中提炼关键信息做可视化呈现，禁止将原文直接渲染为画面文字):\n"""\n${contentPreview}\n"""\n`;
+        } else {
+            prompt += `✦ 正文 (渲染为画面文字): "${contentPreview}"\n`;
+        }
+
+        // 防重复约束（非 prose 类型通用）
+        if (contentType !== 'prose') {
+            prompt += `\n✦ [重要排版约束] 同一数据在画面中最多出现两次：一次在表格/图表中展示完整明细，一次在结论/重点区域突出核心指标。禁止在第三个及以上位置重复描述同一组数据。例如：利润 1051.36 万在图表中展示、在结论区高亮即可，不需要额外以文字形式重复。\n`;
+        }
+
+        // 内容页排版指令：按内容类型自适应，有 designSuggestion 时被覆盖
+        if (pageType === 'content' && pageTypeOverrides.length > 0 && !designSuggestion) {
+            prompt += `\n排版要求:\n`;
+            for (const line of pageTypeOverrides) {
+                prompt += line + '\n';
+            }
+        } else if (pageType === 'content' && !designSuggestion) {
+            // 默认内容页排版（仅适用于 prose 类型且无 designSuggestion）
             prompt += `\n排版要求:\n`;
             prompt += `- 每个核心板块展示"图标+标题+短句"，不能只有大字\n`;
             prompt += `- 增加微型标签、状态胶囊填补空隙，列表带序号\n`;
@@ -315,6 +636,135 @@ const buildImageGenerationPrompt = (params: {
 };
 
 // --- Helper Functions ---
+
+/**
+ * 内容类型检测：识别正文是数据表格、结构化文档、列表还是段落文本
+ */
+type ContentType = 'table' | 'structured' | 'list' | 'prose';
+
+const detectContentType = (content: string): ContentType => {
+    if (!content || content.length < 20) return 'prose';
+    const lines = content.split('\n').filter(l => l.trim().length > 0);
+    if (lines.length < 3) return 'prose';
+
+    // 1. 管道表格：Markdown | 语法（如 | 收入 | 7388.60 | 7198.71 |）
+    const pipeTableLines = lines.filter(l => l.trim().startsWith('|') && l.trim().endsWith('|'));
+    // 排除格式行（| :--- | :--- | :--- | 等纯格式行）
+    const dataPipeLines = pipeTableLines.filter(l => !/^[\s|]*:-+[\s|:.-]*$/.test(l.trim()));
+    if (dataPipeLines.length >= 3) return 'table';
+
+    // 2. 对齐表格：多空格/制表符分隔，包含多个数字的行
+    const alignedTableLineCount = lines.filter(l => {
+        const tokens = l.trim().split(/\s{2,}|\t+/);
+        const numbers = tokens.filter(t => /^-?\d[\d,.]*$/.test(t.replace(/,/g, '')));
+        return tokens.length >= 3 && numbers.length >= 2;
+    }).length;
+    if (alignedTableLineCount >= lines.length * 0.5) return 'table';
+
+    // 3. 结构化文档：**粗体标题** + - 列表项 混合（如 "**核心定位**：..." 和 "- **地市覆盖**：..."）
+    const boldHeaderCount = lines.filter(l => /\*\*.+\*\*/.test(l)).length;
+    const listLineCount = lines.filter(l => /^[\s]*[-*•·▶]\s/.test(l)).length;
+    // 同时有粗体标题和列表项
+    const hasStructure = boldHeaderCount >= 2 && listLineCount >= 2;
+    // 或至少有粗体标题且（粗体+列表）合计占行数 50% 以上（且总行数 ≥ 5，避免短文本误判）
+    const isMixed = boldHeaderCount >= 1 && lines.length >= 5 && (boldHeaderCount + listLineCount) >= lines.length * 0.5;
+    if (hasStructure || isMixed) return 'structured';
+
+    // 4. 纯列表：行首有 - * 1. 或数字编号
+    if (listLineCount >= lines.length * 0.5) return 'list';
+
+    // 5. 段落文本
+    return 'prose';
+};
+
+/**
+ * 将 cleanContent 拆解为数据块、正文块和要点块
+ * 用于在 generateSlideVariant 中在 buildImageGenerationPrompt 之前拆解混合内容
+ */
+interface SplitContentResult {
+    dataBlock: string;
+    bodyBlock: string;
+    keyPointsBlock: string;
+}
+
+const splitContent = (content: string): SplitContentResult => {
+    if (!content) return { dataBlock: '', bodyBlock: '', keyPointsBlock: '' };
+
+    const contentType = detectContentType(content);
+
+    // 非表格内容：全部放入 bodyBlock
+    if (contentType !== 'table') {
+        return { dataBlock: '', bodyBlock: content, keyPointsBlock: '' };
+    }
+
+    // 表格内容：分离表格行 vs 表后文本
+    const lines = content.split('\n');
+    const dataLines: string[] = [];
+    const afterTableLines: string[] = [];
+    let tableEnded = false;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (tableEnded) {
+            // 保留空行供后续结论区退出逻辑使用
+            afterTableLines.push(line);
+            continue;
+        }
+
+        // 检测是否为表格行
+        const isPipe = trimmed.startsWith('|') && trimmed.endsWith('|');
+        // 对齐表格：列数 ≥ 3 即可（contentType 已确认为 table，避免表头无数字时漏检）
+        const isAligned = !isPipe && trimmed.split(/\s{2,}|\t+/).length >= 3;
+
+        if (isPipe || isAligned) {
+            dataLines.push(line);
+        } else if (trimmed && dataLines.length > 0) {
+            // 在表格区域之后遇到非空非表格行 → 表格结束
+            tableEnded = true;
+            afterTableLines.push(line);
+        } else if (trimmed) {
+            // 表格之前的文本（罕见情况）
+            afterTableLines.push(line);
+        }
+        // 空行在表格区域内忽略
+    }
+
+    // 将表后文本分离为结论要点 + 正文
+    // 遇到结论关键词行后进入结论区；结论区内遇到连续空行则退出（新段落分界）
+    const conclusionKeywords = ['结论', '小结', '总结', 'key_takeaways'];
+    const keyPointsLines: string[] = [];
+    const bodyLines: string[] = [];
+    let inConclusionSection = false;
+    let consecutiveEmptyInConclusion = 0;
+
+    for (const line of afterTableLines) {
+        if (!inConclusionSection && conclusionKeywords.some(k => line.includes(k))) {
+            inConclusionSection = true;
+            consecutiveEmptyInConclusion = 0;
+            keyPointsLines.push(line);
+        } else if (inConclusionSection) {
+            if (line.trim() === '') {
+                consecutiveEmptyInConclusion++;
+                keyPointsLines.push(line);
+            } else if (consecutiveEmptyInConclusion >= 1) {
+                // 结论区内空行后遇到非空行 → 结论区结束，归入正文
+                inConclusionSection = false;
+                consecutiveEmptyInConclusion = 0;
+                bodyLines.push(line);
+            } else {
+                keyPointsLines.push(line);
+            }
+        } else {
+            bodyLines.push(line);
+        }
+    }
+
+    return {
+        dataBlock: dataLines.join('\n').trim(),
+        bodyBlock: bodyLines.join('\n').trim(),
+        keyPointsBlock: keyPointsLines.join('\n').trim(),
+    };
+};
 
 const cleanBaseUrlForGoogle = (url: string): string => {
     let cleaned = url.trim();
@@ -762,10 +1212,12 @@ async function callOpenAIImageGeneration(
         size = volcengineResolutionMap[userTier][aspectRatio] || size;
     }
 
-    // 确保 W/H 是 32 的倍数 (针对所有非原生模型)
+    // 确保 W/H 是 32 的倍数 (仅智谱、火山引擎等有该要求的 provider)
     let [finalW, finalH] = size.split('x').map(Number);
-    finalW = Math.round(finalW / 32) * 32;
-    finalH = Math.round(finalH / 32) * 32;
+    if (isZhipu || isVolcengine) {
+        finalW = Math.round(finalW / 32) * 32;
+        finalH = Math.round(finalH / 32) * 32;
+    }
     size = `${finalW}x${finalH}`;
 
     console.log(`[OpenAI Image] Calling: ${config.baseUrl}/images/generations, Model: ${config.model}, Size: ${size}`);
@@ -805,10 +1257,19 @@ async function callOpenAIImageGeneration(
         body.stream = false;
     }
 
-    // 通用参考图生图支持：非火山引擎 provider 如有 styleImageUrl，也传入 image 参数
-    // GPT-Image-2 / 自定义 provider 等通过此路径支持图生图
+    // 通用参考图生图支持：非火山引擎/智谱 provider 如有 styleImageUrl，也传入 image 参数
+    // 注意：styleImageUrl 已经过 Vision 模型分析提取为文本描述注入 prompt，
+    // 此处 image 参数仅为支持图生图能力（如火山/即梦/部分智谱），非必需。
+    // 对于 OpenAI 兼容/DALL-E 格式/自定义中转等不支持 raw image 参数的 provider，应跳过。
+    // 判断逻辑：基于静态兼容性列表，仅已知支持的 provider 传入 image 参数。
     if (styleImageUrl && !body.image) {
-        body.image = [styleImageUrl];
+        const supportsRawImageParam = isVolcengine || isZhipu;
+        if (supportsRawImageParam) {
+            body.image = [styleImageUrl];
+            console.log(`[OpenAI Image] Sending reference image to provider that supports image param`);
+        } else {
+            console.log(`[OpenAI Image] Provider does not support raw image param, skipping reference image (vision-extracted style will be used via prompt)`);
+        }
     }
 
     // ModelScope (Tongyi) specific handling
@@ -1020,109 +1481,7 @@ export const AIService = {
         const cleanText = sanitized.cleanedText;
 
         const config = await resolveActiveConfig(settings, 'text');
-        let prompt = '';
-        if (type === 'requirement_polish') {
-            prompt = `
-Task: Generate a concise PPT presentation title based on user's input.
-Input: "${cleanText}"
-
-[STRICT RULES]
-1. Output ONLY a short title (maximum 20 Chinese characters).
-2. NO punctuation marks at the end (no 。！？).
-3. NO Markdown formatting.
-4. Language: Simplified Chinese (简体中文).
-5. The title should be professional and suitable for a presentation.
-
-Example:
-Input: "我想做一个关于人工智能发展趋势的路演PPT"
-Output: "人工智能发展趋势路演"
-
-Input: "帮我做一个产品发布会的演示文稿"
-Output: "产品发布会演示"
-
-Input: "关于公司年度工作总结的汇报材料"
-Output: "公司年度工作总结汇报"`;
-        } else if (type === 'template_description') {
-            prompt = `
-Task: 根据用户的描述，生成一份专业的模板风格需求设计方案。
-用户输入: "${cleanText}"
-
-[输出要求]
-1. 输出一段完整的模板风格描述（约100-150字）
-2. 包含以下要素：
-   - 设计风格定位（如：现代简约、商务专业、创意活泼等）
-   - 配色方案建议（主色调、辅助色）
-   - 视觉元素建议（图形、图标、排版风格）
-   - 适用场景
-3. 语言：简体中文
-4. 不使用 Markdown 格式，输出纯文本
-
-示例：
-输入: "我想做一个科技公司的产品发布会PPT"
-输出: "采用现代科技感设计风格，以深蓝色为主色调，搭配荧光蓝渐变作为强调色，营造专业前沿的视觉氛围。建议使用几何图形和流线型元素，配合无衬线字体呈现简洁大气的排版风格。整体设计注重信息的层次感，通过数据可视化图表增强说服力，适用于科技产品发布、商业路演等正式场合。"
-`;
-        } else if (type === 'requirement') {
-            prompt = `
-Role: Senior Visual Director & PPT Expert.
-Task: Refine the user's input into a professional, structured "AI Visual Instruction" (Style Config) for a presentation generation system.
-Input Text: "${cleanText}"
-
-[CRITICAL REQUIREMENT]
-You MUST output the result in the following Standard Markdown Structure. Do NOT change the headings.
-
-# [Role Name] AI 视觉指令
-
-## 1. 核心定位
-*   **角色设定**: (e.g. 未来主义架构师)
-*   **应用场景**: (e.g. 技术发布会)
-*   **视觉关键词**: (3-5 keywords)
-
-## 2. 总体视觉规范
-*   **设计美学**: (Detailed description of style, mood, lighting, materials)
-*   **色彩方案 (Name)**:
-    *   **背景色**: (Hex & Description)
-    *   **核心骨架/主色**: (Hex)
-    *   **战略目标/亮色**: (Hex)
-    *   **文字色**: (Hex)
-*   **字体建议**:
-    *   **标题**:
-    *   **正文**:
-*   **核心元素**: (List of visual elements)
-
-## 3. 页面类型详细指令
-(Provide specific visual instructions for EACH page type below. Infer details if missing.)
-
-### [封面页] (Cover Page)
-*   **布局**:
-*   **元素**:
-*   **氛围**:
-
-### [目录页] (Agenda Page)
-*   **布局**:
-*   **元素**:
-*   **特点**:
-
-### [章节过渡页] (Section Header)
-*   **布局**:
-*   **元素**:
-*   **特点**:
-
-### [内容页] (Content Page)
-*   **布局**:
-*   **图表**:
-*   **特点**:
-
-### [结束页] (Thank You)
-*   **布局**:
-*   **元素**:
-*   **氛围**:
-
----
-Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简体中文).`;
-        } else {
-            // Content refinement remains simple
-            prompt = `Task: Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.\n\nInput Text: "${cleanText}"\n\nRequirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`;
-        }
+        const prompt = PROMPT_TEMPLATES[type]?.(cleanText) || PROMPT_TEMPLATES.content(cleanText);
 
         if (shouldUseGeminiNative(config, settings)) {
             const ai = createGoogleClient(config);
@@ -1660,7 +2019,8 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
         pageType?: string,
         fullContent?: string,
         globalStyleMap?: GlobalStyleMap,
-        allSlideTitles?: string[]
+        allSlideTitles?: string[],
+        context?: { warning?: string }  // 新增: 用于传递降级信号
     ): Promise<string> {
         if (process.env.MOCK_AI === '1') {
             return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PtPhVwAAAABJRU5ErkJggg==';
@@ -1680,10 +2040,24 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
 
         // 2. Vision 预解析: 提取风格特征描述
         let styleKeywords = "";
+        let hexColors: string[] = [];
         if (styleRef) {
+            // 判断 provider 是否支持 raw image 参数，以决定 Vision 分析的字数上限
+            const imgBaseUrl = config.baseUrl.toLowerCase();
+            const imgModel = config.model.toLowerCase();
+            const isVolcengine = imgBaseUrl.includes('volces.com') || imgBaseUrl.includes('volcengine');
+            const isZhipu = imgBaseUrl.includes('bigmodel.cn') || imgModel.includes('glm') || imgModel.includes('cogview') || imgModel.includes('zhipu');
+            const supportsRawImage = isVolcengine || isZhipu;
+            const maxKeywordsLen = supportsRawImage ? 300 : 600;
+
             try {
-                styleKeywords = await analyzeStyleImage(styleRef, effectivePageType, settings);
-                console.log(`[generateSlideVariant] Vision Analysis Results for ${effectivePageType}: ${styleKeywords.substring(0, 50)}...`);
+                const analysis = await analyzeStyleImage(styleRef, effectivePageType, settings, maxKeywordsLen);
+                styleKeywords = analysis.keywords;
+                hexColors = analysis.hexColors;
+                console.log(`[generateSlideVariant] Vision Analysis (${maxKeywordsLen} chars) for ${effectivePageType}: ${styleKeywords.substring(0, 50)}...`);
+                if (hexColors.length > 0) {
+                    console.log(`[generateSlideVariant] Extracted hex colors: ${hexColors.join(', ')}`);
+                }
             } catch (err) {
                 console.warn(`[generateSlideVariant] Vision analysis failed, continuing with prompt only.`, err);
             }
@@ -1709,18 +2083,39 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
             }
         }
 
+        // 3.2 场景判别 + 交叉补全
+        const scenario = detectInputScenario(styleRef, configStyle.requirements);
+        const effectiveReqResult = extractPageSpecificRequirements(configStyle.requirements, effectivePageType);
+        const effectiveRequirements = effectiveReqResult.content;
+        if (effectiveReqResult.isFallback && context) {
+            context.warning = 'SMART_FILTER_FALLBACK';
+        }
+
+        // 交叉补全: 根据场景填补信息缺口
+        const { injectedKeywords, injectedHexes } = await complementScenarioInputs(
+            scenario, styleKeywords, hexColors, effectiveRequirements, settings
+        );
+
+        // splitContent: 将混合的 cleanContent 拆解为数据/正文/要点三个独立块
+        const { dataBlock, bodyBlock, keyPointsBlock } = splitContent(cleanContent);
+
         const prompt = buildImageGenerationPrompt({
             pageType: effectivePageType,
             title: title || '',
             content: cleanContent,
+            dataBlock,
+            bodyBlock,
+            keyPointsBlock,
             styleName: configStyle.styleName,
             colorPalette: configStyle.colorPalette,
-            requirements: configStyle.requirements,
+            requirements: effectiveReqResult,  // 传入完整预解析结果对象，避免 buildImageGenerationPrompt 中二次解析
             aspectRatio: targetRatio,
             styleMatchType: matchType,
             allSlideTitles: allSlideTitles,
             styleKeywords: styleKeywords,
             designSuggestion: designSuggestion,
+            injectedKeywords: injectedKeywords,
+            injectedHexes: injectedHexes,
         });
 
         // 4. 执行模型请求
@@ -1976,23 +2371,42 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
     /**
      * 新增: 生成风格参考图
      */
-    async generateStyleReference(
+    async generateStylePreview(
         configStyle: StyleConfig,
         pageType: string,
         settings: AppSettings
     ): Promise<string> {
         // 复用 generateSlideVariant 的逻辑，但 Content 是空的
-        return await AIService.generateSlideVariant(
+        const warningContext: { warning?: string } = {};
+        const result = await AIService.generateSlideVariant(
             "", // No source content
             null, // No style file
             configStyle,
-            "style-reference",
-            `${configStyle.styleName} - ${pageType}页参考`,
+            "style-preview",
+            `${configStyle.styleName} - ${pageType}页预览`,
             settings,
             'text',
             undefined,
-            pageType
+            pageType,
+            undefined, // fullContent
+            undefined, // globalStyleMap
+            undefined, // allSlideTitles
+            warningContext // context: 接收降级信号
         );
+        if (warningContext.warning) {
+            console.warn('[generateStylePreview] Smart filter fell back:', warningContext.warning);
+        }
+        return result;
+    },
+
+    // @deprecated 请使用 generateStylePreview
+    async generateStyleReference(
+        configStyle: StyleConfig,
+        pageType: string,
+        settings: AppSettings
+    ): Promise<string> {
+        console.warn('[generateStyleReference] Deprecated, use generateStylePreview instead.');
+        return await AIService.generateStylePreview(configStyle, pageType, settings);
     },
 
     // ============================================================
@@ -2061,7 +2475,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
                                 onChunk(content);
                             }
                         } catch {
-                            // Ignore parse errors for incomplete chunks
+                            console.warn('[OpenAI Stream] Failed to parse chunk, likely incomplete line:', data?.substring(0, 100));
                         }
                     }
                 }
@@ -2098,109 +2512,7 @@ Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简�
         const cleanText = sanitized.cleanedText;
 
         const config = await resolveActiveConfig(settings, 'text');
-        let prompt = '';
-
-        if (type === 'requirement_polish') {
-            prompt = `
-Task: Generate a concise PPT presentation title based on user's input.
-Input: "${cleanText}"
-
-[STRICT RULES]
-1. Output ONLY a short title (maximum 20 Chinese characters).
-2. NO punctuation marks at the end (no 。！？).
-3. NO Markdown formatting.
-4. Language: Simplified Chinese (简体中文).
-5. The title should be professional and suitable for a presentation.
-
-Example:
-Input: "我想做一个关于人工智能发展趋势的路演PPT"
-Output: "人工智能发展趋势路演"
-
-Input: "帮我做一个产品发布会的演示文稿"
-Output: "产品发布会演示"
-
-Input: "关于公司年度工作总结的汇报材料"
-Output: "公司年度工作总结汇报"`;
-        } else if (type === 'template_description') {
-            prompt = `
-Task: 根据用户的描述，生成一份专业的模板风格需求设计方案。
-用户输入: "${cleanText}"
-
-[输出要求]
-1. 输出一段完整的模板风格描述（约100-150字）
-2. 包含以下要素：
-   - 设计风格定位（如：现代简约、商务专业、创意活泼等）
-   - 配色方案建议（主色调、辅助色）
-   - 视觉元素建议（图形、图标、排版风格）
-   - 适用场景
-3. 语言：简体中文
-4. 不使用 Markdown 格式，输出纯文本
-
-示例：
-输入: "我想做一个科技公司的产品发布会PPT"
-输出: "采用现代科技感设计风格，以深蓝色为主色调，搭配荧光蓝渐变作为强调色，营造专业前沿的视觉氛围。建议使用几何图形和流线型元素，配合无衬线字体呈现简洁大气的排版风格。整体设计注重信息的层次感，通过数据可视化图表增强说服力，适用于科技产品发布、商业路演等正式场合。"
-`;
-        } else if (type === 'requirement') {
-            prompt = `
-Role: Senior Visual Director & PPT Expert.
-Task: Refine the user's input into a professional, structured "AI Visual Instruction" (Style Config) for a presentation generation system.
-Input Text: "${cleanText}"
-
-[CRITICAL REQUIREMENT]
-You MUST output the result in the following Standard Markdown Structure. Do NOT change the headings.
-
-# [Role Name] AI 视觉指令
-
-## 1. 核心定位
-*   **角色设定**: (e.g. 未来主义架构师)
-*   **应用场景**: (e.g. 技术发布会)
-*   **视觉关键词**: (3-5 keywords)
-
-## 2. 总体视觉规范
-*   **设计美学**: (Detailed description of style, mood, lighting, materials)
-*   **色彩方案 (Name)**:
-    *   **背景色**: (Hex & Description)
-    *   **核心骨架/主色**: (Hex)
-    *   **战略目标/亮色**: (Hex)
-    *   **文字色**: (Hex)
-*   **字体建议**:
-    *   **标题**:
-    *   **正文**:
-*   **核心元素**: (List of visual elements)
-
-## 3. 页面类型详细指令
-(Provide specific visual instructions for EACH page type below. Infer details if missing.)
-
-### [封面页] (Cover Page)
-*   **布局**:
-*   **元素**:
-*   **氛围**:
-
-### [目录页] (Agenda Page)
-*   **布局**:
-*   **元素**:
-*   **特点**:
-
-### [章节过渡页] (Section Header)
-*   **布局**:
-*   **元素**:
-*   **特点**:
-
-### [内容页] (Content Page)
-*   **布局**:
-*   **图表**:
-*   **特点**:
-
-### [结束页] (Thank You)
-*   **布局**:
-*   **元素**:
-*   **氛围**:
-
----
-Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简体中文).`;
-        } else {
-            prompt = `Task: Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.\n\nInput Text: "${cleanText}"\n\nRequirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`;
-        }
+        const prompt = PROMPT_TEMPLATES[type]?.(cleanText) || PROMPT_TEMPLATES.content(cleanText);
 
         const messages = [{ role: "user", content: prompt }];
         await AIService.callOpenAICompatibleStream(config, messages, onChunk);
@@ -2435,4 +2747,17 @@ brief 的内容将直接作为该页面的展示文案，必须写"观众在幻�
         const messages = [{ role: "user", content: prompt }];
         await AIService.callOpenAICompatibleStream(config, messages, onChunk);
     }
+};
+
+/** @internal exported for testing — must be at end of file to avoid hoisting issues */
+export const __testing = {
+    extractPageSpecificRequirements,
+    detectInputScenario,
+    complementScenarioInputs,
+    parseStructuredVisionOutput,
+    extractDesignSuggestion,
+    buildImageGenerationPrompt,
+    extractHexFromText,
+    detectContentType,
+    splitContent,
 };

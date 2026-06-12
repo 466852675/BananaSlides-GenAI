@@ -290,7 +290,7 @@ export const handleAnalyzeTemplateConcept = async (req: Request, res: Response) 
     }
 };
 
-export const handleGenerateStyleReference = async (req: Request, res: Response) => {
+export const handleGenerateStylePreview = async (req: Request, res: Response) => {
     const { configStyle, pageType, settings: clientSettings, projectId, triggerTime } = req.body;
     try {
         // 积分扣费（登录用户扣费，未登录免费）
@@ -330,7 +330,7 @@ export const handleGenerateStyleReference = async (req: Request, res: Response) 
                 settings.ai = { ...settings.ai, ...clientSettings.ai };
             }
         }
-        const result = await AIService.generateStyleReference(configStyle, pageType, settings);
+        const result = await AIService.generateStylePreview(configStyle, pageType, settings);
 
         // Mark transaction as completed
         if ((res as any).transactionId) {
@@ -680,6 +680,7 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
         }
 
         const settings = await getServerSettings();
+        const warningContext: { warning?: string } = {};
         const result = await AIService.generateSlideVariant(
             contentSource,
             styleFile,
@@ -693,7 +694,8 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
             pageType,
             fullContent,
             globalStyleMap,
-            allSlideTitles
+            allSlideTitles,
+            warningContext       // 新增: 传递 context 用于接收降级信号
         );
 
         // Mark transaction as completed if successful
@@ -701,7 +703,15 @@ export const handleGenerateSlideVariant = async (req: Request, res: Response) =>
             await PointsService.completeTransaction((res as any).transactionId);
         }
 
-        res.json({ success: true, data: result, pointsDeducted: (res as any).deductedPoints });
+        res.json({
+            success: true,
+            data: result,
+            pointsDeducted: (res as any).deductedPoints,
+            ...(warningContext.warning ? {
+                warning: warningContext.warning,
+                warningMessage: "设计需求未按标准格式分段，已使用完整文本"
+            } : {})
+        });
     } catch (error: any) {
         console.error('[handleGenerateSlideVariant] Error:', error.message);
         if (req.user && (res as any).deductedPoints > 0) {

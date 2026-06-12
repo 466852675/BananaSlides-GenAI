@@ -908,7 +908,7 @@ const App: React.FC = () => {
           })
           .catch(err => console.error("Poll error (silent):", err));
       } catch (e) {
-        // Ignore
+        console.warn('[Notification Poll] Unexpected sync error:', e);
       }
     }, 10000); // 增加到 10 秒，减少轮询频率
 
@@ -1405,6 +1405,8 @@ const App: React.FC = () => {
       syncSlidesMutation.mutate({
         projectId: currentProjectId,
         slides: items
+      }, {
+        onError: (e) => console.error('[AutoSave] Sync failed:', e)
       });
     }, 500);
 
@@ -1433,6 +1435,8 @@ const App: React.FC = () => {
       syncSlidesMutation.mutate({
         projectId: currentProjectIdRef.current,
         slides: itemsRef.current
+      }, {
+        onError: (e) => console.error('[FlushAutoSave] Sync failed:', e)
       });
     }
 
@@ -1490,6 +1494,18 @@ const App: React.FC = () => {
   const showToast = useCallback((message: string, type: ToastMessage["type"] = "info") => {
     setToast({ id: Date.now().toString(), message, type });
   }, []);
+
+  // 监听从 geminiService.ts 发出的 Smart Filter 降级提示事件
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.message) {
+        showToast(detail.message, detail.type || 'info');
+      }
+    };
+    window.addEventListener('show-toast', handler);
+    return () => window.removeEventListener('show-toast', handler);
+  }, [showToast]);
 
   const getProviderName = (task: "text" | "image" | "vision") => {
     if (
@@ -1730,6 +1746,8 @@ const App: React.FC = () => {
         syncSlidesMutation.mutate({
           projectId: currentProjectIdRef.current,
           slides: slidesToSync
+        }, {
+          onError: (e) => console.error('[handleOutlineImport#imported] Sync failed:', e)
         });
         setHasUserInteraction(true); // 标记交互以触发保存
       } else {
@@ -1757,6 +1775,8 @@ const App: React.FC = () => {
         syncSlidesMutation.mutate({
           projectId: currentProjectIdRef.current,
           slides: slidesToSync
+        }, {
+          onError: (e) => console.error('[handleOutlineImport#slides] Sync failed:', e)
         });
         setHasUserInteraction(true); // 标记交互以触发保存
         setOutlineResetKey(prev => prev + 1); // Reset generator for next time
@@ -2056,6 +2076,8 @@ const App: React.FC = () => {
       syncSlidesMutation.mutate({
         projectId: currentProjectIdRef.current,
         slides: slidesToSync
+      }, {
+        onError: (e) => console.error('[handleAddTextPage] Sync failed:', e)
       });
     }
     setHasUserInteraction(true); // 标记交互以触发保存
@@ -2140,6 +2162,8 @@ const App: React.FC = () => {
       syncSlidesMutation.mutate({
         projectId: currentProjectId,
         slides: slidesToSync
+      }, {
+        onError: (e) => console.error('[confirmImageTasks] Sync failed:', e)
       });
 
       setHasUserInteraction(true); // 标记交互以触发保存
@@ -2614,7 +2638,7 @@ const App: React.FC = () => {
     if (currentProjectId && generatedResults.length > 0) {
       const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
 
-      // 直接从 items 同步计算 slidesToSync，避免 setItems 回调闭包陷阱
+      // 先计算 slidesToSync（基于当前 state 快照）
       const slidesToSync = items.map(slide => {
         const result = resultsMap.get(slide.id);
         if (result) {
@@ -2625,27 +2649,29 @@ const App: React.FC = () => {
             status: 'success' as const
           };
         }
-        if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-          return {
-            ...slide,
-            variants: [slide.previewUrl, ...slide.variants]
-          };
-        }
         return slide;
       });
 
-      // 立即更新 UI
-      setItems(slidesToSync);
+      // 函数式 setItems 确保并发安全
+      setItems(() => slidesToSync);
 
-      // 等待数据库同步完成
-      try {
-        await syncSlidesMutation.mutateAsync({
-          projectId: currentProjectId,
-          slides: slidesToSync
-        });
-      } catch (e) {
-        console.error('[handleGenerateBatch] Sync failed:', e);
-      }
+      // 数据库同步移到 setItems 外部，带 1 次重试
+      const syncWithRetry = async (attempt = 0): Promise<void> => {
+        try {
+          await syncSlidesMutation.mutateAsync({
+            projectId: currentProjectId,
+            slides: slidesToSync
+          });
+        } catch (e) {
+          console.error(`[handleGenerateBatch] Sync failed (attempt ${attempt + 1}):`, e);
+          if (attempt < 1) {
+            await new Promise(r => setTimeout(r, 1000));
+            return syncWithRetry(attempt + 1);
+          }
+          showToast('幻灯片数据保存失败，请检查网络后刷新页面', 'error');
+        }
+      };
+      await syncWithRetry();
     } else {
       console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
@@ -2710,7 +2736,7 @@ const App: React.FC = () => {
 
         // Sync to database after successful generation
         if (currentProjectId && result) {
-          // 直接从 items 计算 slidesToSync，避免 setItems 回调闭包陷阱
+          // 先计算 slidesToSync
           const slidesToSync = items.map(slide => {
             if (slide.id === result.itemId) {
               return {
@@ -2719,28 +2745,30 @@ const App: React.FC = () => {
                 status: 'success' as const
               };
             }
-            if (slide.previewUrl && !slide.variants.includes(slide.previewUrl)) {
-              return {
-                ...slide,
-                variants: [slide.previewUrl, ...slide.variants]
-              };
-            }
             return slide;
           });
 
-          // 立即更新 UI
-          setItems(slidesToSync);
+          // 函数式 setItems 确保并发安全
+          setItems(() => slidesToSync);
 
-          // 等待数据库同步完成
-          try {
-            await syncSlidesMutation.mutateAsync({
-              projectId: currentProjectId,
-              slides: slidesToSync
-            });
-            await queryClient.invalidateQueries({ queryKey: ['projects'] });
-          } catch (e) {
-            console.error('[handleSingleGenerate] Sync failed:', e);
-          }
+          // 数据库同步移到 setItems 外部，带 1 次重试
+          const syncSingleWithRetry = async (attempt = 0): Promise<void> => {
+            try {
+              await syncSlidesMutation.mutateAsync({
+                projectId: currentProjectId,
+                slides: slidesToSync
+              });
+              queryClient.invalidateQueries({ queryKey: ['projects'] });
+            } catch (e) {
+              console.error(`[handleSingleGenerate] Sync failed (attempt ${attempt + 1}):`, e);
+              if (attempt < 1) {
+                await new Promise(r => setTimeout(r, 1000));
+                return syncSingleWithRetry(attempt + 1);
+              }
+              showToast('幻灯片数据保存失败，请检查网络后刷新页面', 'error');
+            }
+          };
+          await syncSingleWithRetry();
         }
 
         // 检查是否所有幻灯片都已完成并更新项目状态
@@ -2783,37 +2811,52 @@ const App: React.FC = () => {
 
       // 同步到数据库
       if (currentProjectId && result) {
-        setItems((currentItems) => {
-          const slidesToSync = currentItems.map(slide => {
-            if (slide.id === result.itemId) {
-              return {
-                ...slide,
-                variants: result.variants,
-                status: 'success' as const
-              };
-            }
-            return slide;
-          });
-
-          syncSlidesMutation.mutate({
-            projectId: currentProjectId,
-            slides: slidesToSync
-          });
-
-          return slidesToSync;
+        // 计算 slidesToSync（基于渲染闭包快照）
+        const slidesToSync = items.map(slide => {
+          if (slide.id === result.itemId) {
+            return {
+              ...slide,
+              variants: result.variants,
+              status: 'success' as const
+            };
+          }
+          return slide;
         });
 
-        // 更新项目整体状态
+        // 函数式 setItems 更新 UI（纯状态更新）
+        setItems(() => slidesToSync);
+
+        // 数据库同步移到 setItems 外部，带 1 次重试
+        const syncSingleWithRetry = async (attempt = 0): Promise<void> => {
+          try {
+            await syncSlidesMutation.mutateAsync({
+              projectId: currentProjectId,
+              slides: slidesToSync
+            });
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+          } catch (e) {
+            console.error(`[handleRegenerate] Sync failed (attempt ${attempt + 1}):`, e);
+            if (attempt < 1) {
+              await new Promise(r => setTimeout(r, 1000));
+              return syncSingleWithRetry(attempt + 1);
+            }
+          }
+        };
+        syncSingleWithRetry().catch((e) => {
+          console.error('[handleRegenerate] Sync failed after retries - data may be lost:', e);
+        });
+
+        // 更新项目整体状态（纯状态检查，无副作用）
         setItems((currentItems) => {
           const allCompleted = currentItems.length > 0 &&
             currentItems.every(i => i.status === 'success');
 
-          if (allCompleted && currentProjectId) {
-            updateProjectMutation.mutate({
-              id: currentProjectId,
-              data: { status: 'completed' }
-            });
-          }
+          if (!allCompleted) return currentItems;
+
+          updateProjectMutation.mutate({
+            id: currentProjectId,
+            data: { status: 'completed' }
+          });
           return currentItems;
         });
       }
@@ -4515,6 +4558,11 @@ const App: React.FC = () => {
                                 disabled={!!previewSnapshot}
                                 className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px] ${previewSnapshot ? 'opacity-70 cursor-not-allowed' : ''}`}
                               />
+                            )}
+                            {!isRequirementsPreview && !previewSnapshot && (
+                              <div className="text-xs text-slate-300 mt-1">
+                                💡 建议格式: ## 2. 总体视觉规范 / ### [封面页] / ### [内容页]
+                              </div>
                             )}
                             {!isRequirementsPreview && (
                               <button

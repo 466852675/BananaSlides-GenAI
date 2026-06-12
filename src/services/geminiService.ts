@@ -2,6 +2,11 @@
 import { AppSettings, StyleConfig, OutlineItem, DocParserConfig, StoredResource } from "../types";
 import { uploadFile, client, TOKEN_KEY } from "../api/client";
 
+// --- Module-level State ---
+
+/** 防重复：Smart Filter 降级提示仅展示一次/会话 */
+let smartFilterWarningShown = false;
+
 // --- Helpers ---
 
 const ensureUploaded = async (resource: StoredResource): Promise<string> => {
@@ -192,7 +197,19 @@ export const generateSlideVariant = async (
             triggerTime,
             projectId
         });
-        return (response as any).data;
+        // 检查 Smart Filter 降级警告（非阻塞，仅提示一次/会话）
+        const respData = response as any;
+        if (respData.warning === 'SMART_FILTER_FALLBACK' && !smartFilterWarningShown) {
+            smartFilterWarningShown = true;
+            // 通过自定义事件触发 toast，避免循环依赖
+            window.dispatchEvent(new CustomEvent('show-toast', {
+                detail: {
+                    message: respData.warningMessage || '设计需求格式未识别，已使用完整文本。建议使用 ## 2. 总体视觉规范和 ### [页面类型] 格式分段。',
+                    type: 'info'
+                }
+            }));
+        }
+        return respData.data;
     } catch (error) {
         console.error("Generate Variant Error:", error);
         throw error;
@@ -255,7 +272,8 @@ export const getOutputMode = async (forceRefresh = false): Promise<'stream' | 'c
         cachedOutputMode = settings?.outputMode || 'stream';
         return cachedOutputMode;
     } catch {
-        return 'stream'; // 默认流式
+        console.warn('[getOutputMode] Failed to fetch output mode from server, defaulting to stream');
+        return 'stream';
     }
 };
 

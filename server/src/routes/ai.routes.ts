@@ -9,7 +9,7 @@ import {
     handleGenerateSlideDetail,
     // New Handlers
     handleAnalyzeTemplateConcept,
-    handleGenerateStyleReference,
+    handleGenerateStylePreview,
     // Streaming Handlers
     handleSmartRefineStream,
     handleGenerateOutlineStream,
@@ -24,7 +24,8 @@ router.use(authenticate);
 
 // 非流式端点
 router.post('/analyze-template-concept', handleAnalyzeTemplateConcept);
-router.post('/generate-style-reference', handleGenerateStyleReference);
+router.post('/generate-style-preview', handleGenerateStylePreview);
+router.post('/generate-style-reference', handleGenerateStylePreview); // @deprecated 保留兼容
 router.post('/smart-refine', handleSmartRefine);
 router.post('/extract-text', handleExtractText);
 router.post('/generate-outline', handleGenerateOutline);
