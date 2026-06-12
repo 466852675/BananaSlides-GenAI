@@ -373,9 +373,9 @@ export const useUpdateProject = () => {
             }
         },
         onSettled: (_data, _error, { id }) => {
-            // 只刷新单个项目缓存，避免频繁刷新整个项目列表
-            // 乐观更新已经在 onMutate 中更新了缓存，这里只需要确保数据一致性
-            queryClient.invalidateQueries({ queryKey: ['project', id] });
+            // 不 invalidateQueries，避免覆盖 syncSlidesMutation.onSuccess 写入的缓存
+            // updateProjectMutation 主要用于 status/globalConfig 等元数据更新，
+            // 这些已在 onMutate 乐观更新中处理，不需要 refetch
         }
     });
 };

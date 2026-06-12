@@ -2678,9 +2678,9 @@ const App: React.FC = () => {
       console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
 
-    // 检查是否所有幻灯片都已完成并更新项目状态（从最新 state 读取）
-    const allCompleted = items.every(i => i.status === 'success') ||
-      generatedResults.length + items.filter(i => i.status === 'error').length === items.length;
+    // 检查是否所有幻灯片都已完成并更新项目状态
+    // 用 itemsToProcess 统计避免闭包 items 快照过期问题
+    const allCompleted = generatedResults.length + failureCount === itemsToProcess.length;
     if (allCompleted && currentProjectId) {
       updateProjectMutation.mutate({
         id: currentProjectId,
@@ -2834,10 +2834,10 @@ const App: React.FC = () => {
         };
         await syncSingleWithRetry();
 
-        // 更新项目整体状态（纯状态检查，无副作用）
-        setItems((currentItems) => currentItems); // 触发 re-render 获取最新状态
+        // 更新项目整体状态
         if (currentProjectId) {
-          const allCompleted = items.every(i => i.status === 'success');
+          // 单页生成，items 闭包快照仅该页状态变化，其他页不变，可直接用
+          const allCompleted = items.length > 0 && items.every(i => i.status === 'success');
           if (allCompleted) {
             updateProjectMutation.mutate({
               id: currentProjectId,
