@@ -2528,14 +2528,13 @@ const App: React.FC = () => {
         );
       }
       const generatedVariants = await Promise.all(promises);
+      // 生成成功一张就立即回写展示一张
       setItems((prev) =>
         prev.map((res) =>
           res.id === item.id
             ? {
               ...res,
               variants: generatedVariants,
-              // Keep original previewUrl (uploaded image) unchanged, generated images go to variants
-              // previewUrl stays as the original upload for display on the left side
               status: "success"
             }
             : res
@@ -2638,10 +2637,11 @@ const App: React.FC = () => {
     if (currentProjectId && generatedResults.length > 0) {
       const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
 
-      // 先计算 slidesToSync（基于当前 state 快照）
-      const slidesToSync = items.map(slide => {
+      // 使用函数式 setItems 保留 processItem 已回写的页面状态
+      // 只将 generatedResults 有结果但 status 仍不为 success 的页面更新
+      const newSlides = items.map(slide => {
         const result = resultsMap.get(slide.id);
-        if (result) {
+        if (result && slide.status !== 'success') {
           return {
             ...slide,
             variants: result.variants,
@@ -2652,15 +2652,12 @@ const App: React.FC = () => {
         return slide;
       });
 
-      // 函数式 setItems 确保并发安全
-      setItems(() => slidesToSync);
-
-      // 数据库同步移到 setItems 外部，带 1 次重试
+      // 数据库同步
       const syncWithRetry = async (attempt = 0): Promise<void> => {
         try {
           await syncSlidesMutation.mutateAsync({
             projectId: currentProjectId,
-            slides: slidesToSync
+            slides: newSlides
           });
         } catch (e) {
           console.error(`[handleGenerateBatch] Sync failed (attempt ${attempt + 1}):`, e);
@@ -2676,12 +2673,8 @@ const App: React.FC = () => {
       console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
 
-    // 批量生成完成，刷新项目列表缓存，确保退出重入时数据一致
-    if (currentProjectId) {
-      await queryClient.invalidateQueries({ queryKey: ['projects'] });
-      // 强制立即重新拉取项目列表，确保 handleOpenProject 拿到最新数据
-      await queryClient.refetchQueries({ queryKey: ['projects'] });
-    }
+    // 批量生成完成，缓存由 syncSlidesMutation.onSuccess 自动处理，不再手动 refetch
+    // 避免 React Query 返回的数据覆盖 processItem 已回写的 UI 状态
 
     // 检查是否所有幻灯片都已完成并更新项目状态
     // 如果所有现有项都已成功 (且至少有一个项),则标记为已完成
