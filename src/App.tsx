@@ -2619,6 +2619,9 @@ const App: React.FC = () => {
         .then((result) => {
           if (result) {
             generatedResults.push(result);
+          } else {
+            // null result（如内容过滤拦截），计入失败
+            failureCount++;
           }
         })
         .catch(() => {
@@ -2634,15 +2637,29 @@ const App: React.FC = () => {
     setIsProcessing(false);
 
     // Sync all generated slides to database
+    let syncFailed = false;
     if (currentProjectId && generatedResults.length > 0) {
       const resultsMap = new Map(generatedResults.map(r => [r.itemId, r]));
 
-      // 从最新 state 合并 variants，避免闭包 items 快照过期
-      let mergedSlides: GeneratedSlide[] = [];
-      setItems((prev) => {
-        mergedSlides = prev.map(slide => {
+      // 同步计算 slidesToSync（不依赖 setItems updater 的异步执行，避免空数组写入 DB）
+      const slidesToSync = items.map(slide => {
+        const result = resultsMap.get(slide.id);
+        if (result) {
+          return {
+            ...slide,
+            variants: result.variants,
+            previewUrl: result.previewUrl,
+            status: 'success' as const
+          };
+        }
+        return slide;
+      });
+
+      // UI 更新（函数式 setItems 读最新 prev）
+      setItems((prev) =>
+        prev.map(slide => {
           const result = resultsMap.get(slide.id);
-          if (result && slide.status !== 'success') {
+          if (result) {
             return {
               ...slide,
               variants: result.variants,
@@ -2651,29 +2668,27 @@ const App: React.FC = () => {
             };
           }
           return slide;
-        });
-        return mergedSlides;
-      });
+        })
+      );
 
-      // 数据库同步（用最新数据）
+      // 数据库同步（用同步计算的 slidesToSync）
       const syncWithRetry = async (attempt = 0): Promise<void> => {
         try {
           await syncSlidesMutation.mutateAsync({
             projectId: currentProjectId,
-            slides: mergedSlides
+            slides: slidesToSync
           });
         } catch (e) {
           console.error(`[handleGenerateBatch] Sync failed (attempt ${attempt + 1}):`, e);
-          if (attempt < 1) {
-            await new Promise(r => setTimeout(r, 1000));
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
             return syncWithRetry(attempt + 1);
           }
+          syncFailed = true;
           showToast('幻灯片数据保存失败，请检查网络后刷新页面', 'error');
         }
       };
       await syncWithRetry();
-
-      // 缓存已由 syncSlidesMutation.onSuccess (projects.ts) 中 setQueryData 写入，此处不再重复写入
     } else {
       console.warn('[handleGenerateBatch] No currentProjectId, skipping sync');
     }
@@ -2693,7 +2708,7 @@ const App: React.FC = () => {
         `调用 ${providerName} API 完成,但有 ${failureCount} 张生成失败`,
         "error"
       );
-    } else {
+    } else if (!syncFailed) {
       showToast(`调用 ${providerName} API 服务成功`, "success");
     }
   } finally {
@@ -2719,14 +2734,23 @@ const App: React.FC = () => {
         const totalCost = unitCost * count;
         showToast(`AI 正在生成 ${count} 张图片。预计消耗 ${totalCost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, "loading");
       } catch (e) {
+        console.error('[handleSingleGenerate] Cost/balance check failed:', e);
         showToast(`调用 ${providerName} API 生成单页中...`, "loading");
       }
       try {
         const result = await processItem(item, triggerTime);
+        let syncSuccess = true;
 
         // Sync to database after successful generation
         if (currentProjectId && result) {
-          // 从最新 state 合并 variants，避免闭包 items 快照过期
+          // 同步计算 slidesToSync（不依赖 setItems updater 的异步执行）
+          const slidesToSync = items.map(slide =>
+            slide.id === result.itemId
+              ? { ...slide, variants: result.variants, status: 'success' as const }
+              : slide
+          );
+
+          // UI 更新（函数式 setItems 读最新 prev）
           setItems((prev) =>
             prev.map((slide) =>
               slide.id === result.itemId
@@ -2735,33 +2759,31 @@ const App: React.FC = () => {
             )
           );
 
-          // 数据库同步，带 1 次重试
+          // 数据库同步，带指数回退重试
           const syncSingleWithRetry = async (attempt = 0): Promise<void> => {
             try {
               await syncSlidesMutation.mutateAsync({
                 projectId: currentProjectId,
-                slides: items.map((slide) =>
-                  slide.id === result.itemId
-                    ? { ...slide, variants: result.variants, status: 'success' as const }
-                    : slide
-                )
+                slides: slidesToSync
               });
               queryClient.invalidateQueries({ queryKey: ['projects'] });
             } catch (e) {
               console.error(`[handleSingleGenerate] Sync failed (attempt ${attempt + 1}):`, e);
-              if (attempt < 1) {
-                await new Promise(r => setTimeout(r, 1000));
+              if (attempt < 2) {
+                await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
                 return syncSingleWithRetry(attempt + 1);
               }
+              syncSuccess = false;
               showToast('幻灯片数据保存失败，请检查网络后刷新页面', 'error');
             }
           };
           await syncSingleWithRetry();
         }
 
-        // 检查是否所有幻灯片都已完成并更新项目状态
-        if (currentProjectId) {
-          const allCompleted = items.length > 0 && items.every(i => i.status === 'success');
+        // 检查是否所有幻灯片都已完成并更新项目状态（仅在同步成功后执行）
+        if (syncSuccess && currentProjectId) {
+          // 当前 item 已在 result 中成功，需要算入：闭包 items 里它的 status 还是 idle/error
+          const allCompleted = items.length > 0 && items.every(i => i.status === 'success' || i.id === id);
           if (allCompleted) {
             updateProjectMutation.mutate({
               id: currentProjectId,
@@ -2770,7 +2792,10 @@ const App: React.FC = () => {
           }
         }
 
-        showToast(`调用 ${providerName} API 服务成功`, "success");
+        // 仅在同步成功时显示成功 toast，避免与同步失败的 error toast 冲突
+        if (syncSuccess) {
+          showToast(`调用 ${providerName} API 服务成功`, "success");
+        }
       } catch (error: any) {
         showToast(`调用 ${providerName} API 失败: ${error.message}`, "error");
       }
@@ -2794,52 +2819,63 @@ const App: React.FC = () => {
     try {
       const result = await processItem(item, triggerTime);
 
+      let syncSuccess = true;
+
       // 同步到数据库
       if (currentProjectId && result) {
+        // 同步计算 slidesToSync（不依赖 setItems updater 的异步执行）
+        const slidesToSync = items.map(slide =>
+          slide.id === result.itemId
+            ? { ...slide, variants: result.variants, status: "success" as const }
+            : slide
+        );
+
         // 函数式 setItems 从最新 state 更新 UI，避免闭包快照覆盖 processItem 的回写
         setItems((prev) =>
           prev.map((slide) =>
             slide.id === result.itemId
-              ? { ...slide, variants: result.variants, status: 'success' as const }
+              ? { ...slide, variants: result.variants, status: "success" as const }
               : slide
           )
         );
 
-        // 数据库同步，带 1 次重试
+        // 数据库同步，带指数回退重试
         const syncSingleWithRetry = async (attempt = 0): Promise<void> => {
           try {
             await syncSlidesMutation.mutateAsync({
               projectId: currentProjectId,
-              slides: items.map((slide) =>
-                slide.id === result.itemId
-                  ? { ...slide, variants: result.variants, status: 'success' as const }
-                  : slide
-              )
+              slides: slidesToSync
             });
-            queryClient.invalidateQueries({ queryKey: ['projects'] });
+            queryClient.invalidateQueries({ queryKey: ["projects"] });
           } catch (e) {
             console.error(`[handleRegenerate] Sync failed (attempt ${attempt + 1}):`, e);
-            if (attempt < 1) {
-              await new Promise(r => setTimeout(r, 1000));
+            if (attempt < 2) {
+              await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
               return syncSingleWithRetry(attempt + 1);
             }
+            syncSuccess = false;
+            showToast("幻灯片数据保存失败，请检查网络后刷新页面", "error");
           }
         };
         await syncSingleWithRetry();
 
-        // 更新项目整体状态
-        if (currentProjectId) {
-          const allCompleted = items.length > 0 && items.every(i => i.status === 'success');
+        // 更新项目整体状态（仅在同步成功后执行）
+        if (syncSuccess && currentProjectId) {
+          // 当前 item 已在 result 中成功，需要算入：闭包 items 里它的 status 还是 generating
+          const allCompleted = items.length > 0 && items.every(i => i.status === "success" || i.id === id);
           if (allCompleted) {
             updateProjectMutation.mutate({
               id: currentProjectId,
-              data: { status: 'completed' }
+              data: { status: "completed" }
             });
           }
         }
       }
 
-      showToast(`调用 ${providerName} API 服务成功`, "success");
+      // 仅在同步成功时显示成功 toast，避免与同步失败的 error toast 冲突
+      if (syncSuccess) {
+        showToast(`调用 ${providerName} API 服务成功`, "success");
+      }
     } catch (e) {
       // 【修复】重试失败时，将 status 恢复为 idle，避免永久卡在 generating
       setItems((prev) =>
