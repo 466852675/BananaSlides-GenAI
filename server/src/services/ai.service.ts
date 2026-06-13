@@ -1004,18 +1004,18 @@ const calculateFinalResolution = (qualitySetting: string | undefined, aspectRati
             '9:16': '720x1280'
         },
         '2K': {
-            '16:9': '1920x1080',
+            '16:9': '1920x1088',
             '4:3': '2048x1536',
             '1:1': '2048x2048',
             '3:4': '1536x2048',
-            '9:16': '1080x1920'
+            '9:16': '1088x1920'
         },
         '4K': {
-            '16:9': '3840x2160',
+            '16:9': '3840x2176',
             '4:3': '4096x3072',
-            '1:1': '2160x2160',
+            '1:1': '2176x2176',
             '3:4': '3072x4096',
-            '9:16': '2160x3840'
+            '9:16': '2176x3840'
         }
     };
 
@@ -1212,15 +1212,20 @@ async function callOpenAIImageGeneration(
         size = volcengineResolutionMap[userTier][aspectRatio] || size;
     }
 
-    // 确保 W/H 是 32 的倍数 (仅智谱、火山引擎等有该要求的 provider)
+    // 确保 W/H 是 16 的倍数（通用要求：DALL-E、gpt-image-2 等均需要）
+    // 32 的倍数仅智谱、火山引擎等有该要求
     let [finalW, finalH] = size.split('x').map(Number);
+    // 所有 provider 至少 16 对齐
+    finalW = Math.ceil(finalW / 16) * 16;
+    finalH = Math.ceil(finalH / 16) * 16;
+    // 智谱/火山引擎额外做 32 对齐
     if (isZhipu || isVolcengine) {
-        finalW = Math.round(finalW / 32) * 32;
-        finalH = Math.round(finalH / 32) * 32;
+        finalW = Math.ceil(finalW / 32) * 32;
+        finalH = Math.ceil(finalH / 32) * 32;
     }
     size = `${finalW}x${finalH}`;
 
-    console.log(`[OpenAI Image] Calling: ${config.baseUrl}/images/generations, Model: ${config.model}, Size: ${size}`);
+    console.log(`[OpenAI Image] Calling: ${config.baseUrl}, Model: ${config.model}, Size: ${size}`);
 
     const body: any = {
         model: config.model,
