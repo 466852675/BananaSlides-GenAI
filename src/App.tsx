@@ -2726,27 +2726,25 @@ const App: React.FC = () => {
 
         // Sync to database after successful generation
         if (currentProjectId && result) {
-          // 先计算 slidesToSync
-          const slidesToSync = items.map(slide => {
-            if (slide.id === result.itemId) {
-              return {
-                ...slide,
-                variants: result.variants,
-                status: 'success' as const
-              };
-            }
-            return slide;
-          });
+          // 从最新 state 合并 variants，避免闭包 items 快照过期
+          setItems((prev) =>
+            prev.map((slide) =>
+              slide.id === result.itemId
+                ? { ...slide, variants: result.variants, status: 'success' as const }
+                : slide
+            )
+          );
 
-          // 函数式 setItems 确保并发安全
-          setItems(() => slidesToSync);
-
-          // 数据库同步移到 setItems 外部，带 1 次重试
+          // 数据库同步，带 1 次重试
           const syncSingleWithRetry = async (attempt = 0): Promise<void> => {
             try {
               await syncSlidesMutation.mutateAsync({
                 projectId: currentProjectId,
-                slides: slidesToSync
+                slides: items.map((slide) =>
+                  slide.id === result.itemId
+                    ? { ...slide, variants: result.variants, status: 'success' as const }
+                    : slide
+                )
               });
               queryClient.invalidateQueries({ queryKey: ['projects'] });
             } catch (e) {
@@ -2762,18 +2760,15 @@ const App: React.FC = () => {
         }
 
         // 检查是否所有幻灯片都已完成并更新项目状态
-        setItems((currentItems) => {
-          const allCompleted = currentItems.length > 0 &&
-            currentItems.every(i => i.status === 'success');
-
-          if (allCompleted && currentProjectId) {
+        if (currentProjectId) {
+          const allCompleted = items.length > 0 && items.every(i => i.status === 'success');
+          if (allCompleted) {
             updateProjectMutation.mutate({
               id: currentProjectId,
               data: { status: 'completed' }
             });
           }
-          return currentItems;
-        });
+        }
 
         showToast(`调用 ${providerName} API 服务成功`, "success");
       } catch (error: any) {
@@ -2801,27 +2796,25 @@ const App: React.FC = () => {
 
       // 同步到数据库
       if (currentProjectId && result) {
-        // 计算 slidesToSync（基于渲染闭包快照）
-        const slidesToSync = items.map(slide => {
-          if (slide.id === result.itemId) {
-            return {
-              ...slide,
-              variants: result.variants,
-              status: 'success' as const
-            };
-          }
-          return slide;
-        });
+        // 函数式 setItems 从最新 state 更新 UI，避免闭包快照覆盖 processItem 的回写
+        setItems((prev) =>
+          prev.map((slide) =>
+            slide.id === result.itemId
+              ? { ...slide, variants: result.variants, status: 'success' as const }
+              : slide
+          )
+        );
 
-        // 函数式 setItems 更新 UI（纯状态更新）
-        setItems(() => slidesToSync);
-
-        // 数据库同步移到 setItems 外部，带 1 次重试
+        // 数据库同步，带 1 次重试
         const syncSingleWithRetry = async (attempt = 0): Promise<void> => {
           try {
             await syncSlidesMutation.mutateAsync({
               projectId: currentProjectId,
-              slides: slidesToSync
+              slides: items.map((slide) =>
+                slide.id === result.itemId
+                  ? { ...slide, variants: result.variants, status: 'success' as const }
+                  : slide
+              )
             });
             queryClient.invalidateQueries({ queryKey: ['projects'] });
           } catch (e) {
@@ -2836,7 +2829,6 @@ const App: React.FC = () => {
 
         // 更新项目整体状态
         if (currentProjectId) {
-          // 单页生成，items 闭包快照仅该页状态变化，其他页不变，可直接用
           const allCompleted = items.length > 0 && items.every(i => i.status === 'success');
           if (allCompleted) {
             updateProjectMutation.mutate({
