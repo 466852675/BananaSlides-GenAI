@@ -341,6 +341,7 @@ export class ProjectService {
                     contentType: slide.contentType || 'text',
                     title: slide.title || 'Untitled',
                     content: slide.textContent || slide.content || '',
+                    previousContent: slide.previousContent ?? null,   // 新增
                     brief: slide.brief || '',
                     variants: JSON.stringify(toVariantArray(slide.variants)),
                     // Enforce max 4 variants (Backend Guard)

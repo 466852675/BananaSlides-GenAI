@@ -31,6 +31,7 @@ export interface GeneratedSlide {
   originalFile: StoredResource | null;
   title?: string;
   textContent?: string;
+  previousContent?: string;   // 新增：修饰前内容（撤回锚点）
   previewUrl: string;
   variants: string[];
   variantCount: number;

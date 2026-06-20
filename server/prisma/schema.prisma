@@ -459,7 +459,8 @@ model Slide {
   pageType        String
   contentType     String
   title           String
-  content         String
+  content          String
+  previousContent  String?   // 新增：单页 AI修饰前的内容（撤回锚点）
   brief           String?
   variants        String   @default("[]")
   variantCount    Int      @default(2)
