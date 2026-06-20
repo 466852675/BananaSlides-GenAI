@@ -38,6 +38,42 @@ export function invalidateConfigCache(): void {
 const DEFAULT_GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 const DEFAULT_GEMINI_BASE_URL = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com";
 
+/**
+ * 设计建议统一格式规约（权威定义）
+ *
+ * 关键设计点：
+ * 1. 必须含 EXAMPLE 锚定"单段连续文字"格式 —— 否则 AI 会把下方 Layout/Hierarchy/Logic/Shapes
+ *    等指令项误当作输出分节模板（曾导致 slide_refine 产出 [Layout]/[Hierarchy]/[Logic] 分节）。
+ * 2. 显式禁止 sub-headings / bracket tags / blank lines 作为输出结构。
+ *
+ * 消费方：PROMPT_TEMPLATES.slide_refine（单页AI修饰）。
+ * 待迁移：generateSlideDetail / generateSlideDetailStream（因历史空行格式差异暂保持独立副本，
+ * 三者输出格式需保持一致，后续重构时统一引用本常量）。
+ */
+const DESIGN_SUGGESTION_SPEC = `[CRITICAL VISUAL INSTRUCTION — STRICTLY ENFORCED]
+After the content, you MUST append a design suggestion field. Output format:
+
+---DESIGN_SUGGESTION_START---
+**设计建议：** <your suggestion>
+
+[OUTPUT STRUCTURE — MOST IMPORTANT]
+- The design suggestion MUST be ONE single continuous paragraph (一段连续文字).
+- [STRICTLY FORBIDDEN]: Do NOT split into sub-sections. Do NOT use sub-headings, bold labels, bullet lists, or bracket tags like [Layout]/[Hierarchy]/[Logic]/[Shapes] in the output. Do NOT insert blank lines within the suggestion.
+- The bracketed aspects below are INPUT instructions (what to cover), NOT output structure. Weave them into ONE flowing paragraph.
+
+[CONTENT SCOPE] (cover these aspects inside the single paragraph)
+- Act as a Senior Art Director. FOCUS ONLY on Layout, Structure, Charts, Shapes, Icons.
+- [STRICTLY FORBIDDEN]: Do NOT mention colors, palettes, art styles, or lighting.
+- Layout / Hierarchy / Logic / Shapes: e.g. 'Left-Right Split', 'Make central concept 2x larger than supporting points', 'arrows for flow A->B', 'Funnel/Honeycomb/Pyramid'.
+- SEPARATOR REQUIRED: Put "---DESIGN_SUGGESTION_START---" on a new line before the design suggestion.
+
+[EXAMPLE — mimic this exact single-paragraph format]
+(The slide content...)
+
+---DESIGN_SUGGESTION_START---
+**设计建议：** 采用中心发散布局。核心概念'AI大脑'位于画面中央且尺寸最大（层级1）；四个子模块环绕周边（层级2），使用虚线箭头指向中心（逻辑：汇聚）。使用蜂窝状容器包裹每个模块。
+`;
+
 // --- Shared Prompt Templates (smartRefine / smartRefineStream 共享) ---
 const PROMPT_TEMPLATES: Record<string, (input: string) => string> = {
     requirement_polish: (text) => `
@@ -135,6 +171,20 @@ You MUST output the result in the following Standard Markdown Structure. Do NOT 
 ---
 Constraint: Return ONLY the markdown content. Language: Simplified Chinese (简体中文).`,
     content: (text) => `Task: Refine the following presentation slide content. Make it concise, professional, impactful, and suitable for a slide (use bullet points or punchy text if applicable). Maintain the original meaning.\n\nInput Text: "${text}"\n\nRequirement: Return ONLY the refined text in Simplified Chinese (简体中文). Do not add explanations or conversational filler.`,
+    slide_refine: (text) => `Task: Refine the following presentation slide content for a more professional, polished expression. PRESERVE the original length, detail level, structure, and ALL key information — do NOT shorten, over-summarize, merge bullets, or strip detail. Only improve wording, flow, and professionalism. The refined content is the PRIMARY output and must stay complete; the design suggestion is a short appendix.
+
+Input Text: "${text}"
+
+[CONTENT REFINEMENT RULES]
+1. Language: Strictly Simplified Chinese (简体中文).
+2. Return ONLY the refined slide content the audience can read. Do NOT add explanations, conversational filler, or framing like "以下是...的内容".
+3. Do NOT describe what the slide "is" or "contains" — directly output the content.
+4. 保持原文的篇幅与信息密度（保持原文长度、要点数量与细节层级）。仅优化措辞、流畅度与专业感，禁止压缩、合并要点或过度概括。
+
+${DESIGN_SUGGESTION_SPEC}
+[SLIDE REFINE SPECIFIC]
+- Generate the design suggestion based on the REFINED content above.
+- ALWAYS produce one, regardless of whether the Input Text contained one: if it did, rewrite it to match the refined content; if it did not, create a new one.`,
 };
 
 // --- AI Prompt Generation Helper Functions ---
@@ -1448,7 +1498,7 @@ async function callOpenAIImageGeneration(
 
 export const AIService = {
 
-    async smartRefine(text: string, type: 'requirement' | 'content' | 'requirement_polish' | 'template_description', settings?: AppSettings, userId?: string): Promise<string> {
+    async smartRefine(text: string, type: 'requirement' | 'content' | 'slide_refine' | 'requirement_polish' | 'template_description', settings?: AppSettings, userId?: string): Promise<string> {
         if (process.env.MOCK_AI === '1') {
             const t = text === undefined || text === null ? '' : String(text);
             if (!t.trim()) return '';
@@ -2502,7 +2552,7 @@ export const AIService = {
      */
     async smartRefineStream(
         text: string,
-        type: 'requirement' | 'content' | 'requirement_polish' | 'template_description',
+        type: 'requirement' | 'content' | 'slide_refine' | 'requirement_polish' | 'template_description',
         settings: AppSettings | undefined,
         onChunk: (chunk: string) => void
     ): Promise<void> {

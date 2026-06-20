@@ -2015,7 +2015,7 @@ const App: React.FC = () => {
       let accumulatedText = '';
       const refined = await smartRefineAuto(
         text,
-        "content",
+        "slide_refine",
         (chunk) => {
           accumulatedText += chunk;
           if (onChunk) {

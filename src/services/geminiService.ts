@@ -33,7 +33,7 @@ const getAuthHeaders = (): HeadersInit => {
 
 // --- Exports ---
 
-export const smartRefine = async (text: string, type: 'requirement' | 'content' | 'requirement_polish' | 'template_description', triggerTime?: string, projectId?: string): Promise<string> => {
+export const smartRefine = async (text: string, type: 'requirement' | 'content' | 'slide_refine' | 'requirement_polish' | 'template_description', triggerTime?: string, projectId?: string): Promise<string> => {
     try {
         const response = await client.post<{ success: boolean, data: string }>('/ai/smart-refine', {
             text,
@@ -290,7 +290,7 @@ export const refreshOutputModeCache = async (): Promise<'stream' | 'complete'> =
  */
 export const smartRefineStream = async (
     text: string,
-    type: 'requirement' | 'content' | 'requirement_polish' | 'template_description',
+    type: 'requirement' | 'content' | 'slide_refine' | 'requirement_polish' | 'template_description',
     onChunk: (chunk: string) => void,
     triggerTime?: string,
     projectId?: string
@@ -478,7 +478,7 @@ export const generateSlideDetailStream = async (
  */
 export const smartRefineAuto = async (
     text: string,
-    type: 'requirement' | 'content' | 'requirement_polish' | 'template_description',
+    type: 'requirement' | 'content' | 'slide_refine' | 'requirement_polish' | 'template_description',
     onChunk?: (chunk: string) => void,
     triggerTime?: string,
     projectId?: string
