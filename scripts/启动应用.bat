@@ -42,9 +42,9 @@ echo    Done.
 echo.
 
 
-echo [3/5] Syncing database schema...
+echo [3/5] Syncing database schema + regenerating Prisma Client...
 cd server
-call npx prisma db push --skip-generate >nul 2>&1
+call npx prisma db push
 cd ..
 echo    Done.
 echo.
