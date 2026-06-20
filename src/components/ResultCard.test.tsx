@@ -25,7 +25,6 @@ describe('ResultCard handleSmartRefine', () => {
       />
     );
     fireEvent.click(screen.getByTitle('AI 智能修饰'));
-    // 等待异步 onRefineContent 解析
     await new Promise(r => setTimeout(r, 0));
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ previousContent: '原始内容' }));
   });
@@ -40,5 +39,42 @@ describe('ResultCard handleSmartRefine', () => {
     fireEvent.click(screen.getByTitle('AI 智能修饰'));
     await new Promise(r => setTimeout(r, 0));
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ previousContent: '上次修饰后' }));
+  });
+});
+
+describe('ResultCard 撤回按钮', () => {
+  it('previousContent 有值且非只读/修饰中时显示', () => {
+    const item = { ...baseItem, previousContent: '修饰前' };
+    render(<ResultCard item={item} onUpdate={vi.fn()} onRefineContent={vi.fn()} />);
+    expect(screen.getByTitle('撤回修饰')).toBeInTheDocument();
+  });
+
+  it('readOnly 模式不显示', () => {
+    const item = { ...baseItem, previousContent: '修饰前' };
+    render(<ResultCard item={item} onUpdate={vi.fn()} onRefineContent={vi.fn()} readOnly />);
+    expect(screen.queryByTitle('撤回修饰')).toBeNull();
+  });
+
+  it('previousContent 缺省时不显示', () => {
+    render(<ResultCard item={baseItem} onUpdate={vi.fn()} onRefineContent={vi.fn()} />);
+    expect(screen.queryByTitle('撤回修饰')).toBeNull();
+  });
+
+  it('点击撤回恢复 textContent 并清空 previousContent', () => {
+    const onUpdate = vi.fn();
+    const item = { ...baseItem, textContent: '修饰后', previousContent: '修饰前' };
+    render(<ResultCard item={item} onUpdate={onUpdate} onRefineContent={vi.fn()} />);
+    fireEvent.click(screen.getByTitle('撤回修饰'));
+    expect(onUpdate).toHaveBeenCalledWith({ textContent: '修饰前', previousContent: undefined });
+  });
+
+  it('撤回无确认弹窗（直接执行）', () => {
+    const onUpdate = vi.fn();
+    const onShowConfirm = vi.fn();
+    const item = { ...baseItem, textContent: '修饰后', previousContent: '修饰前' };
+    render(<ResultCard item={item} onUpdate={onUpdate} onRefineContent={vi.fn()} onShowConfirm={onShowConfirm} />);
+    fireEvent.click(screen.getByTitle('撤回修饰'));
+    expect(onUpdate).toHaveBeenCalled();
+    expect(onShowConfirm).not.toHaveBeenCalled();
   });
 });

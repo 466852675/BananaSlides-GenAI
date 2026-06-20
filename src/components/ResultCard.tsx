@@ -3,7 +3,7 @@ import React, { useRef, useState } from 'react';
 import { GeneratedSlide, PageType } from '../types';
 import { downloadImage } from '../utils';
 import { exportToPdf, exportToPptx } from '../services/exportService';
-import { Download, Loader2, AlertCircle, Clock, FileText, Image as ImageIcon, GripVertical, RefreshCw, Zap, Edit, Upload, Maximize2, Layers, Trash2, Copy, BookOpen, Flag, Home, LayoutList, FileOutput, FileType, Sparkles, Eye, Edit3 } from 'lucide-react';
+import { Download, Loader2, AlertCircle, Clock, FileText, Image as ImageIcon, GripVertical, RefreshCw, Zap, Edit, Upload, Maximize2, Layers, Trash2, Copy, BookOpen, Flag, Home, LayoutList, FileOutput, FileType, Sparkles, Eye, Edit3, Undo2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { PointsBadge } from './PointsBadge';
 import { AIGlowContainer } from './AIGlowContainer';
@@ -328,6 +328,17 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                             {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                             {isRefining ? '修饰中...' : 'AI 修饰'}
                                             {!isRefining && <PointsBadge actionCode="smart_refine" compact showIcon={false} className="ml-1" />}
+                                        </button>
+                                    )}
+
+                                    {item.previousContent && !isRefining && !readOnly && onUpdate && (
+                                        <button
+                                            onClick={() => onUpdate({ textContent: item.previousContent!, previousContent: undefined })}
+                                            className="absolute bottom-2 right-[5.5rem] p-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-medium transition-all shadow-sm bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 hover:shadow-md opacity-0 group-hover:opacity-100"
+                                            title="撤回修饰"
+                                        >
+                                            <Undo2 size={12} />
+                                            撤回修饰
                                         </button>
                                     )}
                                 </>
