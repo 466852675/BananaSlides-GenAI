@@ -78,3 +78,14 @@ describe('ResultCard 撤回按钮', () => {
     expect(onShowConfirm).not.toHaveBeenCalled();
   });
 });
+
+describe('ResultCard 边界 a：手动编辑清空 previousContent', () => {
+  it('手动编辑 textarea 时 onUpdate 清空 previousContent', () => {
+    const onUpdate = vi.fn();
+    const item = { ...baseItem, textContent: '修饰后', previousContent: '修饰前' };
+    render(<ResultCard item={item} onUpdate={onUpdate} onRefineContent={vi.fn()} />);
+    const textarea = screen.getByPlaceholderText('在此输入正文内容...') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: '手动改了' } });
+    expect(onUpdate).toHaveBeenCalledWith({ textContent: '手动改了', previousContent: undefined });
+  });
+});
