@@ -142,8 +142,14 @@ export const ResultCard: React.FC<ResultCardProps> = ({
     const handleSmartRefine = async () => {
         if (!onRefineContent || !item.textContent || isRefining || readOnly) return;
 
+        const originalContent = item.textContent;  // 修饰前快照
         setIsRefining(true);
-        let accumulatedText = item.textContent;  // 从原始内容开始累积
+        // 存旧值供撤回（必须在流式覆盖 textContent 之前）
+        if (onUpdate) {
+            onUpdate({ previousContent: originalContent });
+        }
+
+        let accumulatedText = originalContent;
 
         try {
             const refined = await onRefineContent(item.textContent, (chunk) => {
