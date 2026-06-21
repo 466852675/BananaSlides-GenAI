@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 export const SmartRefineSchema = z.object({
     text: z.string().min(1, "文本不能为空").max(50000, "文本过长"),
-    type: z.enum(['requirement', 'content', 'slide_refine'])
+    type: z.enum(['requirement', 'content', 'slide_refine', 'requirement_polish', 'template_description'])
 });
 
 export const ExtractTextSchema = z.object({

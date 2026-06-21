@@ -60,6 +60,16 @@ describe('ResultCard 撤回按钮', () => {
     expect(screen.queryByTitle('撤回修饰')).toBeNull();
   });
 
+  it('isRefining 为 true 时不显示（修饰中）', () => {
+    // onRefineContent 不 resolve 来保持 isRefining 为 true
+    const onRefineContent = vi.fn().mockReturnValue(new Promise(() => {}));
+    const item = { ...baseItem, textContent: '修饰后', previousContent: '修饰前' };
+    render(<ResultCard item={item} onUpdate={vi.fn()} onRefineContent={onRefineContent} />);
+    fireEvent.click(screen.getByTitle('AI 智能修饰'));
+    // 点击后 isRefining 变为 true，撤回按钮应隐藏
+    expect(screen.queryByTitle('撤回修饰')).toBeNull();
+  });
+
   it('点击撤回恢复 textContent 并清空 previousContent', () => {
     const onUpdate = vi.fn();
     const item = { ...baseItem, textContent: '修饰后', previousContent: '修饰前' };

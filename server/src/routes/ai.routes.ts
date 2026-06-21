@@ -16,6 +16,8 @@ import {
     handleGenerateSlideDetailStream
 } from '../controllers/ai.controller';
 import { authenticate } from '../middlewares/auth.middleware';
+import { validate } from '../middleware/validateMiddleware';
+import { SmartRefineSchema } from '../validators';
 
 const router = express.Router();
 
@@ -26,7 +28,7 @@ router.use(authenticate);
 router.post('/analyze-template-concept', handleAnalyzeTemplateConcept);
 router.post('/generate-style-preview', handleGenerateStylePreview);
 router.post('/generate-style-reference', handleGenerateStylePreview); // @deprecated 保留兼容
-router.post('/smart-refine', handleSmartRefine);
+router.post('/smart-refine', validate(SmartRefineSchema), handleSmartRefine);
 router.post('/extract-text', handleExtractText);
 router.post('/generate-outline', handleGenerateOutline);
 router.post('/generate-single-outline-item', handleGenerateSingleOutlineItem);
@@ -34,7 +36,7 @@ router.post('/generate-slide-detail', handleGenerateSlideDetail);
 router.post('/generate-slide-variant', handleGenerateSlideVariant);
 
 // 流式端点
-router.post('/smart-refine/stream', handleSmartRefineStream);
+router.post('/smart-refine/stream', validate(SmartRefineSchema), handleSmartRefineStream);
 router.post('/generate-outline/stream', handleGenerateOutlineStream);
 router.post('/generate-slide-detail/stream', handleGenerateSlideDetailStream);
 
