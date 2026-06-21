@@ -221,25 +221,27 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
 
                     <div className="mb-2 px-1 flex justify-between items-center">
                         <label className="text-sm font-medium text-slate-700">或者直接描述你的需求</label>
-                        <button
-                            onClick={handleSmartRefine}
-                            disabled={!inputText.trim() || isRefining}
-                            className="flex items-center gap-1 text-xs text-violet-600 font-medium hover:text-violet-700 disabled:opacity-50 transition-colors relative z-30"
-                        >
-                            <Sparkles className="w-3 h-3" />
-                            {isRefining ? '优化中...' : 'AI 润色描述'}
-                            <PointsBadge actionCode="smart_refine" compact />
-                        </button>
-                        {previousInputTextRef.current !== null && !isRefining && (
+                        <div className="flex items-center gap-[6rem]">
+                            {previousInputTextRef.current !== null && !isRefining && (
+                                <button
+                                    onClick={() => { setInputText(previousInputTextRef.current!); previousInputTextRef.current = null; }}
+                                    className="flex items-center gap-1 text-xs text-slate-500 font-medium hover:text-slate-700 transition-colors relative z-30"
+                                    title="撤回润色"
+                                >
+                                    <Undo2 className="w-3 h-3" />
+                                    撤回润色
+                                </button>
+                            )}
                             <button
-                                onClick={() => { setInputText(previousInputTextRef.current!); previousInputTextRef.current = null; }}
-                                className="flex items-center gap-1 text-xs text-slate-500 font-medium hover:text-slate-700 transition-colors relative z-30"
-                                title="撤回修饰"
+                                onClick={handleSmartRefine}
+                                disabled={!inputText.trim() || isRefining}
+                                className="flex items-center gap-1 text-xs text-violet-600 font-medium hover:text-violet-700 disabled:opacity-50 transition-colors relative z-30"
                             >
-                                <Undo2 className="w-3 h-3" />
-                                撤回
+                                <Sparkles className="w-3 h-3" />
+                                {isRefining ? '优化中...' : 'AI 润色描述'}
+                                <PointsBadge actionCode="smart_refine" compact />
                             </button>
-                        )}
+                        </div>
                     </div>
 
                     <AIGlowContainer
