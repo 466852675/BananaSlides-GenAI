@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { PointsBadge } from './PointsBadge';
 import { getActionCost, getBalance } from '../api/points';
 import {

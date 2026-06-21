@@ -501,6 +501,16 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
 
                     {isEditing && onSmartRefine && !isPromptPreview && (
                         <div className="absolute bottom-4 right-4 flex gap-2 z-30">
+                            {showUndo && onUndoRefine && !isRefining && (
+                                <button
+                                    onClick={onUndoRefine}
+                                    className="bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all hover:shadow-md"
+                                    title="撤回润色"
+                                >
+                                    <Undo2 size={14} />
+                                    撤回润色
+                                </button>
+                            )}
                             <button
                                 onClick={() => onSmartRefine(template.config.requirements)}
                                 disabled={isRefining || !template.config.requirements}
@@ -510,16 +520,6 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
                                 {isRefining ? "正在优化..." : "AI 智能润色"}
                                 <PointsBadge actionCode="style_apply" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
                             </button>
-                            {showUndo && onUndoRefine && !isRefining && (
-                                <button
-                                    onClick={onUndoRefine}
-                                    className="bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all hover:shadow-md"
-                                    title="撤回修饰"
-                                >
-                                    <Undo2 size={14} />
-                                    撤回
-                                </button>
-                            )}
                         </div>
                     )}
                 </AIGlowContainer>
