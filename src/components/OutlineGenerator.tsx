@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PointsBadge } from './PointsBadge';
-import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser, Eye, Edit3, Upload, Download } from 'lucide-react';
+import { Sparkles, X, RefreshCw, Trash2, Wand2, ArrowRight, Loader2, Play, Check, FileText, ArrowLeft, Eraser, Eye, Edit3, Upload, Download, Undo2 } from 'lucide-react';
 import { refinePrompt, smartRefine, generateOutline, generateSlideDetail, generateSingleOutlineItem, smartRefineAuto, generateOutlineAuto, generateSlideDetailAuto } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
 import { extractTextFromUpload } from '../utils/fileParser';
@@ -118,6 +118,10 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
     const [deletedItemsPool, setDeletedItemsPool] = useState<OutlineItem[]>([]); // 追踪被删除的项以便原位找回 content
 
     const [previewItems, setPreviewItems] = useState<Record<string, boolean>>({}); // Step 3 per-item preview toggle
+
+    // 撤回锚点（AI修饰前的内容）
+    const previousTopicRef = useRef<string | null>(null);
+    const previousFileContentRef = useRef<string | null>(null);
 
     // Step 1 Tabs & File Upload State
     const [activeTab, setActiveTab] = useState<'text' | 'file'>('text');
@@ -343,6 +347,13 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
         const contentToRefine = activeTab === 'file' ? fileParsedContent : topic;
         if (!contentToRefine.trim()) return;
 
+        // 存旧值供撤回
+        if (activeTab === 'file') {
+            previousFileContentRef.current = fileParsedContent;
+        } else {
+            previousTopicRef.current = topic;
+        }
+
         setIsRefining(true);
         const providerName = getProviderName('text');
 
@@ -407,6 +418,7 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
             onConfirm: () => {
                 setAttachedFile(null);
                 setFileParsedContent('');
+                previousFileContentRef.current = null;   // 同步清空撤回锚点
                 if (activeTab === 'file') {
                     if (fileInputRef.current) fileInputRef.current.value = "";
                 }
@@ -1086,11 +1098,21 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                             <span className="text-xs text-slate-400">系统将按照全局设置的 {config.targetPageCount} 页结构生成</span>
                                             <div className="flex gap-2">
                                                 <button
-                                                    onClick={() => setTopic('')}
+                                                    onClick={() => { setTopic(''); previousTopicRef.current = null; }}
                                                     className="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                                                 >
                                                     清空
                                                 </button>
+                                                {previousTopicRef.current !== null && !isRefining && (
+                                                    <button
+                                                        onClick={() => { setTopic(previousTopicRef.current!); previousTopicRef.current = null; }}
+                                                        className="text-xs flex items-center gap-1 bg-white text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-50 border border-slate-200 hover:shadow-sm transition-all font-medium"
+                                                        title="撤回修饰"
+                                                    >
+                                                        <Undo2 size={12} />
+                                                        撤回修饰
+                                                    </button>
+                                                )}
                                                 <button
                                                     onClick={handleRefine}
                                                     disabled={isRefining || !topic.trim()}
@@ -1198,6 +1220,16 @@ export const OutlineGenerator: React.FC<OutlineGeneratorProps> = ({ isOpen, onCl
                                                             {isRefining ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                                             AI 智能修饰 <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-1" />
                                                         </button>
+                                                        {previousFileContentRef.current !== null && !isRefining && (
+                                                            <button
+                                                                onClick={() => { setFileParsedContent(previousFileContentRef.current!); previousFileContentRef.current = null; }}
+                                                                className="text-xs flex items-center gap-1 bg-white text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-50 border border-slate-200 hover:shadow-sm transition-all font-medium"
+                                                                title="撤回修饰"
+                                                            >
+                                                                <Undo2 size={12} />
+                                                                撤回修饰
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </>

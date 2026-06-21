@@ -29,6 +29,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Edit3,
+  Undo2,
   MoreHorizontal,
   Check,
   ListChecks,
@@ -1951,9 +1952,17 @@ const App: React.FC = () => {
     return 0;
   }), [projects, historySearchTerm, historyFilterStyle, historyFilterRatio, historyFilterPalette, historyFilterTime, historyFilterTimeType, historyFilterStartDate, historyFilterEndDate, historyFilterPageType, historyFilterMinPages, historyFilterMaxPages, historySortBy, historySortOrder]);
 
+  const handleUndoRequirementsRefine = () => {
+    if (!config.previousRequirements) return;
+    handleConfigChange("requirements", config.previousRequirements);
+    handleConfigChange("previousRequirements", "");
+  };
+
   // --- Refinement Handlers ---
   const handleRefineRequirements = async () => {
     if (!config.requirements.trim()) return;
+    // 存旧值供撤回（随 globalConfig 持久化）
+    handleConfigChange("previousRequirements", config.requirements);
     setIsRefiningRequirements(true);
 
     // Fetch fresh balance and cost for warning
@@ -4578,7 +4587,7 @@ const App: React.FC = () => {
                                 💡 建议格式: ## 2. 总体视觉规范 / ### [封面页] / ### [内容页]
                               </div>
                             )}
-                            {!isRequirementsPreview && (
+                            {!isRequirementsPreview && (<>
                               <button
                                 onClick={handleRefineRequirements}
                                 disabled={
@@ -4602,7 +4611,17 @@ const App: React.FC = () => {
                                 {isRefiningRequirements ? "修饰中..." : "AI 修饰"}
                                 {!isRefiningRequirements && <PointsBadge actionCode="style_apply" compact showIcon={false} className="ml-1" />}
                               </button>
-                            )}
+                              {config.previousRequirements && !isRefiningRequirements && !previewSnapshot && (
+                                <button
+                                  onClick={handleUndoRequirementsRefine}
+                                  className="absolute bottom-3 right-[4.5rem] p-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-medium transition-all shadow-sm bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 hover:shadow-md"
+                                  title="撤回修饰"
+                                >
+                                  <Undo2 size={12} />
+                                  撤回修饰
+                                </button>
+                              )}
+                            </>)}
                           </div>
                         </div>
                       </div>

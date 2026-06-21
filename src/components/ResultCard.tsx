@@ -306,7 +306,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({
                                         <textarea
                                             className="w-full h-full p-3 text-sm text-slate-600 resize-none focus:outline-none focus:bg-indigo-50/20 transition-all custom-scrollbar disabled:bg-white"
                                             value={item.textContent || ''}
-                                            onChange={(e) => !readOnly && onUpdate && onUpdate({ textContent: e.target.value, previousContent: undefined })}
+                                            onChange={(e) => !readOnly && onUpdate && onUpdate({ textContent: e.target.value })}
                                             placeholder={readOnly ? "无内容" : "在此输入正文内容..."}
                                             disabled={readOnly}
                                         />

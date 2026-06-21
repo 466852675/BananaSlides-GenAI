@@ -13,6 +13,7 @@ export interface StyleConfig {
   styleName: string;
   colorPalette: string;
   requirements: string;
+  previousRequirements?: string;   // 新增：设计要求撤回锚点（随 globalConfig 入库）
   aspectRatio: string;
   // New: Page Planning
   targetPageCount: number;

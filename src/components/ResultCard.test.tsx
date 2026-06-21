@@ -89,13 +89,16 @@ describe('ResultCard 撤回按钮', () => {
   });
 });
 
-describe('ResultCard 边界 a：手动编辑清空 previousContent', () => {
-  it('手动编辑 textarea 时 onUpdate 清空 previousContent', () => {
+describe('ResultCard 手动编辑不撤回（边界 a 修正）', () => {
+  it('手动编辑 textarea 时不清空 previousContent（撤回锚点保留）', () => {
     const onUpdate = vi.fn();
     const item = { ...baseItem, textContent: '修饰后', previousContent: '修饰前' };
     render(<ResultCard item={item} onUpdate={onUpdate} onRefineContent={vi.fn()} />);
     const textarea = screen.getByPlaceholderText('在此输入正文内容...') as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: '手动改了' } });
-    expect(onUpdate).toHaveBeenCalledWith({ textContent: '手动改了', previousContent: undefined });
+    const call = onUpdate.mock.calls[0][0];
+    expect(call.textContent).toBe('手动改了');
+    // 修正边界 a：手动编辑不主动清空撤回锚点，onUpdate 调用对象不含 previousContent key
+    expect('previousContent' in call).toBe(false);
   });
 });
