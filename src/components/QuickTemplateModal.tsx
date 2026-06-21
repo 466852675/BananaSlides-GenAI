@@ -221,7 +221,7 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
 
                     <div className="mb-2 px-1 flex justify-between items-center">
                         <label className="text-sm font-medium text-slate-700">或者直接描述你的需求</label>
-                        <div className="flex items-center gap-[6rem]">
+                        <div className="flex items-center gap-3">
                             {previousInputTextRef.current !== null && !isRefining && (
                                 <button
                                     onClick={() => { setInputText(previousInputTextRef.current!); previousInputTextRef.current = null; }}
