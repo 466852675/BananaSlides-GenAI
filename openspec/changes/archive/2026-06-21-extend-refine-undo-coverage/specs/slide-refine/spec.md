@@ -1,8 +1,7 @@
-# slide-refine Specification
+# slide-refine capability delta（修正边界 a）
 
-## Purpose
-TBD - created by archiving change add-slide-refine-undo. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
+
 ### Requirement: ResultCard 提供单步撤回按钮
 
 `ResultCard` SHALL 在满足条件时显示"撤回修饰"按钮，点击后单步将该页恢复到最近一次 AI修饰前的内容。**手动编辑 textarea 不清空撤回锚点，撤回按钮保留**（修正原边界 a：原"手动编辑清空 previousContent"过激，统一为手动编辑不清空，与其他撤回入口规则一致）。
@@ -41,4 +40,3 @@ TBD - created by archiving change add-slide-refine-undo. Update Purpose after ar
 
 - WHEN 用户点击撤回按钮
 - THEN 直接执行撤回，不弹出确认弹窗（低风险：previousContent 仅修饰时存，撤回必回到真实历史内容）
-
