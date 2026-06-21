@@ -4614,7 +4614,7 @@ const App: React.FC = () => {
                               {config.previousRequirements && !isRefiningRequirements && !previewSnapshot && (
                                 <button
                                   onClick={handleUndoRequirementsRefine}
-                                  className="absolute bottom-3 right-[4.5rem] p-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-medium transition-all shadow-sm bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 hover:shadow-md"
+                                  className="absolute bottom-3 right-[9.5rem] p-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-medium transition-all shadow-sm bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 hover:shadow-md"
                                   title="撤回修饰"
                                 >
                                   <Undo2 size={12} />
