@@ -1557,7 +1557,8 @@ const StyleEditor: React.FC<{
       setCurrentPointsInfo({ balance: balance.points, cost });
       onShowToast(`AI 正在润色模板描述词。本次预计扣除 ${cost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
     } catch (e) {
-      onShowToast('正在调用 AI 服务优化模板描述词...', 'loading');
+        console.warn('Failed to fetch real-time points info', e);
+        onShowToast('正在调用 AI 服务优化模板描述词...', 'loading');
     }
 
     try {
