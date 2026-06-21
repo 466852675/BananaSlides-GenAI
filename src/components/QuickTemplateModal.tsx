@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PointsBadge } from './PointsBadge';
-import { X, Sparkles, Upload, FileText, Image as ImageIcon, Loader2, ArrowRight } from 'lucide-react';
+import { X, Sparkles, Upload, FileText, Image as ImageIcon, Loader2, ArrowRight, Undo2 } from 'lucide-react';
 import { analyzeTemplateConcept, refinePrompt } from '../services/geminiService';
 import { getActionCost, getBalance } from '../api/points';
 import { AIGlowContainer } from './AIGlowContainer';
@@ -27,6 +27,7 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
     const [loadingText, setLoadingText] = useState('正在分析...');
     const [isRefining, setIsRefining] = useState(false);
     const [currentPointsInfo, setCurrentPointsInfo] = useState<{ balance: number, cost: number } | null>(null);
+    const previousInputTextRef = useRef<string | null>(null);
 
     // --- Interruption Prevention ---
     useEffect(() => {
@@ -70,15 +71,22 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
     const handleSmartRefine = async () => {
         if (!inputText.trim()) return;
         const triggerTime = new Date().toISOString();
+        // 存旧值供撤回
+        previousInputTextRef.current = inputText;
         setIsRefining(true);
         const providerName = getProviderName('text');
 
         try {
-            const [cost, balance] = await Promise.all([
-                getActionCost('smart_refine', true),
-                getBalance()
-            ]);
-            onShowToast(`AI 正在润色描述词。本次预计扣除 ${cost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+            try {
+                const [cost, balance] = await Promise.all([
+                    getActionCost('smart_refine', true),
+                    getBalance()
+                ]);
+                onShowToast(`AI 正在润色描述词。本次预计扣除 ${cost} 积分，剩余 ${balance.points} 积分，请勿关闭或刷新页面。`, 'loading');
+            } catch (e) {
+                console.warn('Failed to fetch real-time points info', e);
+                onShowToast('正在调用 AI 服务润色描述词...', 'loading');
+            }
             const refined = await refinePrompt(inputText, triggerTime);
             setInputText(refined);
             onShowToast(`调用 ${providerName} API 服务成功`, 'success');
@@ -222,6 +230,16 @@ export const QuickTemplateModal: React.FC<QuickTemplateModalProps> = ({
                             {isRefining ? '优化中...' : 'AI 润色描述'}
                             <PointsBadge actionCode="smart_refine" compact />
                         </button>
+                        {previousInputTextRef.current !== null && !isRefining && (
+                            <button
+                                onClick={() => { setInputText(previousInputTextRef.current!); previousInputTextRef.current = null; }}
+                                className="flex items-center gap-1 text-xs text-slate-500 font-medium hover:text-slate-700 transition-colors relative z-30"
+                                title="撤回修饰"
+                            >
+                                <Undo2 className="w-3 h-3" />
+                                撤回
+                            </button>
+                        )}
                     </div>
 
                     <AIGlowContainer

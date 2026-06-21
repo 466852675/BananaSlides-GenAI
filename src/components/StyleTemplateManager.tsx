@@ -1415,6 +1415,7 @@ const StyleEditor: React.FC<{
   const [isRefining, setIsRefining] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [currentPointsInfo, setCurrentPointsInfo] = useState<{ balance: number, cost: number } | null>(null);
+  const previousRequirementsRef = useRef<string | null>(null);
   const { user, refreshUser } = useAuth();
 
   // --- Interruption Prevention ---
@@ -1541,6 +1542,9 @@ const StyleEditor: React.FC<{
   const handleSmartRefine = async () => {
     if (!localTemplate.config.requirements) return;
 
+    // 存旧值供撤回
+    previousRequirementsRef.current = localTemplate.config.requirements;
+
     const triggerTime = new Date().toISOString();
     setIsRefining(true);
 
@@ -1596,6 +1600,13 @@ const StyleEditor: React.FC<{
         onStructureChange={handleStructureChange}
         onSmartRefine={handleSmartRefine}
         isRefining={isRefining}
+        showUndo={previousRequirementsRef.current !== null}
+        onUndoRefine={() => {
+            if (previousRequirementsRef.current !== null) {
+                updateConfig('requirements', previousRequirementsRef.current);
+                previousRequirementsRef.current = null;
+            }
+        }}
         setName={(name) => setLocalTemplate({ ...localTemplate, name })}
         appSettings={appSettings}
       />

@@ -14,7 +14,8 @@ import {
     AlertTriangle,
     AlertCircle,
     Wand2,
-    Loader2
+    Loader2,
+    Undo2,
 } from 'lucide-react';
 import { generateStyleReference } from '../services/geminiService';
 import { QuickTemplateModal } from './QuickTemplateModal';
@@ -33,6 +34,8 @@ interface StyleTemplateEditorProps {
     onStructureChange: (type: PageType, value: number) => void;
     onSmartRefine?: (prompt: string) => void;
     isRefining?: boolean;
+    showUndo?: boolean;
+    onUndoRefine?: () => void;
     setName?: (name: string) => void;
     onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
     appSettings: AppSettings;
@@ -81,6 +84,8 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
     onStructureChange,
     onSmartRefine,
     isRefining = false,
+    showUndo = false,
+    onUndoRefine,
     setName,
     onShowToast,
     appSettings,
@@ -505,6 +510,16 @@ export const StyleTemplateEditor: React.FC<StyleTemplateEditorProps> = ({
                                 {isRefining ? "正在优化..." : "AI 智能润色"}
                                 <PointsBadge actionCode="style_apply" compact showIcon={false} className="text-white/80 bg-white/20 px-1.5 rounded-full" />
                             </button>
+                            {showUndo && onUndoRefine && !isRefining && (
+                                <button
+                                    onClick={onUndoRefine}
+                                    className="bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all hover:shadow-md"
+                                    title="撤回修饰"
+                                >
+                                    <Undo2 size={14} />
+                                    撤回
+                                </button>
+                            )}
                         </div>
                     )}
                 </AIGlowContainer>
