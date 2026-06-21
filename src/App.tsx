@@ -4582,11 +4582,6 @@ const App: React.FC = () => {
                                 className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300 transition-all resize-none h-[140px] ${previewSnapshot ? 'opacity-70 cursor-not-allowed' : ''}`}
                               />
                             )}
-                            {!isRequirementsPreview && !previewSnapshot && (
-                              <div className="text-xs text-slate-300 mt-1">
-                                💡 建议格式: ## 2. 总体视觉规范 / ### [封面页] / ### [内容页]
-                              </div>
-                            )}
                             {!isRequirementsPreview && (<>
                               <button
                                 onClick={handleRefineRequirements}
