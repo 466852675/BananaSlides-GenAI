@@ -176,6 +176,7 @@ const transformProject = (dto: ProjectDTO): ProjectSession => {
             originalFile, // string | null
             title: slide.title,
             textContent: slide.content, // Map content -> textContent
+            previousContent: (slide as any).previousContent || undefined,
             // Priority for left-side display:
             // 1. Database previewUrl (user's original upload)
             // 2. originalFile (also user's upload)
