@@ -27,15 +27,19 @@ const [projectAttachment, setProjectAttachment] = useState<ProjectAttachment | n
 
 ### Requirement: 持久化（无 DB 迁移）
 
-附件元数据存入 `globalConfig` JSON 的 `fileAttachment` 键。`persistAttachment` 辅助函数：
+附件元数据存入 `globalConfig` JSON 的 `fileAttachment` 键。使用 `serializeGlobalConfig` 桥接 `StyleConfig` 和 `ProjectAttachment`，避免 `{...config, fileAttachment}` 导致的 TS 类型冲突。`persistAttachment` 支持可选 `configOverride` 参数，用于新建项目场景传入 `newConfig`（避免闭包内 `config` 陈旧）：
 
 ```typescript
-const persistAttachment = (attachment: ProjectAttachment | null) => {
+const serializeGlobalConfig = (styleConfig: StyleConfig, attachment: ProjectAttachment | null): string => {
+  return JSON.stringify({ ...styleConfig, fileAttachment: attachment });
+};
+
+const persistAttachment = (attachment: ProjectAttachment | null, configOverride?: StyleConfig) => {
   if (!currentProjectIdRef.current) return;
-  const newGlobalConfig = { ...config, fileAttachment: attachment };
+  const cfg = configOverride ?? config;
   updateProjectMutation.mutate({
     id: currentProjectIdRef.current,
-    data: { globalConfig: JSON.stringify(newGlobalConfig) }
+    data: { globalConfig: serializeGlobalConfig(cfg, attachment) }
   });
 };
 ```
@@ -43,29 +47,74 @@ const persistAttachment = (attachment: ProjectAttachment | null) => {
 **规则**：
 - `attachment = null` 时，`fileAttachment` 设为 null（清空）
 - 复用现有 `updateProjectMutation`，不新增 API 端点
+- 新建项目场景（`handleCreateProjectFromOutline`）必须传 `configOverride = newConfig`，否则会用陈旧 `config` 覆盖新项目的样式配置
 
-### Requirement: handleOutlineImport 接收附件
+### Requirement: handleOutlineImport 接收附件 — 处理两个分支 + 替换确认
 
 ```typescript
 const handleOutlineImport = (slides: GeneratedSlide[], attachment?: ProjectAttachment | null) => {
-  if (attachment) {
-    setProjectAttachment(attachment);
-    persistAttachment(attachment);
+  // Dashboard 新建项目：暂存附件，等项目创建完成后由 handleCreateProjectFromOutline 持久化
+  if (outlineGeneratorSource === 'dashboard') {
+    handleCreateProjectFromOutline(slides, outlineInitialTopic || "智能生成演示文稿", attachment);
+    setOutlineResetKey(prev => prev + 1);
+    return;
+  }
+
+  // Workbench 追加
+  // 如果已有附件且新附件非空，弹出替换确认（ConfirmDialog 只支持 'danger'|'info'，用 'danger'）
+  if (attachment && projectAttachment) {
+    showConfirm(
+      '替换附件',
+      `当前项目已有附件 ${projectAttachment.name}，是否替换为新文件 ${attachment.name}？此操作不影响已生成的幻灯片。`,
+      () => { doSetAttachment(attachment); },
+      'danger'
+    );
+  } else if (attachment) {
+    doSetAttachment(attachment);
   }
   // ... 现有 slides 导入逻辑不变 ...
 };
+
+// configOverride：新建项目场景传入 newConfig，避免闭包内 config 陈旧
+const doSetAttachment = (attachment: ProjectAttachment | null, configOverride?: StyleConfig) => {
+  setProjectAttachment(attachment);
+  persistAttachment(attachment, configOverride);
+};
 ```
 
-覆盖两个分支（dashboard 新建 / workbench 追加）均需处理 attachment。
-
-### Requirement: transformProject 提取附件
-
-`src/api/projects.ts` `transformProject` 中，从解析后的 globalConfig 提取：
+**dashboard 分支详解**：`handleCreateProjectFromOutline` 增加 `attachment?` 参数。**关键：必须传入 `newConfig` 给 `doSetAttachment`**——因为 `setConfig(newConfig)` 是异步的，此时闭包内的 `config` 仍是旧值，直接用会导致 `persistAttachment` 用旧样式配置覆盖新项目：
 
 ```typescript
+const handleCreateProjectFromOutline = async (
+  slides: GeneratedSlide[], topic: string, attachment?: ProjectAttachment | null
+) => {
+  // ... 现有创建逻辑 ...
+  const createdProject = await createProjectMutation.mutateAsync({...});
+  setCurrentProjectId(createdProject.id);
+  prevProjectIdRef.current = createdProject.id;
+  const newConfig = createdProject.globalConfig || DEFAULT_STYLE_CONFIG;
+  setConfig(newConfig); // 异步更新，闭包 config 仍为旧值
+  // ... setStyleMap/setItems 等 ...
+
+  // 项目创建成功、currentProjectId 已设置后持久化附件
+  if (attachment) {
+    doSetAttachment(attachment, newConfig); // ← 必须传 newConfig
+  }
+};
+```
+
+### Requirement: transformProject 提取附件（防止数据污染）
+
+`src/api/projects.ts` `transformProject` 中，从解析后的 globalConfig 提取 attachment，**提取后删除 `fileAttachment` 键**，防止该键污染 `StyleConfig`（否则后续 `{...styleConfig}` 会携带未知属性）：
+
+```typescript
+// transformProject 内：
+const attachment = (globalConfig as any).fileAttachment ?? null;
+delete (globalConfig as any).fileAttachment; // 关键：防止键污染 StyleConfig — 否则后续 JSON.stringify 会写入无效键
+
 const transformed: ProjectSession = {
   // ... 现有字段 ...
-  attachment: (globalConfig as any).fileAttachment ?? null,  // 新增
+  attachment,  // 新增
 };
 ```
 
@@ -118,12 +167,34 @@ const downloadAttachment = (att: ProjectAttachment) => {
 **替换**：
 ```typescript
 const handleReplaceAttachment = async (file: File) => {
-  const url = await uploadFile(file, { purpose: 'source-document', projectId: currentProjectIdRef.current });
-  const newAttachment: ProjectAttachment = { name: file.name, type: file.type, url, size: file.size };
-  setProjectAttachment(newAttachment);
-  persistAttachment(newAttachment);
-  showToast('附件已替换', 'success');
+  try {
+    const url = await uploadFile(file, { purpose: 'source-document', projectId: currentProjectIdRef.current });
+    const newAttachment: ProjectAttachment = { name: file.name, type: file.type, url, size: file.size };
+    setProjectAttachment(newAttachment);
+    persistAttachment(newAttachment);
+    showToast(`附件已替换为 ${file.name}`, 'success');
+  } catch (error) {
+    showToast('附件替换失败，请重试', 'error');
+  }
 };
+```
+
+替换按钮 hover tooltip：`"替换源文档（不影响已生成的幻灯片）"`
+替换成功后 toast：`"附件已替换为 xxx.pdf"`（文案不含"生成"，避免用户误解会重新生成）
+
+**隐藏文件输入**（与 OutlineGenerator 保持一致的 accept 类型）：
+```tsx
+<input
+  type="file"
+  ref={attachmentFileInputRef}
+  className="hidden"
+  accept=".txt,.md,.json,.pdf,.doc,.docx"
+  onChange={(e) => {
+    const file = e.target.files?.[0];
+    if (file) handleReplaceAttachment(file);
+    e.target.value = ''; // 重置以允许重复选择同一文件
+  }}
+/>
 ```
 
 **清空**（带确认）：
@@ -138,10 +209,23 @@ const handleClearAttachment = () => {
 };
 ```
 
-**预览**：
-- PDF（`type === 'application/pdf'`）：`<iframe src={url}>` 直接渲染
-- 其他：`fetch(url)` 获取文本 → `<ReactMarkdown>` 渲染
-- 超大文件提示「建议下载后查看」
+**预览（三档降级）**：
+
+| 文件类型 | 预览方式 | 实现 |
+|---------|---------|------|
+| `.txt` `.md` `.json` | Markdown 渲染 | `fetch(url).text()` → `<ReactMarkdown>` |
+| `.pdf` | 浏览器原生渲染 | `<iframe src={url}>` |
+| 其他（`.docx` `.doc` `.pptx` `.ppt` `.xlsx` 等） | 不支持预览 | 显示文案「该文件类型暂不支持在线预览，请下载后查看」+ 突出下载按钮 |
+
+预览模态通用骨架：
+```tsx
+<div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-8">
+  <div className="bg-white rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden shadow-2xl">
+    {/* 头部：文件名 + 关闭 */}
+    {/* 主体：按类型分支渲染 */}
+  </div>
+</div>
+```
 
 ### Requirement: 替换不触发重生成
 
@@ -166,11 +250,9 @@ const handleClearAttachment = () => {
 ### Scenario: 替换附件
 
 - **Given** 工作台已有附件 report-v1.pdf
-- **When** 用户点击替换，选择 report-v2.pdf
-- **Then** `uploadFile` 上传新文件
-- **And** `projectAttachment` 更新为 report-v2.pdf
-- **And** globalConfig 同步更新
-- **And** toast「附件已替换」
+- **When** 用户从 OutlineGenerator 再次导入新附件（或在工作台直接点击替换按钮）
+- **Then** 工作台替换：`uploadFile` 上传新文件 → 更新 → toast「附件已替换为 report-v2.pdf」
+- **And** 重复导入：弹出替换确认弹窗
 - **And** 已有幻灯片内容不变
 
 ### Scenario: 清空附件
@@ -188,6 +270,16 @@ const handleClearAttachment = () => {
 - **When** 加载该项目
 - **Then** `project.attachment` 为 null
 - **And** 工作台不显示附件条（无回归）
+
+### Scenario: 上传失败时正常展示（降级）
+
+- **Given** 用户上传文件但服务器 `/api/upload` 失败
+- **When** 导入工作台
+- **Then** 附件条仍显示文件名和类型（url 为空）
+- **And** 预览/下载按钮**禁用**，tooltip 提示「文件上传失败，暂不可用」
+- **And** 附件条左侧显示红色错误图标表示异常状态
+
+### Scenario: 重复打开 OutlineGenerator 时替换确认
 
 ### Scenario: 快照预览模式
 

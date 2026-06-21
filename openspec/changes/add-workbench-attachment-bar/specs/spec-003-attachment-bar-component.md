@@ -30,6 +30,16 @@ interface AttachmentBarProps {
 }
 ```
 
+### Requirement: url 为空时降级显示
+
+当 `attachment.url` 为空字符串时（上传失败场景），附件条仍然显示文件名和类型，但：
+- 左侧文件图标替换为红色警告图标（`AlertCircle` 红色）
+- 预览/下载按钮**禁用**（`disabled` 样式 + `opacity-50 cursor-not-allowed`）
+- 禁用按钮 tooltip：「文件上传失败，暂不可用」
+- 替换和清空按钮正常可用
+
+**理由**：用户能看到「文件确实上传了（名字在这里），但服务器没存成功」，而不是「附件消失了，是不是我操作有问题？」
+
 ### Requirement: variant 行为差异
 
 | variant | 替换按钮 | 清空按钮 | 预览按钮 | 下载按钮 |
